@@ -13,50 +13,11 @@
         <cfset this.normalizeFieldPattern = "::[a-zA-Z0-9_ ]*|[()]| |\r?\n" />
 
 
-
-        <!--- List all the JSON files in the directory --->
-        <cfdirectory action="list" directory="/project/tables" name="qTables" filter="*.cfc" />
-        <cfloop query="qTables">
-            <cfset iName = listFirst(qTables.name,'.') />
-            <cfset iPath = "#replaceNoCase(qTables.directory, application.path.project, '/project')#/#iName#" />
+        <!--- Merge the results --->
+        <cfset structAppend(this.codeSchema, processDirectory('/moopa'))>
+        <cfset structAppend(this.codeSchema, processDirectory('/project'))>
 
 
-                <!--- Parse the JSON content --->
-                <cfset table_service = CreateObject('component', iPath).init() />
-
-                <cfset table_service.definition.path = iPath>
-
-
-                <cfif !structKeyExists(table_service.definition, 'fields')>
-                    <cfthrow message="Model must contain fields" />
-                </cfif>
-
-                <cfif !len(table_service.definition.name?:'')>
-                    <cfset lastDotPosition = findLast(".", qTables.name)>
-
-                    <!--- If there's a dot, remove the extension --->
-                    <cfif lastDotPosition gt 0>
-                        <cfset table_service.definition.name = left(qTables.name, lastDotPosition - 1)>
-                    <cfelse>
-                        <!--- If there's no dot, return the original filename --->
-                        <cfset table_service.definition.name = qTables.name>
-                    </cfif>
-                </cfif>
-
-
-                <cfset valid_table_name_pattern = "^[a-z_][a-z0-9_]{0,62}$">
-
-                <!--- Test the table name against the regex pattern --->
-                <cfset is_valid_table_name = reFind(valid_table_name_pattern, "#table_service.definition.name#")>
-
-                <cfif !is_valid_table_name>
-                    <cfthrow message="#table_service.definition.name# is not a valid postgresql table name." />
-                </cfif>
-
-                <cfset this.codeSchema[table_service.definition.name] = table_service.definition />
-
-
-        </cfloop>
 
 
         <cfset this.codeSchema = sanitizeCodeSchema(this.codeSchema)>
@@ -65,6 +26,46 @@
         <cfreturn this>
     </cffunction>
 
+    <!--- Function to process a single directory --->
+    <cffunction name="processDirectory" returntype="struct" access="private">
+        <cfargument name="path" type="string" required="true">
+
+        <cfset var local = {}>
+        <cfset local.codeSchema = {}>
+
+        <!--- List all CFC files in the directory --->
+        <cfdirectory action="list" directory="#arguments.path#/tables" name="local.directoryList" filter="*.cfc">
+
+        <cfloop query="local.directoryList">
+            <cfset local.tableName = listFirst(local.directoryList.name, '.')>
+            <cfset local.filePath = replace(local.directoryList.directory, expandPath(arguments.path), arguments.path) & '/' & local.tableName>
+
+            <!--- Create and initialize the table service object --->
+            <cfset local.tableService = createObject('component', local.filePath).init()>
+            <cfset local.tableService.definition.path = local.filePath>
+
+            <!--- Validate the table definition --->
+            <cfif NOT structKeyExists(local.tableService.definition, 'fields')>
+                <cfthrow message="Model must contain fields">
+            </cfif>
+
+            <!--- Set table name if not provided --->
+            <cfif NOT len(local.tableService.definition.name ?: '')>
+                <cfset local.tableService.definition.name = listFirst(local.directoryList.name, '.')>
+            </cfif>
+
+            <!--- Validate table name --->
+            <cfset local.validTableNamePattern = "^[a-z_][a-z0-9_]{0,62}$">
+            <cfif NOT reFind(local.validTableNamePattern, local.tableService.definition.name)>
+                <cfthrow message="#local.tableService.definition.name# is not a valid postgresql table name.">
+            </cfif>
+
+            <!--- Add to codeSchema --->
+            <cfset local.codeSchema[local.tableService.definition.name] = local.tableService.definition>
+        </cfloop>
+
+        <cfreturn local.codeSchema>
+    </cffunction>
 
 <!---
 search
