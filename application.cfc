@@ -471,13 +471,34 @@
         <cfset application.navs = {} />
         <cfset application.nav_id = createUUID() />
 
+
         <!--- Get all JSON files in the navs directory --->
-        <cfdirectory action="list" directory="#application.path.project#/navs" filter="*.json" name="qNavFiles" />
+        <cfdirectory action="list" directory="/moopa/navs" filter="*.json" name="qNavFiles" />
 
         <!--- Loop through each JSON file and add it to application.navs --->
         <cfloop query="qNavFiles">
             <cfset var fileName = listFirst(qNavFiles.name, ".") />
-            <cfset var filePath = "#application.path.project#/navs/#qNavFiles.name#" />
+            <cfset var filePath = "/moopa/navs/#qNavFiles.name#" />
+
+            <cffile action="read" file="#filePath#" variable="jsonContent" />
+
+            <cfif !isJSON(jsonContent)>
+                <cfthrow message="Error parsing JSON file #qNavFiles.name#" />
+            </cfif>
+
+            <cfset application.navs[fileName] = deserializeJSON(jsonContent) />
+
+        </cfloop>
+
+
+
+        <!--- Get all JSON files in the navs directory --->
+        <cfdirectory action="list" directory="/project/navs" filter="*.json" name="qNavFiles" />
+
+        <!--- Loop through each JSON file and add it to application.navs --->
+        <cfloop query="qNavFiles">
+            <cfset var fileName = listFirst(qNavFiles.name, ".") />
+            <cfset var filePath = "/project/navs/#qNavFiles.name#" />
 
             <cffile action="read" file="#filePath#" variable="jsonContent" />
 

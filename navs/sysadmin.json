@@ -1,0 +1,39 @@
+[
+
+    {
+        "icon": "fal fa-cog",
+        "title": "System",
+        "items": [
+            {
+                "icon": "fal fa-shield-alt",
+                "title": "Roles",
+                "route": "/security/roles"
+            },
+            {
+                "icon": "fal fa-route",
+                "title": "Routes",
+                "route": "/security/routes"
+            },
+            {
+                "icon": "fal fa-user",
+                "title": "Profiles",
+                "route": "/security/profiles"
+            },
+            {
+                "icon": "fal fa-search",
+                "title": "Search Indexing",
+                "route": "/sysadmin/ms"
+            },
+            {
+                "icon": "fal fa-exclamation-triangle",
+                "title": "Error Log",
+                "route": "/moo_error_log"
+            },
+            {
+                "icon": "fal fa-database",
+                "title": "Schema",
+                "route": "/schema"
+            }
+        ]
+    }
+]
