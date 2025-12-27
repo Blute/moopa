@@ -506,12 +506,8 @@ TODO: need to check if old way works for the following and which has precedence:
 
 
         <!--- Customer check --->
-        <cfif open_to EQ 'customer'>
-            <!--- First verify customer_id exists --->
-            <cfif !len(session.auth.customer.id?:'')>
-                <cfreturn false />
-            </cfif>
-
+        <cfif open_to EQ "validated" AND application.lib.auth.isValidated()>
+            <cfreturn true />
         </cfif>
 
 

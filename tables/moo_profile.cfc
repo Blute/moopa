@@ -180,7 +180,7 @@
             <cfset session.auth.role_id_array = [] />
             <cfset session.auth.role_id_list = "" />
             <cfset session.auth.user_directory = arguments.user_directory />
-
+            <cfset session.auth.endpoint_hash_code = createUniqueID() />
 
 
             <cfif !arguments.auto_login AND arguments.stay_logged_in>

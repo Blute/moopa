@@ -1214,7 +1214,6 @@ Delete - delete
 
                 <cfswitch expression="#field.type#">
                     <cfcase value="numeric">
-                        <cfset field.html.type = (field.html.type?:'input_number') />
                         <cfset field.html.control = (field.html.control?:'control_number') />
                         <cfif not structKeyExists(field, "precision")>
                             <cfset field.precision = 18>
@@ -1228,7 +1227,6 @@ Delete - delete
                     </cfcase>
 
                     <cfcase value="varchar">
-                        <cfset field.html.type = (field.html.type?:'input_text') />
                         <cfset field.html.control = (field.html.control?:'control_text') />
                         <cfif not structKeyExists(field, "max_length")>
                             <cfset field.max_length = 255>
@@ -1243,7 +1241,6 @@ Delete - delete
 
                         <cfif !(field.primary_key?:false)>
                             <cfset field.index = (field.index?:true) />
-                            <cfset field.html.type = (field.html.type?:'input_many_to_one') />
                             <cfset field.html.control = (field.html.control?:'control_combobox') />
                         </cfif>
 
@@ -1251,56 +1248,47 @@ Delete - delete
                     </cfcase>
 
                     <cfcase value="jsonb">
-                        <cfset field.html.type = (field.html.type?:'input_textarea') />
                         <cfset field.html.control = (field.html.control?:'control_textarea') />
                         <cfset field.sql_select_simple = "#table.table_name#.#field_name#::jsonb as #field_name#">
                     </cfcase>
 
                     <cfcase value="relation">
-                        <cfset field.html.type = (field.html.type?:'') />
                         <cfset field.html.control = (field.html.control?:'') />
                         <!--- not a field that gets deployed --->
                         <cfset field.sql_select_simple = "">
                     </cfcase>
 
                     <cfcase value="tsvector">
-                        <cfset field.html.type = (field.html.type?:'') />
                         <cfset field.html.control = (field.html.control?:'') />
                         <cfset field.sql_select_simple = "">
                     </cfcase>
 
                     <cfcase value="date">
                         <cfset field.cfsqltype = "date" />
-                        <cfset field.html.type = (field.html.type?:'input_date') />
                         <cfset field.html.control = (field.html.control?:'control_date') />
                     </cfcase>
 
                     <cfcase value="timestamptz">
                         <cfset field.cfsqltype = "timestamp" />
-                        <cfset field.html.type = (field.html.type?:'input_datetime_local') />
                         <cfset field.html.control = (field.html.control?:'control_datetime_local') />
                     </cfcase>
 
                     <cfcase value="text">
-                        <cfset field.html.type = (field.html.type?:'input_textarea') />
                         <cfset field.html.control = (field.html.control?:'control_textarea') />
                     </cfcase>
 
 
                     <cfcase value="int2,int4,int8,smallserial,serial,bigserial">
                         <cfset field.cfsqltype = "numeric" />
-                        <cfset field.html.type = (field.html.type?:'input_number') />
                         <cfset field.html.control = (field.html.control?:'control_number') />
                     </cfcase>
 
                     <cfcase value="bool,boolean">
                         <cfset field.cfsqltype = "boolean" />
-                        <cfset field.html.type = (field.html.type?:'input_text') />
                         <cfset field.html.control = (field.html.control?:'control_text') />
                     </cfcase>
 
                     <cfcase value="geometry">
-                        <cfset field.html.type = (field.html.type?:'input_text') />
                         <cfset field.html.control = (field.html.control?:'control_text') />
                         <cfset field.cfsqltype = "other" />
 
@@ -1326,13 +1314,11 @@ Delete - delete
 
                     <!--- Keep backward compatibility for legacy point/polygon definitions --->
                     <cfcase value="point,polygon">
-                        <cfset field.html.type = (field.html.type?:'input_text') />
                         <cfset field.html.control = (field.html.control?:'control_text') />
                         <cfset field.cfsqltype = "other" />
                     </cfcase>
 
                     <cfcase value="many_to_many">
-                        <cfset field.html.type = (field.html.type?:'input_many_to_many') />
                         <cfset field.html.control = (field.html.control?:'control_combobox') />
                         <cfif not structKeyExists(field, "foreign_key_field")>
                             <cfset field.foreign_key_field = "id">
