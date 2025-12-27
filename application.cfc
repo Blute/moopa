@@ -29,6 +29,7 @@
 
 
         <cfset _setupLibs() />
+        <cfset _setupControls() />
         <cfset _setupServices() />
         <!--- <cfset application.lib.db.getService("moo_route").initializeRoutesIntoApplicationScope() /> --->
 
@@ -442,6 +443,29 @@
         </cfloop>
 
     </cffunction>
+
+
+
+    <cffunction name="_setupControls" access="private" returntype="void" output="true">
+
+        <cfset application.control = {} />
+
+        <!--- CORE TABLES --->
+        <cfdirectory action="list" directory="/moopa/controls" recurse="true" name="qControls" filter="*.cfc" />
+        <cfloop query="qControls">
+            <cfset iName = listFirst(qControls.name,'.') />
+            <cfset application.control['#iName#'] = CreateObject('component', "/moopa/controls/#iName#").init() />
+        </cfloop>
+
+        <!--- PROJECT TABLES --->
+        <cfdirectory action="list" directory="/project/controls" recurse="true" name="qControls" filter="*.cfc" />
+        <cfloop query="qControls">
+            <cfset iName = listFirst(qControls.name,'.') />
+            <cfset application.control['#iName#'] = CreateObject('component', "/project/controls/#iName#").init() />
+        </cfloop>
+
+    </cffunction>
+
 
 
     <cffunction name="_setupServices" access="private" returntype="void" output="true">
