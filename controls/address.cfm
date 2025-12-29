@@ -60,11 +60,10 @@ The address object stored in the model will contain (from GET /v1/predictive/add
         <template x-if="hasAddress() && !isEditing">
             <div class="join w-full">
                 <label class="input join-item flex-1 min-w-0 flex items-center gap-2 cursor-pointer">
-                    <i class="fa-regular fa-location-dot text-base-content/50"></i>
                     <span class="truncate" x-text="getFormattedAddress()" @click="startEditing()"></span>
                 </label>
                 <button
-                    class="btn join-item"
+                    class="btn btn-square join-item"
                     @click="clearAddress()"
                     type="button"
                     title="Clear address"

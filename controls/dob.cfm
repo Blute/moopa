@@ -16,7 +16,6 @@
         class="join w-full"
     >
         <label class="input join-item flex-1 min-w-0 flex items-center gap-2 cursor-pointer" @click="openPicker()">
-            <i class="fa-regular fa-calendar-days text-base-content/50"></i>
             <input
                 type="text"
                 id="#attributes.id#"
@@ -32,7 +31,7 @@
             x-cloak
             type="button"
             @click.stop="clearDate()"
-            class="btn join-item"
+            class="btn btn-square join-item"
             title="Clear date"
         >
             <i class="fa-regular fa-xmark"></i>
