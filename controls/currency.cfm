@@ -1,7 +1,7 @@
 <cfif thisTag.executionMode EQ "start">
 
     <cfparam name="attributes.model" default="" />
-    <cfparam name="attributes.class" default="input text-right" />
+    <cfparam name="attributes.class" default="input w-full text-right" />
     <cfparam name="attributes.placeholder" default="" />
     <cfparam name="attributes.id" default="" />
     <cfparam name="attributes.minDecimals" default="2" />

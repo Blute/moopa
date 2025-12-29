@@ -1,29 +1,20 @@
 <cfif thisTag.executionMode EQ "start">
 
     <cfparam name="attributes.model" default="" />
-    <cfparam name="attributes.value" default="" />
-    <cfparam name="attributes.path" default="" hint="path to the property in the model. Can use template syntax to reference nested properties." />
     <cfparam name="attributes.class" default="" />
     <cfparam name="attributes.label" default="Upload Files" />
-    <cfparam name="attributes.help_text" default="Click or drag files to upload" />
+    <cfparam name="attributes.help_text" default="Drop files here or click to browse" />
     <cfparam name="attributes.show_file_list" default="true" hint="Whether to show the file list after upload. Set to false to hide completed files." />
-    <cfparam name="attributes.upload_body_class" default="p-4 text-center" />
+    <cfparam name="attributes.upload_body_class" default="" />
     <cfparam name="attributes.route" default="" />
     <cfparam name="attributes.endpoint" default="" />
     <cfparam name="attributes.table_name" default="" />
     <cfparam name="attributes.field_name" default="" />
-
-    <!--- If model is provided, use it for value and path --->
-    <cfif len(attributes.model) AND !len(attributes.value)>
-        <cfset attributes.value = attributes.model />
-    </cfif>
-    <cfif len(attributes.model) AND !len(attributes.path)>
-        <cfset attributes.path = attributes.model />
-    </cfif>
+    <cfparam name="attributes.compact" default="false" hint="Use compact single-line dropzone style" />
 
     <!--- Build endpoint configuration --->
     <cfif !len(attributes.endpoint)>
-        <cfset attributes.endpoint = "uploadFileToServerWithProgress.#listLast(attributes.path,'.')#" />
+        <cfset attributes.endpoint = "uploadFileToServerWithProgress.#listLast(attributes.model,'.')#" />
     </cfif>
 
     <cfif len(attributes.route)>
@@ -38,109 +29,176 @@
             class="#attributes.class#"
             x-id="['input_file']"
             x-data="moopaFileUploadField({
-                value: #attributes.value#,
-                path: `#attributes.path#`,
                 request_endpoint: #request_endpoint#,
                 table_name: '#attributes.table_name#',
                 field_name: '#attributes.field_name#',
                 show_file_list: #lCase(attributes.show_file_list)#
             })"
+            x-modelable="value"
+            x-model="#attributes.model#"
         >
+            <!--- Hidden textarea for x-model binding --->
+            <textarea
+                x-ref="hiddenValue"
+                x-model="serializedValue"
+                @input="handleModelUpdate"
+                class="hidden"
+            ></textarea>
 
-
-            <div class="card border mb-2"
-                x-data="{ isDragging: false, isOver: false }"
+            <!--- Dropzone using Tailwind/daisyUI --->
+            <div
+                class="card card-dash bg-base-200/50 cursor-pointer transition-all duration-200 hover:border-primary hover:bg-primary/5 mb-3<cfif attributes.compact> p-3<cfelse> p-6</cfif>"
+                x-data="{ isDragging: false }"
+                x-on:dragenter.prevent="isDragging = true"
                 x-on:dragover.prevent="isDragging = true"
-                x-on:dragleave="if (!event.relatedTarget || !event.relatedTarget.closest('.card')) { isDragging = false }"
+                x-on:dragleave.prevent="if (!$el.contains(event.relatedTarget)) isDragging = false"
                 x-on:drop.prevent="isDragging = false; handleDrop($event)"
-                :class="{ 'bg-secondary text-white': isDragging }"
+                :class="{ '!border-primary !border-solid !bg-primary/10 scale-[1.01] ring-4 ring-primary/20': isDragging }"
                 x-show="shouldShowUploadArea"
+                @click="$refs['file-input'].click()"
             >
-                <div class="#attributes.upload_body_class#">
-                    <div class="file-selector">
-                        <label :for="$id('input_file')" class="d-block">
-                            <span class="">
-                                <i class="fal fa-cloud-arrow-up fa-xl me-2"></i> #attributes.help_text#
-                            </span>
-                        </label>
-                        <input type="file" :id="$id('input_file')" :multiple="isMultipleMode" x-ref="file-input" @change="handleFiles" class="d-none">
+                <input
+                    type="file"
+                    :id="$id('input_file')"
+                    :multiple="isMultipleMode"
+                    x-ref="file-input"
+                    @change="handleFiles"
+                    @click.stop
+                    class="hidden"
+                >
+
+                <cfif attributes.compact>
+                    <!--- Compact single-line style --->
+                    <div class="flex items-center gap-3 pointer-events-none">
+                        <div class="w-8 h-8 flex items-center justify-center bg-primary rounded-full text-primary-content text-sm shrink-0">
+                            <i class="fal fa-cloud-arrow-up"></i>
+                        </div>
+                        <span class="flex-1 text-sm text-base-content/70">#attributes.help_text#</span>
+                        <span class="badge badge-primary badge-soft">Browse</span>
                     </div>
-                </div>
+                <cfelse>
+                    <!--- Full dropzone style --->
+                    <div class="flex flex-col items-center gap-3 pointer-events-none">
+                        <div class="w-14 h-14 flex items-center justify-center bg-gradient-to-br from-primary to-primary/80 rounded-full text-primary-content text-2xl shadow-lg shadow-primary/30 transition-transform group-hover:-translate-y-0.5">
+                            <i class="fal fa-cloud-arrow-up fa-lg"></i>
+                        </div>
+                        <div class="text-center">
+                            <span class="block font-medium text-base-content text-sm mb-1">#attributes.help_text#</span>
+                            <span class="text-sm text-base-content/60">or <span class="text-primary font-medium underline underline-offset-2">browse files</span></span>
+                        </div>
+                    </div>
+                </cfif>
             </div>
 
-
+            <!--- File List using Tailwind/daisyUI --->
             <template x-if="combined_files?.length && (show_file_list || hasUploadingFiles())">
-                <table class="table table-hover table-sm border">
-                    <tbody>
-                        <template x-for="(file, index) in combined_files" :key="file.id">
-                            <tr
-                                :class="{'table-danger': file.is_trashed}"
-                                @mouseenter="activeIndex = index"
-                                @mouseleave="activeIndex = null"
-                            >
-                                <td class="text-nowrap" style="width:50px;">
-                                    <button class="btn btn-sm btn-link" @click.prevent="handleDocumentPreview(file.id)">
-                                        <img :src="file.thumbnail" style="width:30px;height:30px;">
-                                    </button>
-                                </td>
+                <div class="flex flex-col gap-2">
+                    <template x-for="(file, index) in combined_files" :key="file.id">
+                        <div
+                            class="flex items-center gap-3 p-2.5 bg-base-100 border border-base-300 rounded-lg transition-all duration-200 hover:border-primary hover:shadow-sm animate-in slide-in-from-top-2"
+                            :class="{
+                                'opacity-50 !bg-error/5 !border-error': file.is_trashed,
+                                'border-l-4 !border-l-success': uploadProgress[file.id] === 100 && !processingFiles[file.id] && !file.is_trashed
+                            }"
+                            @mouseenter="activeIndex = index"
+                            @mouseleave="activeIndex = null"
+                        >
+                            <!--- Thumbnail with progress indicator --->
+                            <div class="relative shrink-0">
+                                <button class="btn btn-ghost btn-sm p-0 w-11 h-11 rounded-lg overflow-hidden" @click.prevent="handleDocumentPreview(file.id)">
+                                    <img :src="file.thumbnail" class="w-full h-full object-cover" :alt="file.name">
+                                </button>
 
-                                <td class="text-truncate" style="max-width: 0;">
-                                    <span x-text="file.name" :class="{'text-muted': file.is_trashed}"></span>
-                                </td>
+                                <!--- Circular progress indicator --->
+                                <svg
+                                    class="absolute -top-1 -left-1 w-[52px] h-[52px] -rotate-90 pointer-events-none"
+                                    x-show="uploadProgress[file.id] !== undefined && uploadProgress[file.id] < 100 && !processingFiles[file.id]"
+                                    viewBox="0 0 36 36"
+                                >
+                                    <circle
+                                        class="stroke-base-300"
+                                        cx="18" cy="18" r="16"
+                                        fill="none"
+                                        stroke-width="3"
+                                    />
+                                    <circle
+                                        class="stroke-primary transition-all duration-300"
+                                        cx="18" cy="18" r="16"
+                                        fill="none"
+                                        stroke-width="3"
+                                        stroke-linecap="round"
+                                        :stroke-dasharray="100.53"
+                                        :stroke-dashoffset="100.53 - (uploadProgress[file.id] / 100) * 100.53"
+                                    />
+                                </svg>
 
-                                <td class="text-nowrap" style="width:100px;">
-                                    <span class="text-muted text-nowrap mx-2" x-text="formatFileSize(file.size)"></span>
-                                </td>
+                                <!--- Processing spinner --->
+                                <div
+                                    class="absolute inset-0 flex items-center justify-center bg-base-100/90 rounded-lg"
+                                    x-show="processingFiles[file.id]"
+                                >
+                                    <span class="loading loading-spinner loading-sm text-primary"></span>
+                                </div>
 
-                                <td class="text-nowrap" style="width:85px;">
-                                    <span
-                                        class="upload-indicator"
-                                        x-show="uploadProgress[file.id] < 100 && !processingFiles[file.id]"
-                                        :class="{ 'badge text-bg-danger': uploadProgress[file.id] === 0, 'badge text-bg-light': uploadProgress[file.id] > 0 }"
-                                    >
-                                        <span x-text="uploadProgress[file.id] + '%'"></span>
-                                    </span>
+                                <!--- Complete checkmark --->
+                                <div
+                                    class="absolute -bottom-1 -right-1 w-5 h-5 flex items-center justify-center bg-success rounded-full text-success-content text-xs shadow-sm"
+                                    x-show="uploadProgress[file.id] === 100 && !processingFiles[file.id] && !file.is_trashed"
+                                    x-transition:enter="transition ease-out duration-300"
+                                    x-transition:enter-start="opacity-0 scale-0"
+                                    x-transition:enter-end="opacity-100 scale-100"
+                                >
+                                    <i class="fas fa-check"></i>
+                                </div>
+                            </div>
 
-                                    <span
-                                        class="upload-indicator badge text-bg-success text-white"
-                                        x-show="uploadProgress[file.id] === 100 && !processingFiles[file.id]"
-                                    >
-                                        uploaded
-                                    </span>
+                            <!--- File info --->
+                            <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+                                <span class="text-sm font-medium text-base-content truncate" x-text="file.name" :title="file.name"></span>
+                                <span class="text-xs text-base-content/60" x-text="formatFileSize(file.size)"></span>
+                            </div>
 
-                                    <span
-                                        class="upload-indicator badge text-bg-info text-white"
-                                        x-show="processingFiles[file.id]"
-                                    >
-                                        <i class="fas fa-spinner fa-spin me-1"></i> processing
-                                    </span>
-                                </td>
+                            <!--- Status badge --->
+                            <div class="shrink-0">
+                                <span
+                                    class="badge badge-sm badge-info badge-soft"
+                                    x-show="uploadProgress[file.id] < 100 && !processingFiles[file.id]"
+                                    x-text="uploadProgress[file.id] + '%'"
+                                ></span>
+                                <span
+                                    class="badge badge-sm badge-warning badge-soft animate-pulse"
+                                    x-show="processingFiles[file.id]"
+                                >
+                                    Processing...
+                                </span>
+                            </div>
 
-                                <td class="text-nowrap" style="width:65px;">
-                                    <button
-                                        type="button"
-                                        class="btn btn-link py-0 border-0 text-danger"
-                                        x-on:click.stop="removeFile(file.id)"
-                                        x-bind:class="{'text-danger': activeIndex===index, 'text-muted': activeIndex!==index}"
-                                        x-show="!file.is_trashed"
-                                    >
-                                        <i class="fal fa-trash fa-xl"></i>
-                                    </button>
+                            <!--- Actions --->
+                            <div class="shrink-0 flex gap-1">
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost btn-sm btn-square opacity-40 hover:opacity-100 hover:btn-error"
+                                    x-on:click.stop="removeFile(file.id)"
+                                    x-show="!file.is_trashed"
+                                    :class="{ '!opacity-100': activeIndex === index }"
+                                    title="Remove file"
+                                >
+                                    <i class="fal fa-trash"></i>
+                                </button>
 
-                                    <button
-                                        type="button"
-                                        class="btn btn-link py-0 border-0 text-danger"
-                                        x-on:click.stop="restoreFile(file.id)"
-                                        x-bind:class="{'text-danger': activeIndex===index, 'text-muted': activeIndex!==index}"
-                                        x-show="file.is_trashed"
-                                    >
-                                        <i class="fal fa-trash-undo fa-xl"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        </template>
-                    </tbody>
-                </table>
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost btn-sm btn-square text-success hover:btn-success"
+                                    x-on:click.stop="restoreFile(file.id)"
+                                    x-show="file.is_trashed"
+                                    title="Restore file"
+                                >
+                                    <i class="fal fa-undo"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
             </template>
         </div>
 
@@ -148,8 +206,7 @@
             <script defer>
                 document.addEventListener("alpine:init", () => {
                     Alpine.data("moopaFileUploadField", (config) => ({
-                        value: config.value,
-                        path: config.path,
+                        value: null,
                         request_endpoint: config.request_endpoint,
                         table_name: config.table_name,
                         field_name: config.field_name,
@@ -168,29 +225,51 @@
                         pendingFiles: [],
                         pendingFileData: {},
 
+                        // Serialized value for textarea binding
+                        get serializedValue() {
+                            return JSON.stringify(this.value);
+                        },
+                        set serializedValue(val) {
+                            try {
+                                this.value = JSON.parse(val);
+                            } catch (e) {
+                                // Invalid JSON, ignore
+                            }
+                        },
+
+                        // Handle external model updates via textarea
+                        handleModelUpdate() {
+                            this.$dispatch('input', this.value);
+                            this.$dispatch('update', { value: this.value });
+                        },
+
                         // Determines if we're in multiple file mode based on the value type
                         get isMultipleMode() {
-                            const currentValue = this.getPropertyValueByPath(this.path);
-                            return Array.isArray(currentValue) || Array.isArray(this.value);
+                            return Array.isArray(this.value);
                         },
 
                         get displayValue() {
-                            const currentValue = this.getPropertyValueByPath(this.path);
-                            return this.format(currentValue);
+                            return this.value || (this.isMultipleMode ? [] : null);
                         },
 
                         get parentId() {
-                            // Extract parent ID from path by removing the last segment
-                            const pathParts = this.path.split('.');
-                            pathParts.pop(); // Remove the field name
-                            const parentPath = pathParts.join('.') + '.id';
-                            return this.getPropertyValueByPath(parentPath);
+                            // Extract parent ID from the parent scope if available
+                            // This looks for common patterns like item.id or data.id in parent scope
+                            try {
+                                const parentData = this.$data;
+                                if (parentData.item?.id) return parentData.item.id;
+                                if (parentData.data?.id) return parentData.data.id;
+                                if (parentData.id) return parentData.id;
+                            } catch (e) {
+                                // Ignore errors accessing parent scope
+                            }
+                            return null;
                         },
 
                         // Determines whether to show the upload area
                         get shouldShowUploadArea() {
                             // Always show for multiple file uploads
-                            if (!this.isSingleFile()) {
+                            if (this.isMultipleMode) {
                                 return true;
                             }
 
@@ -211,26 +290,13 @@
                             return false;
                         },
 
-                        format(value) {
-                            return value || (this.isMultipleMode ? [] : null);
-                        },
-
-                        parse(value) {
-                            return value || (this.isMultipleMode ? [] : null);
-                        },
-
-                        validate(value) {
-                            return true;
-                        },
-
-                        updateProperty(newValue) {
-                            const parsedValue = this.parse(newValue);
-
-                            if (!this.validate(parsedValue)) {
-                                return;
-                            }
-
-                            this.updatePropertyByPath(this.path, parsedValue);
+                        // Update value and dispatch events
+                        updateValue(newValue) {
+                            this.value = newValue;
+                            this.$nextTick(() => {
+                                this.$dispatch('input', this.value);
+                                this.$dispatch('update', { value: this.value });
+                            });
                         },
 
                         // Determines if we're in single file mode
@@ -381,9 +447,8 @@
                                 const route = file_data.presignedURL;
                                 const xhr = new XMLHttpRequest();
 
-                                this.$dispatch('file_uploading_input_file', {
-                                    file: file_data.file,
-                                    path: this.path
+                                this.$dispatch('file_uploading', {
+                                    file: file_data.file
                                 });
 
                                 xhr.open('PUT', route, true);
@@ -418,9 +483,8 @@
                                             this.pendingFiles[pendingIndex] = updatedFile;
                                         }
 
-                                        this.$dispatch('file_uploaded_input_file', {
-                                            file: updatedFile,
-                                            path: this.path
+                                        this.$dispatch('file_uploaded', {
+                                            file: updatedFile
                                         });
 
                                         this.fileUploadStatus[fileId] = true;
@@ -449,12 +513,12 @@
                             }
                         },
 
-                        // Checks if all files in the queue have been uploaded and updates property
+                        // Checks if all files in the queue have been uploaded and updates value
                         checkAllUploadsComplete() {
                             const allUploaded = this.uploadQueue.every(fileId => this.fileUploadStatus[fileId] === true);
 
                             if (allUploaded && this.uploadQueue.length > 0) {
-                                // All files uploaded, now update the property with all pending files
+                                // All files uploaded, now update the value with all pending files
                                 const currentValue = this.displayValue;
                                 let newValue;
 
@@ -467,16 +531,15 @@
                                     newValue = this.pendingFiles[0] || {};
                                 }
 
-                                // Update the property
-                                this.updateProperty(newValue);
+                                // Update the value using the new method
+                                this.updateValue(newValue);
 
                                 // Clear pending files
                                 this.pendingFiles = [];
                                 this.pendingFileData = {};
 
-                                this.$dispatch('all_files_uploaded_input_file', {
-                                    files: newValue,
-                                    path: this.path
+                                this.$dispatch('all_files_uploaded', {
+                                    files: newValue
                                 });
 
                                 this.uploadQueue = [];
@@ -487,7 +550,7 @@
                             }
                         },
 
-                        // Removes a file from the property and moves it to trashed_files
+                        // Removes a file from the value and moves it to trashed_files
                         removeFile(id) {
                             // Check if it's a pending file
                             const pendingIndex = this.pendingFiles.findIndex(file => file.id === id);
@@ -517,13 +580,13 @@
                                 if (index !== -1) {
                                     const removed = currentValue[index];
                                     const newValue = currentValue.filter((_, i) => i !== index);
-                                    this.updateProperty(newValue);
+                                    this.updateValue(newValue);
                                     this.trashed_files.push(removed);
                                 }
                             } else {
                                 if (currentValue && currentValue.id === id) {
                                     const removed = currentValue;
-                                    this.updateProperty({});
+                                    this.updateValue({});
                                     this.trashed_files.push(removed);
                                 }
                             }
@@ -531,7 +594,7 @@
                             this.updateCombinedFiles();
                         },
 
-                        // Restores a file from trashed_files back to the property
+                        // Restores a file from trashed_files back to the value
                         restoreFile(id) {
                             const index = this.trashed_files.findIndex(file => file.id === id);
                             if (index !== -1) {
@@ -540,9 +603,9 @@
 
                                 if (Array.isArray(currentValue)) {
                                     const newValue = [...currentValue, restored];
-                                    this.updateProperty(newValue);
+                                    this.updateValue(newValue);
                                 } else {
-                                    this.updateProperty(restored);
+                                    this.updateValue(restored);
                                 }
 
                                 this.updateCombinedFiles();
@@ -583,14 +646,9 @@
 
                         // Initialize the component
                         init() {
-                            this.$watch(() => this.getPropertyValueByPath(this.path), () => {
+                            // Watch for value changes to update combined files
+                            this.$watch('value', () => {
                                 this.updateCombinedFiles();
-                            });
-
-                            this.$watch(() => this.parentId, () => {
-                                this.trashed_files = [];
-                                this.pendingFiles = [];
-                                this.pendingFileData = {};
                             });
 
                             // Listen for document preview events and delegate to page handler

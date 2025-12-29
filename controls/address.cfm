@@ -55,23 +55,21 @@ The address object stored in the model will contain (from GET /v1/predictive/add
         x-modelable="address"
         x-model="#attributes.model#"
         x-id="['addr-popover', 'addr-anchor']"
-        class="#attributes.class#"
     >
         <!--- Selected address display --->
         <template x-if="hasAddress() && !isEditing">
             <div class="join w-full">
-                <div
-                    class="#attributes.input_class# join-item flex-1 flex items-center cursor-pointer truncate"
-                    x-text="getFormattedAddress()"
-                    @click="startEditing()"
-                ></div>
+                <label class="input join-item flex-1 min-w-0 flex items-center gap-2 cursor-pointer">
+                    <i class="fa-regular fa-location-dot text-base-content/50"></i>
+                    <span class="truncate" x-text="getFormattedAddress()" @click="startEditing()"></span>
+                </label>
                 <button
                     class="btn join-item"
                     @click="clearAddress()"
                     type="button"
                     title="Clear address"
                 >
-                    <i class="fa-regular fa-trash-can"></i>
+                    <i class="fa-regular fa-xmark"></i>
                 </button>
             </div>
         </template>

@@ -1,7 +1,7 @@
 <cfif thisTag.executionMode EQ "start">
 
     <cfparam name="attributes.model" default="" />
-    <cfparam name="attributes.class" default="select" />
+    <cfparam name="attributes.class" default="select w-full" />
     <cfparam name="attributes.list_items" default="#[]#" />
     <cfparam name="attributes.empty_option_name" default="--- select ---" />
     <cfparam name="attributes.id" default="" />

@@ -1,7 +1,7 @@
 <cfif thisTag.executionMode EQ "start">
 
     <cfparam name="attributes.model" default="" />
-    <cfparam name="attributes.class" default="textarea" />
+    <cfparam name="attributes.class" default="textarea w-full" />
     <cfparam name="attributes.placeholder" default="" />
     <cfparam name="attributes.rows" default="3" />
     <cfparam name="attributes.id" default="" />

@@ -2,7 +2,7 @@
 
     <cfparam name="attributes.id" default="#createUniqueID()#" />
     <cfparam name="attributes.model" default="" />
-    <cfparam name="attributes.class" default="input" />
+    <cfparam name="attributes.class" default="input w-full" />
     <cfparam name="attributes.placeholder" default="" />
 
     <cfoutput>
