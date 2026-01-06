@@ -201,6 +201,8 @@
                     DELETE FROM moo_profile_extended_session
                     WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#cookie.deviceid#" />
                     </cfquery>
+                    <cfcookie name="deviceid" value="" expires="0" httponly="true" secure="true" samesite="Lax">
+
                 </cfif>
             </cfif>
         </cfif>

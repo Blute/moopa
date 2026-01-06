@@ -54,7 +54,6 @@
                         "type": "input_switch"
                     }
                 },
-
                 "dob":
                 {
                     "label": "Date Of Birth",
@@ -123,7 +122,7 @@
         <cfargument name="email" default="" />
         <cfargument name="mobile" default="" />
         <cfargument name="auto_login" default=false />
-        <cfargument name="stay_logged_in" default=false />
+        <cfargument name="stay_logged_in" default=true /> <!--- If true, the user will be logged in for 30 days. Default is true. --->
         <cfargument name="user_directory" default="" />
         <cfargument name="authentication_service_user" default="" />
 
@@ -141,6 +140,7 @@
                 <cfset profile_to_login = application.lib.db.read(
                     table_name = "moo_profile",
                     id = arguments.profile_id,
+                    field_list = "id,full_name,full_name,email,mobile,profile_avatar_id,profile_picture_id,can_login,roles",
                     returnAsCFML=true
                 ) />
 
@@ -166,6 +166,7 @@
                 <cfset session.auth.profile = application.lib.db.read(
                     table_name = "moo_profile",
                     id = new_profile.id,
+                    field_list = "id,full_name,full_name,email,mobile,profile_avatar_id,profile_picture_id,can_login",
                     returnAsCFML=true
                 ) />
             </cfif>
@@ -197,7 +198,7 @@
                     returnAsCFML=true
                 ) />
 
-                <cfcookie name="deviceID" value="#new_device_id#" expires="#expireTime#" httponly="true" secure="true" samesite="Lax">
+                <cfcookie name="deviceid" value="#new_device_id#" expires="#expireTime#" httponly="true" secure="true" samesite="Lax">
 
 
                 <cfset session.auth.stay_logged_in = true />
@@ -219,8 +220,6 @@
             <cfset session.auth.role_id_list = ArrayToList(session.auth.role_id_array)>
 
             <cfif len(session.auth.profile.email?:'') AND session.auth.profile.email EQ server.system.environment.SYSADMIN_email?:''>
-                <cfset session.auth.is_sysadmin = true />
-            <cfelseif len(session.auth.profile.mobile?:'') AND session.auth.profile.mobile EQ server.system.environment.SYSADMIN_mobile?:''>
                 <cfset session.auth.is_sysadmin = true />
             </cfif>
 

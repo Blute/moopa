@@ -14,7 +14,7 @@
 
             <cfset ArrayAppend(results, indexed_data) />
         </cfloop>
-       
+
 
         <!-- Output the result for debugging -->
         <cfreturn results />
@@ -42,7 +42,7 @@
         <cfset orderedRecordset = []>
 
         <cfset idList = application.lib.meilisearch.query_index(index_name="company", query="#request.data.filter_term#") />
-        
+
 
         <cfif arrayLen(idList)>
             <cfquery name="recordset" returntype="array">
@@ -73,6 +73,7 @@
 
         <cfset result.searchable_tables = application.lib.db.getSearchableTables() />
         <cfset result.existing_in_es = application.lib.meilisearch.get_indexes() />
+        <cfset result.stats = application.lib.meilisearch.get_stats() />
 
         <cfreturn result />
     </cffunction>
@@ -81,137 +82,162 @@
 
 
     <cffunction name="get" output="true">
-        <cf_layout_default>
-            
+        <cf_layout_default content_class="w-full">
 
+            <div x-data="meilisearch" x-cloak class="flex flex-col gap-6">
+                <!-- Page Title -->
+                <p class="text-lg font-medium">Meilisearch Management</p>
 
-               <div x-data="algolia">
-
-                    <h1>Meilisearch Search</h1>
-                    <div class="d-flex gap-1 align-items-center mb-3">
-                        <input type="checkbox" @click="selectAllTables($event.target.checked)" id="select-all"> <label for="select-all">Select All</label>
-
-
-                        <button class="btn btn-outline-primary" @click="index_content">Index Selected Tables</button>
-
-                    </div>
-
-
-                    <cf_define_admin_grid class="admin-grid" grid_template_columns="80px 200px 1fr 1fr 80px" />
-
-                    <div>
-                        <template x-for="table in enhancedTables" :key="table.table_name">
-                            <div class='admin-grid w-100 p-1' x-show="table.searchable_fields.length">
-                                <div>
-                                    <input type="checkbox" :value="table.table_name" x-model="selectedTables" :checked="selectAll">
-                                </div>
-                                <div x-text="table.table_name"></div>
-                                <div x-text="table.searchable_fields"></div>
-                                <div>
-                                    <div x-show="table.isIndexed" x-text="'Indexed: ' + table.datasetSize + ' | Health: ' + table.health + ' | Docs: ' + table.docsCount"></div>
-                                </div>
-
-                                <div>
-                                    <button type="button" class="btn btn-outline-danger" @click="delete_index(table.table_name)"><i class="fal fa-trash"></i></button>
-                                    <button type="button" class="btn btn-outline-danger" @click="reset_index(table.table_name)"><i class="fal fa-broom"></i></button>
-                                </div>
+                <!-- Tables Card -->
+                <div class="card card-border bg-base-100">
+                    <div class="card-body p-0">
+                        <!-- Toolbar -->
+                        <div class="flex items-center justify-between px-5 pt-5">
+                            <div class="inline-flex items-center gap-3">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" class="checkbox checkbox-sm" @click="selectAllTables($event.target.checked)" />
+                                    <span class="text-sm">Select All</span>
+                                </label>
                             </div>
-                        </template>
-                    </div>
-
-
-
-
-                    <div class="mb-3">
-                        <input type="text" class="form-control" placeholder="Search" x-model.debounce="filter_term" />
-                    </div>
-                    
-                    <div class="list-group">
-                        <template x-for="(item, i) in results" :key="item.id">
-                            <div class="list-group-item d-flex gap-1">
-                                <span x-text="item.name"></span>
+                            <div class="inline-flex items-center gap-2">
+                                <button class="btn btn-primary btn-sm" @click="index_content" :disabled="!selectedTables.length">
+                                    <span class="fal fa-database"></span>
+                                    Index Selected Tables
+                                </button>
                             </div>
-                        </template>
-                    </div>
+                        </div>
 
-                       
-               </div>
-               
-               <script>
-                document.addEventListener("alpine:init", () => {
-                    Alpine.data("algolia", () => ({
-                       
-                       filter_term: '',
-                        results: [],
+                        <!-- Table -->
+                        <div class="mt-4 overflow-auto">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th class="w-12"></th>
+                                        <th>Table Name</th>
+                                        <th>Searchable Fields</th>
+                                        <th>Index Status</th>
+                                        <th class="text-end">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="table in enhancedTables" :key="table.table_name">
+                                        <tr class="hover:bg-base-200/40" x-show="table.searchable_fields.length">
+                                            <!-- Checkbox -->
+                                            <td>
+                                                <input type="checkbox" class="checkbox checkbox-sm" :value="table.table_name" x-model="selectedTables" />
+                                            </td>
+                                            <!-- Table Name -->
+                                            <td>
+                                                <span class="font-mono text-sm" x-text="table.table_name"></span>
+                                            </td>
+                                            <!-- Searchable Fields -->
+                                            <td>
+                                                <span class="text-sm text-base-content/70" x-text="table.searchable_fields"></span>
+                                            </td>
+                                            <!-- Index Status -->
+                                            <td>
+                                                <template x-if="table.isIndexed">
+                                                    <div class="flex flex-col gap-0.5">
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="badge badge-sm badge-success">Indexed</span>
+                                                            <template x-if="table.isIndexing">
+                                                                <span class="loading loading-spinner loading-xs"></span>
+                                                            </template>
+                                                        </div>
+                                                        <span class="text-xs text-base-content/60" x-text="table.numberOfDocuments.toLocaleString() + ' docs'"></span>
+                                                    </div>
+                                                </template>
+                                                <template x-if="!table.isIndexed">
+                                                    <span class="badge badge-sm badge-ghost">Not Indexed</span>
+                                                </template>
+                                            </td>
+                                            <!-- Actions -->
+                                            <td>
+                                                <div class="flex items-center justify-end gap-1">
+                                                    <button type="button" class="btn btn-ghost btn-sm btn-square" @click="reset_index(table.table_name)" title="Reset Index">
+                                                        <span class="fal fa-sync text-base-content/70"></span>
+                                                    </button>
+                                                    <button type="button" class="btn btn-ghost btn-sm btn-square" @click="delete_index(table.table_name)" title="Delete Index">
+                                                        <span class="fal fa-trash text-error"></span>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <!-- Empty State -->
+                                    <template x-if="!enhancedTables.length">
+                                        <tr>
+                                            <td colspan="5" class="text-center py-8 text-base-content/60">
+                                                <span class="fal fa-database fa-2x mb-2 block"></span>
+                                                No searchable tables found
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <script>
+                document.addEventListener('alpine:init', () => {
+                    Alpine.data('meilisearch', () => ({
+
                         tables: [],
                         selectedTables: [],
                         selectAll: false,
+                        existing_in_es: [],
+                        indexStats: {},
 
-                        init() {
-                            this.load();
-                            this.$watch('filter_term', () => this.find_content());
+                        async init() {
+                            await this.load();
                         },
-                        
+
 
                         async delete_index(table_name) {
-
-                            // EXPORT DATA
-                            this.results = await fetchData({
+                            await req({
                                 endpoint: 'delete_index',
-                                method:"POST",
-                                body:{
-                                    table_name:table_name
-                                }
+                                body: { table_name }
                             });
-
-                            this.load()
+                            await this.load();
                         },
 
                         async reset_index(table_name) {
-
-                            // EXPORT DATA
-                            this.results = await fetchData({
+                            await req({
                                 endpoint: 'reset_index',
-                                method:"POST",
-                                body:{
-                                    table_name:table_name
-                                }
+                                body: { table_name }
                             });
-
-                            this.load()
+                            await this.load();
                         },
 
                         async load() {
-                            let data = await fetchData({
-                                endpoint: 'load',
-                                method: 'GET'
-                            });
+                            const data = await req({ endpoint: 'load' });
+
+                            // Stats are keyed by index name: data.stats.indexes[table_name]
+                            const indexStats = data.stats?.indexes || {};
 
                             // Convert the 'searchable_tables' object to an array of its values
                             this.tables = Object.values(data.searchable_tables).map(table => {
-                                let existingIndex = data.existing_in_es.find(index => index.index === table.table_name);
+                                const existingIndex = data.existing_in_es.find(idx => idx.uid === table.table_name);
+                                const stats = indexStats[table.table_name];
                                 return {
                                     ...table,
                                     isIndexed: !!existingIndex,
-                                    datasetSize: existingIndex ? existingIndex['dataset.size'] : null,
-                                    health: existingIndex ? existingIndex.health : null,
-                                    docsCount: existingIndex ? existingIndex['docs.count'] : null
+                                    numberOfDocuments: stats?.numberOfDocuments ?? 0,
+                                    isIndexing: stats?.isIndexing ?? false,
+                                    createdAt: existingIndex?.createdAt
                                 };
                             });
 
                             this.existing_in_es = data.existing_in_es;
+                            this.indexStats = indexStats;
                         },
 
 
                         get enhancedTables() {
-                            return this.tables.map(table => {
-                                let existingIndex = this.existing_in_es.find(index => index.index === table.table_name);
-                                return {
-                                    ...table,
-                                    isIndexed: !!existingIndex,
-                                    datasetSize: existingIndex ? existingIndex['dataset.size'] : null
-                                };
-                            });
+                            return this.tables;
                         },
 
                         selectAllTables(isChecked) {
@@ -224,33 +250,11 @@
                         },
 
                         async index_content() {
-
-                            // EXPORT DATA
-                            data = await fetchData({
+                            await req({
                                 endpoint: 'index_content',
-                                method: 'POST',
-                                body: {
-                                    selectedTables : this.selectedTables
-                                }
+                                body: { selectedTables: this.selectedTables }
                             });
-
-
-                            this.load()
-
-
-                        },
-                        
-
-                        async find_content() {
-
-                            // EXPORT DATA
-                            this.results = await fetchData({
-                                endpoint: 'find_content',
-                                method:"POST",
-                                body:{
-                                    filter_term:this.filter_term
-                                }
-                            });
+                            await this.load();
                         },
                     }))
                 })

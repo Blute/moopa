@@ -379,6 +379,27 @@ Delete - delete
     </cffunction>
 
 
+    <cffunction name="imagekit" returntype="string" hint="Returns the postgresql imagekit_url function call">
+        <cfargument name="path" type="string" required="true" hint="Column name or SQL expression containing the file path" />
+        <cfargument name="params" type="any" required="false" default="" hint="Struct of transforms or prebuilt ImageKit transform string (e.g., 'w-400,h-300')" />
+        <cfargument name="expires" type="any" required="false" default="MONTH" hint="Duration in seconds (numeric) or end-of period (string like 'hour', 'day', etc.)" />
+        <cfargument name="private_key" type="string" required="false" default="#server.system.environment.IMAGEKIT_PRIVATE_KEY#" />
+        <cfargument name="url_endpoint" type="string" required="false" default="#server.system.environment.IMAGEKIT_URL_ENDPOINT#" />
+
+        <!--- Turn struct params into ImageKit transform string --->
+        <cfset var params_string = "" />
+        <cfif isStruct(arguments.params) AND NOT structIsEmpty(arguments.params)>
+            <cfset params_string = application.lib.imagekit.buildParams(arguments.params) />
+        <cfelseif isSimpleValue(arguments.params)>
+            <cfset params_string = toString(arguments.params) />
+        </cfif>
+
+        <!--- Assemble Postgres function call string (note: path is an expression, not quoted) --->
+        <cfreturn "imagekit_url(" & arguments.path & ", '" & arguments.private_key & "', '" & arguments.url_endpoint & "', '" & arguments.expires & "', '" & params_string & "')" />
+
+    </cffunction>
+
+
     <cffunction name="read" returntype="any" hint="Returns a JSON object or a CFML array for the matching id">
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="false" default="" />

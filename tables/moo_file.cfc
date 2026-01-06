@@ -77,7 +77,7 @@
                     table_name : 'moo_file',
                     data : {
                         id : arguments.data.file_id,
-                        thumbnail: application.lib.s3proxy.url(file_path=new_file.path, expiry=0, params={width=300, height=300})
+                        thumbnail: application.lib.imagekit.url(file_path=new_file.path, expiry=0, params={width=300, height=300})
                     },
                     returnAsCFML:true
                 ) />
