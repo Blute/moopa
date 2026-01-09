@@ -4,10 +4,10 @@
 
     <cffunction name="init">
 
-        <cfset variables.S3_PROXY_KEY = server.system.environment.S3_PROXY_KEY />
-        <cfset variables.S3_PROXY_SALT = server.system.environment.S3_PROXY_SALT />
-        <cfset variables.S3_PROXY_URL = server.system.environment.S3_PROXY_URL />
-        <cfset variables.S3_BUCKET = server.system.environment.S3_BUCKET />
+        <cfset variables.S3_PROXY_KEY = server.system.environment.S3_PROXY_KEY ?: '' />
+        <cfset variables.S3_PROXY_SALT = server.system.environment.S3_PROXY_SALT ?: '' />
+        <cfset variables.S3_PROXY_URL = server.system.environment.S3_PROXY_URL ?: '' />
+        <cfset variables.S3_BUCKET = server.system.environment.S3_BUCKET ?: '' />
         <cfset variables.CLOUDINARY_CLOUD_NAME = server.system.environment.CLOUDINARY_CLOUD_NAME ?: "blute" />
 
         <cfreturn this />
