@@ -7,7 +7,61 @@
 
 
     <cffunction name="search">
-        <cfreturn application.lib.db.search(table_name='moo_role', q="#url.q?:''#") />
+        <cfquery name="q">
+            SELECT COALESCE(jsonb_agg(data ORDER BY name)::text, '[]') as data
+            FROM (
+                SELECT moo_role.id
+                    , moo_role.name
+                    , (
+                        SELECT COUNT(*)
+                        FROM moo_profile_roles
+                        WHERE moo_profile_roles.foreign_id = moo_role.id
+                    ) as user_count
+                    , (
+                        SELECT COUNT(DISTINCT moo_route.id)
+                        FROM moo_route
+                        INNER JOIN moo_route_roles ON moo_route_roles.primary_id = moo_route.id
+                        WHERE moo_route_roles.foreign_id = moo_role.id
+                    ) as route_count
+                FROM moo_role
+                <cfif len(url.q?:'')>
+                WHERE moo_role.name ILIKE <cfqueryparam value="%#url.q#%" cfsqltype="varchar" />
+                </cfif>
+            ) as data
+        </cfquery>
+        <cfreturn q.data />
+    </cffunction>
+
+    <cffunction name="users">
+        <cfparam name="url.role_id" />
+        <cfquery name="q">
+            SELECT COALESCE(jsonb_agg(data ORDER BY full_name)::text, '[]') as data
+            FROM (
+                SELECT moo_profile.id
+                    , moo_profile.full_name
+                    , moo_profile.email
+                FROM moo_profile
+                INNER JOIN moo_profile_roles ON moo_profile_roles.primary_id = moo_profile.id
+                WHERE moo_profile_roles.foreign_id = <cfqueryparam value="#url.role_id#" cfsqltype="other" />
+            ) as data
+        </cfquery>
+        <cfreturn q.data />
+    </cffunction>
+
+    <cffunction name="routes">
+        <cfparam name="url.role_id" />
+        <cfquery name="q">
+            SELECT COALESCE(jsonb_agg(data ORDER BY url)::text, '[]') as data
+            FROM (
+                SELECT moo_route.id
+                    , moo_route.url
+                    , moo_route.mapping
+                FROM moo_route
+                INNER JOIN moo_route_roles ON moo_route_roles.primary_id = moo_route.id
+                WHERE moo_route_roles.foreign_id = <cfqueryparam value="#url.role_id#" cfsqltype="other" />
+            ) as data
+        </cfquery>
+        <cfreturn q.data />
     </cffunction>
 
     <cffunction name="new">
@@ -73,6 +127,8 @@
                                     <tr>
                                         <th>Name</th>
                                         <th>Description</th>
+                                        <th>Users</th>
+                                        <th>Routes</th>
                                         <th>Action</th>
                                     </tr>
                                 </thead>
@@ -81,6 +137,26 @@
                                         <tr class="hover:bg-base-200/40 *:text-nowrap">
                                             <td class="font-medium" x-text="item.name"></td>
                                             <td class="text-sm text-base-content/60" x-text="item.description || '—'"></td>
+                                            <td>
+                                                <button
+                                                    @click="showUsersForRole(item)"
+                                                    class="badge badge-ghost hover:badge-primary cursor-pointer gap-1.5 transition-colors"
+                                                    :class="{ 'badge-outline': item.user_count === 0 }"
+                                                >
+                                                    <i class="fal fa-users text-xs"></i>
+                                                    <span x-text="item.user_count"></span>
+                                                </button>
+                                            </td>
+                                            <td>
+                                                <button
+                                                    @click="showRoutesForRole(item)"
+                                                    class="badge badge-ghost hover:badge-secondary cursor-pointer gap-1.5 transition-colors"
+                                                    :class="{ 'badge-outline': item.route_count === 0 }"
+                                                >
+                                                    <i class="fal fa-route text-xs"></i>
+                                                    <span x-text="item.route_count"></span>
+                                                </button>
+                                            </td>
                                             <td>
                                                 <button @click="select(item)" class="btn btn-square btn-ghost btn-sm" aria-label="Edit">
                                                     <i class="fal fa-pencil text-base-content/80"></i>
@@ -182,6 +258,118 @@
                     </form>
                 </dialog>
 
+                <!-- Users Modal -->
+                <dialog class="modal" :class="{ 'modal-open': showUsersModal }">
+                    <div class="modal-box">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold">
+                                Users with role: <span class="text-primary" x-text="usersModalRole?.name"></span>
+                            </h3>
+                            <button @click="showUsersModal = false" class="btn btn-sm btn-circle btn-ghost">
+                                <i class="fal fa-times"></i>
+                            </button>
+                        </div>
+
+                        <!-- Loading state -->
+                        <div x-show="usersLoading" class="flex justify-center py-8">
+                            <span class="loading loading-spinner loading-md"></span>
+                        </div>
+
+                        <!-- Users list -->
+                        <div x-show="!usersLoading">
+                            <template x-if="roleUsers.length > 0">
+                                <div class="divide-y divide-base-200">
+                                    <template x-for="user in roleUsers" :key="user.id">
+                                        <div class="flex items-center gap-3 py-3">
+                                            <div class="avatar placeholder">
+                                                <div class="bg-neutral text-neutral-content w-10 rounded-full">
+                                                    <span x-text="user.full_name?.charAt(0)?.toUpperCase() || '?'"></span>
+                                                </div>
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <p class="font-medium truncate" x-text="user.full_name || 'Unknown'"></p>
+                                                <p class="text-sm text-base-content/60 truncate" x-text="user.email || '—'"></p>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+
+                            <!-- Empty state -->
+                            <template x-if="roleUsers.length === 0">
+                                <div class="text-center py-8">
+                                    <i class="fal fa-user-slash text-base-content/30 text-4xl"></i>
+                                    <p class="mt-2 text-sm text-base-content/60">No users have this role</p>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="modal-action">
+                            <button type="button" @click="showUsersModal = false" class="btn btn-ghost">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                    <form method="dialog" class="modal-backdrop">
+                        <button @click="showUsersModal = false">close</button>
+                    </form>
+                </dialog>
+
+                <!-- Routes Modal -->
+                <dialog class="modal" :class="{ 'modal-open': showRoutesModal }">
+                    <div class="modal-box max-w-2xl">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold">
+                                Routes for role: <span class="text-secondary" x-text="routesModalRole?.name"></span>
+                            </h3>
+                            <button @click="showRoutesModal = false" class="btn btn-sm btn-circle btn-ghost">
+                                <i class="fal fa-times"></i>
+                            </button>
+                        </div>
+
+                        <!-- Loading state -->
+                        <div x-show="routesLoading" class="flex justify-center py-8">
+                            <span class="loading loading-spinner loading-md"></span>
+                        </div>
+
+                        <!-- Routes list -->
+                        <div x-show="!routesLoading">
+                            <template x-if="roleRoutes.length > 0">
+                                <div class="divide-y divide-base-200">
+                                    <template x-for="route in roleRoutes" :key="route.id">
+                                        <div class="flex items-center gap-3 py-3">
+                                            <div class="flex-shrink-0 w-8 h-8 rounded bg-secondary/10 flex items-center justify-center">
+                                                <i class="fal fa-route text-secondary text-sm"></i>
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <p class="font-mono text-sm font-medium truncate" x-text="route.url"></p>
+                                                <p class="text-xs text-base-content/50 truncate" x-text="route.mapping"></p>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+
+                            <!-- Empty state -->
+                            <template x-if="roleRoutes.length === 0">
+                                <div class="text-center py-8">
+                                    <i class="fal fa-map-signs text-base-content/30 text-4xl"></i>
+                                    <p class="mt-2 text-sm text-base-content/60">No routes assigned to this role</p>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="modal-action">
+                            <button type="button" @click="showRoutesModal = false" class="btn btn-ghost">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                    <form method="dialog" class="modal-backdrop">
+                        <button @click="showRoutesModal = false">close</button>
+                    </form>
+                </dialog>
+
             </div>
 
             <script>
@@ -197,6 +385,14 @@
                         delete_record: null,
                         showEditModal: false,
                         showDeleteModal: false,
+                        showUsersModal: false,
+                        usersModalRole: null,
+                        roleUsers: [],
+                        usersLoading: false,
+                        showRoutesModal: false,
+                        routesModalRole: null,
+                        roleRoutes: [],
+                        routesLoading: false,
 
                         init() {
                             this.search();
@@ -274,6 +470,44 @@
                             } catch (error) {
                                 console.error('Delete error:', error);
                                 this.showNotification('Error deleting record', 'error');
+                            }
+                        },
+
+                        async showUsersForRole(role) {
+                            this.usersModalRole = role;
+                            this.roleUsers = [];
+                            this.showUsersModal = true;
+                            this.usersLoading = true;
+
+                            try {
+                                this.roleUsers = await req({
+                                    endpoint: 'users',
+                                    role_id: role.id
+                                });
+                            } catch (error) {
+                                console.error('Error loading users:', error);
+                                this.showNotification('Error loading users', 'error');
+                            } finally {
+                                this.usersLoading = false;
+                            }
+                        },
+
+                        async showRoutesForRole(role) {
+                            this.routesModalRole = role;
+                            this.roleRoutes = [];
+                            this.showRoutesModal = true;
+                            this.routesLoading = true;
+
+                            try {
+                                this.roleRoutes = await req({
+                                    endpoint: 'routes',
+                                    role_id: role.id
+                                });
+                            } catch (error) {
+                                console.error('Error loading routes:', error);
+                                this.showNotification('Error loading routes', 'error');
+                            } finally {
+                                this.routesLoading = false;
                             }
                         },
 
