@@ -219,7 +219,7 @@
             <!--- Convert the array of role IDs to a comma-separated list --->
             <cfset session.auth.role_id_list = ArrayToList(session.auth.role_id_array)>
 
-            <cfif len(session.auth.profile.email?:'') AND session.auth.profile.email EQ server.system.environment.SYSADMIN_email?:''>
+            <cfif len(session.auth.profile.email?:'') AND listFindNoCase(server.system.environment.SYSADMIN_email?:'', session.auth.profile.email)>
                 <cfset session.auth.is_sysadmin = true />
             </cfif>
 
