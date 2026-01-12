@@ -127,7 +127,7 @@
                     <li class="hover:bg-base-200/50 transition-colors">
                       <div class="grid items-center gap-2 px-3 py-2" style="grid-template-columns: 1fr 80px 80px 100px;">
                         <!-- Route Name & Path -->
-                        <div class="flex items-center min-w-0" :style="`padding-left: ${row.depth * 16}px`">
+                        <div class="flex items-center min-w-0" :style="`padding-left: ${row.depth * 24}px`">
                           <template x-if="row.node.children.length">
                             <button class="btn btn-ghost btn-xs btn-square" @click="toggle(row.node.id)">
                               <span class="fal" :class="is_expanded(row.node.id) ? 'fa-angle-down' : 'fa-angle-right'"></span>
@@ -174,6 +174,29 @@
             </div>
           </div>
 
+          <!--- Security Modal --->
+          <dialog x-ref="securityModal" class="modal" @close="security_iframe_src = ''">
+            <div class="modal-box max-w-6xl w-11/12 h-[85vh] p-0 flex flex-col">
+              <div class="flex items-center justify-between px-5 py-3 border-b border-base-200 bg-base-200/30">
+                <h3 class="font-semibold text-lg flex items-center gap-2">
+                  <i class="fal fa-shield-check text-primary"></i>
+                  Route Security
+                </h3>
+                <form method="dialog">
+                  <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close">
+                    <i class="fal fa-times"></i>
+                  </button>
+                </form>
+              </div>
+              <div class="flex-1 overflow-hidden">
+                <iframe :src="security_iframe_src" class="w-full h-full border-0"></iframe>
+              </div>
+            </div>
+            <form method="dialog" class="modal-backdrop">
+              <button>close</button>
+            </form>
+          </dialog>
+
           <script>
             document.addEventListener('alpine:init', () => {
               Alpine.data('routes_tree', () => ({
@@ -183,6 +206,7 @@
                 filters: { q: '' },
                 loading: false,
                 stats: { total: 0, with_roles: 0, people_total: 0 },
+                security_iframe_src: '',
                 async init() {
                   const saved = await loadFilters({ q: '' });
                   this.filters = saved || { q: '' };
@@ -304,7 +328,8 @@
                 },
                 open_secure(route) {
                   if (!route?.id) return;
-                  window.location.href = `/security/routes/${route.id}`;
+                  this.security_iframe_src = `/security/routes/${route.id}`;
+                  this.$refs.securityModal.showModal();
                 }
               }));
             });

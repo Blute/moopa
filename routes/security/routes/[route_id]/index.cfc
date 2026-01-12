@@ -172,10 +172,10 @@
     </cffunction>
 
 
-    <cffunction name="search.route_to_edit.roles">
+    <cffunction name="search.roles">
         <cfreturn application.lib.db.search(table_name='moo_role', q="#url.q?:''#", exclude_ids="#url.exclude_ids?:''#") />
     </cffunction>
-    <cffunction name="search.route_to_edit.profiles">
+    <cffunction name="search.profiles">
         <cfreturn application.lib.db.search(table_name='moo_profile', q="#url.q?:''#", exclude_ids="#url.exclude_ids?:''#") />
     </cffunction>
 
@@ -224,129 +224,168 @@
 
 
 
-        <div x-data="xxx">
+        <div x-data="xxx" class="p-6">
 
-            <h1 class="text-2xl font-bold flex flex-wrap items-center gap-2" x-cloak>
-                Route Security
-                <span x-text="current_route.url" class="italic opacity-60"></span>
-                <span x-show="route_open_to === 'public'" class="badge badge-success">Open to Public</span>
-                <span x-show="route_open_to === 'bearer'" class="badge badge-success">Open with Bearer Token</span>
-                <span x-show="route_open_to === 'logged_in'" class="badge badge-success">Open when Logged In</span>
-            </h1>
+            <!--- Route Info Bar --->
+            <div class="flex flex-wrap items-center justify-between gap-4 mb-6" x-cloak>
+                <div class="flex flex-wrap items-center gap-2">
+                    <code class="text-lg font-mono bg-base-200 px-3 py-1 rounded" x-text="current_route.url"></code>
+                    <span x-show="route_open_to === 'public'" class="badge badge-success">Open to Public</span>
+                    <span x-show="route_open_to === 'bearer'" class="badge badge-success">Open with Bearer Token</span>
+                    <span x-show="route_open_to === 'logged_in'" class="badge badge-success">Open when Logged In</span>
+                </div>
+                <cfif session.auth.is_sysadmin?:false>
+                    <button type="button" class="btn btn-sm btn-primary gap-2" @click="edit_route" x-show="!showEditRoute">
+                        <i class="fal fa-pencil"></i>
+                        Edit Access
+                    </button>
+                </cfif>
+            </div>
 
             <cfif session.auth.is_sysadmin?:false>
-                <button type="button" class="btn btn-outline btn-primary mt-4" @click="edit_route">Edit Roles & Profiles</button>
-
-                <div x-cloak x-show="showEditRoute" x-transition class="mt-4 flex gap-2">
-
-                    <!--- <cf_fields table_name="moo_route" fields="roles,profiles" model_record="route_to_edit" /> --->
-
-
-                    <!--- <cf_input_many_to_many field="moo_route.roles" model_record="route_to_edit" />
-                    <cf_input_many_to_many field="moo_route.profiles" model_record="route_to_edit" /> --->
-
-
-
-                    <button class="btn btn-primary" @click="save_route">Save</button>
-                    <button class="btn btn-ghost" @click="showEditRoute=false">Cancel</button>
+                <div x-cloak x-show="showEditRoute" x-transition class="mb-6">
+                    <div class="card card-border bg-base-100 max-w-2xl">
+                        <div class="card-body">
+                            <h3 class="card-title text-base">Edit Route Access</h3>
+                            <div class="flex flex-col gap-4 mt-2">
+                                <cf_table_controls table_name="moo_route" fields="roles,profiles" model_record="route_to_edit"></cf_table_controls>
+                            </div>
+                            <div class="card-actions justify-end mt-4">
+                                <button class="btn btn-ghost" @click="showEditRoute=false">Cancel</button>
+                                <button class="btn btn-primary" @click="save_route">Save</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </cfif>
 
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6" x-show="!showEditRoute" x-transition x-cloak>
 
-            <div class="flex gap-8 mt-6" x-show="!showEditRoute" x-transition>
+                <!--- Permissions Matrix Card --->
+                <div class="lg:col-span-2">
+                    <div class="card card-border bg-base-100">
+                        <div class="card-body p-0">
+                            <div class="px-5 pt-5 pb-3 border-b border-base-200">
+                                <h3 class="font-semibold flex items-center gap-2">
+                                    <i class="fal fa-shield-check text-primary"></i>
+                                    Endpoint Permissions
+                                </h3>
+                                <p class="text-sm text-base-content/60 mt-1">Click to toggle access for profiles and roles</p>
+                            </div>
 
+                            <template x-if="(current_route.profiles?.length > 0) || (current_route.roles?.length > 0)">
+                                <div class="overflow-x-auto">
+                                    <table class="table w-auto">
+                                        <thead>
+                                            <tr>
+                                                <th class="text-center bg-base-200/50">&nbsp;</th>
+                                                <template x-for="profile in current_route.profiles" :key="profile.id">
+                                                    <th class="text-sm bg-base-200/50">
+                                                        <div class="rotated-th">
+                                                            <span class="rotated-th__label" x-text="profile.full_name"></span>
+                                                        </div>
+                                                    </th>
+                                                </template>
+                                                <template x-for="role in current_route.roles" :key="role.id">
+                                                    <th class="text-sm bg-base-200/50">
+                                                        <div class="rotated-th">
+                                                            <span class="rotated-th__label font-semibold text-primary" x-text="role.label"></span>
+                                                        </div>
+                                                    </th>
+                                                </template>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr class="bg-base-100">
+                                                <th class="font-semibold text-sm">ALL ACCESS</th>
+                                                <template x-for="profile in current_route.profiles" :key="profile.id">
+                                                    <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleProfileAccess(profile.id)">
+                                                        <i class="fas fa-xl" :class="isProfileAccessSet(profile.id) ? 'fa-shield-check text-success' : 'fa-shield-check opacity-20'"></i>
+                                                    </td>
+                                                </template>
+                                                <template x-for="role in current_route.roles" :key="role.id">
+                                                    <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleRoleAccess(role.id)">
+                                                        <i class="fas fa-xl" :class="isRoleAccessSet(role.id) ? 'fa-shield-check text-success' : 'fa-shield-check opacity-20'"></i>
+                                                    </td>
+                                                </template>
+                                            </tr>
 
-
-                    <div x-cloak>
-
-
-
-
-                        <div class="overflow-x-auto">
-                        <table class="table w-auto" x-show="(current_route.profiles?.length > 0) || (current_route.roles?.length > 0)">
-                        <thead>
-                          <tr>
-                            <th class="text-center">&nbsp;</th>
-                            <template x-for="profile in current_route.profiles" :key="profile.id">
-                                <th class="text-sm">
-                                    <div class="rotated-th">
-                                        <span class="rotated-th__label" x-text="profile.full_name"></span>
-                                    </div>
-                                </th>
+                                            <template x-for="endpoint in current_route.endpoints" :key="endpoint.id">
+                                                <tr>
+                                                    <th x-text="endpoint.name" class="font-medium text-sm text-base-content/80"></th>
+                                                    <template x-for="profile in current_route.profiles" :key="profile.id">
+                                                        <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleProfileAccess(profile.id, endpoint.id)">
+                                                            <div x-show="isProfileAccessSet(profile.id)">
+                                                                <i class="fat fa-xl fa-shield-check text-success/50"></i>
+                                                            </div>
+                                                            <div x-show="!isProfileAccessSet(profile.id)">
+                                                                <i class="far fa-xl" :class="isProfileAccessSet(profile.id, endpoint.id) ? 'fa-shield-check text-success' : 'fa-shield-check text-error/60'"></i>
+                                                            </div>
+                                                        </td>
+                                                    </template>
+                                                    <template x-for="role in current_route.roles" :key="role.id">
+                                                        <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleRoleAccess(role.id, endpoint.id)">
+                                                            <div x-show="isRoleAccessSet(role.id)">
+                                                                <i class="fat fa-xl fa-shield-check text-success/50"></i>
+                                                            </div>
+                                                            <div x-show="!isRoleAccessSet(role.id)">
+                                                                <i class="far fa-xl" :class="isRoleAccessSet(role.id, endpoint.id) ? 'fa-shield-check text-success' : 'fa-shield-check text-error/60'"></i>
+                                                            </div>
+                                                        </td>
+                                                    </template>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </template>
-                            <template x-for="role in current_route.roles" :key="role.id">
-                                <th class="text-sm">
-                                    <div class="rotated-th">
-                                        <span class="rotated-th__label" x-text="role.label"></span>
-                                    </div>
-                                </th>
+
+                            <template x-if="!current_route.profiles?.length && !current_route.roles?.length">
+                                <div class="p-8 text-center text-base-content/50">
+                                    <i class="fal fa-user-shield fa-2x mb-3 block"></i>
+                                    <p>No profiles or roles assigned to this route</p>
+                                    <p class="text-sm mt-1">Click "Edit Roles & Profiles" to add access</p>
+                                </div>
                             </template>
-                          </tr>
-                        </thead>
-                        <tbody>
-
-                            <tr>
-                              <th class="font-semibold">ALL ACCESS</th>
-                                <template x-for="profile in current_route.profiles" :key="profile.id">
-                                  <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200" @click="toggleProfileAccess(profile.id)">
-                                    <i class="fas fa-xl" :class="isProfileAccessSet(profile.id) ? 'fa-shield-check text-success' : 'fa-shield-check opacity-30'"></i>
-                                  </td>
-                                </template>
-
-
-                                <template x-for="role in current_route.roles" :key="role.id">
-                                  <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200" @click="toggleRoleAccess(role.id)">
-                                    <i class="fas fa-xl" :class="isRoleAccessSet(role.id) ? 'fa-shield-check text-success' : 'fa-shield-check opacity-30'"></i>
-                                  </td>
-                                </template>
-                            </tr>
-
-
-                          <template x-for="endpoint in current_route.endpoints" :key="endpoint.id">
-                            <tr>
-                              <th x-text="endpoint.name" class="font-medium"></th>
-                                <template x-for="profile in current_route.profiles" :key="profile.id">
-                                  <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200" @click="toggleProfileAccess(profile.id, endpoint.id)">
-                                    <div x-show="isProfileAccessSet(profile.id)">
-                                        <i class="fat fa-xl fa-shield-check text-success"></i>
-                                    </div>
-                                    <div x-show="!isProfileAccessSet(profile.id)">
-                                        <i class="far fa-xl" :class="isProfileAccessSet(profile.id, endpoint.id) ? 'fa-shield-check text-success' : 'fa-shield-check text-error'"></i>
-                                    </div>
-
-                                  </td>
-                                </template>
-
-
-                                <template x-for="role in current_route.roles" :key="role.id">
-                                  <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200" @click="toggleRoleAccess(role.id, endpoint.id)">
-                                    <div x-show="isRoleAccessSet(role.id)">
-                                        <i class="fat fa-xl fa-shield-check text-success"></i>
-                                    </div>
-                                    <div x-show="!isRoleAccessSet(role.id)">
-                                        <i class="far fa-xl" :class="isRoleAccessSet(role.id, endpoint.id) ? 'fa-shield-check text-success' : 'fa-shield-check text-error'"></i>
-                                    </div>
-                                  </td>
-                                </template>
-                            </tr>
-                          </template>
-                        </tbody>
-                      </table>
-                      </div>
-                    </div>
-
-
-                <div>
-
-                    <h6 class="text-sm font-semibold" style="margin-top:110px;">Who Has Access Via Roles?</h6>
-
-                    <template x-for="person in who_has_access">
-
-                        <div class="py-1">
-                            <span x-text="person.profile"></span>
-                            <span class="text-xs opacity-60">(<span x-text="person.role"></span>)</span>
                         </div>
-                    </template>
+                    </div>
+                </div>
+
+                <!--- Who Has Access Sidebar --->
+                <div class="lg:col-span-1">
+                    <div class="card card-border bg-base-100 sticky top-4">
+                        <div class="card-body">
+                            <h3 class="font-semibold flex items-center gap-2 mb-3">
+                                <i class="fal fa-users text-secondary"></i>
+                                Who Has Access
+                            </h3>
+
+                            <template x-if="who_has_access.length > 0">
+                                <div class="space-y-2 max-h-80 overflow-y-auto">
+                                    <template x-for="person in who_has_access" :key="person.profile + person.role">
+                                        <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200/50 transition-colors">
+                                            <div class="avatar avatar-placeholder">
+                                                <div class="bg-neutral text-neutral-content w-8 rounded-full flex items-center justify-center">
+                                                    <span class="text-xs font-semibold" x-text="person.profile?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()"></span>
+                                                </div>
+                                            </div>
+                                            <div class="min-w-0 flex-1">
+                                                <p class="text-sm font-medium truncate" x-text="person.profile"></p>
+                                                <p class="text-xs text-base-content/60 truncate">via <span class="font-medium" x-text="person.role"></span></p>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+
+                            <template x-if="who_has_access.length === 0">
+                                <div class="text-center py-4 text-base-content/50">
+                                    <i class="fal fa-user-slash fa-lg mb-2 block"></i>
+                                    <p class="text-sm">No users have access via roles</p>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
                 </div>
 
             </div>
