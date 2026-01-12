@@ -34,7 +34,7 @@
                     "type": "varchar",
                     "searchable":true,
                     "html": {
-                        "type": "input_email"
+                        "type": "email"
                     }
                 },
                 "mobile":
@@ -43,7 +43,7 @@
                     "max_length": 20,
                     "searchable":true,
                     "html": {
-                        "type": "input_tel"
+                        "type": "tel"
                     }
                 },
 
@@ -51,7 +51,7 @@
                     "type": "bool",
                     "default": false,
                     "html": {
-                        "type": "input_switch"
+                        "type": "switch"
                     }
                 },
                 "dob":
@@ -65,7 +65,7 @@
                     "searchable":true,
                     "html":
                     {
-                        "type": "input_address"
+                        "type": "address"
                     }
                 },
                 "bio":
@@ -80,7 +80,7 @@
                     "type": "many_to_many",
                     "foreign_key_table": "moo_file",
                     "html": {
-                        "type": "input_file"
+                        "type": "file"
                     }
                 },
                 "profile_picture_id":
@@ -88,7 +88,7 @@
                     "type": "uuid",
                     "foreign_key_table": "moo_file",
                     "html": {
-                        "type": "input_file"
+                        "type": "file"
                     }
                 },
                 "profile_avatar_id":
@@ -96,7 +96,7 @@
                     "type": "uuid",
                     "foreign_key_table": "moo_file",
                     "html": {
-                        "type": "input_file"
+                        "type": "file"
                     }
                 },
                 "roles":
@@ -166,7 +166,7 @@
                 <cfset session.auth.profile = application.lib.db.read(
                     table_name = "moo_profile",
                     id = new_profile.id,
-                    field_list = "id,full_name,full_name,email,mobile,profile_avatar_id,profile_picture_id,can_login",
+                    field_list = "id,full_name,full_name,email,mobile,profile_avatar_id,profile_picture_id,can_login,roles",
                     returnAsCFML=true
                 ) />
             </cfif>

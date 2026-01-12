@@ -159,6 +159,12 @@
         SELECT COALESCE(array_to_json(array_agg(row_to_json(data)))::text, '[]') AS recordset
         FROM (
                 SELECT #application.lib.db.select(table_name="moo_profile", field_list="id,full_name,email,mobile,address,roles,is_employee,employee_type,can_login,hero_employee_id,hero_employee_number,profile_picture_id,profile_avatar_id")#
+                    , COALESCE((
+                        SELECT json_agg(moo_role.name ORDER BY moo_role.name)
+                        FROM moo_profile_roles
+                        INNER JOIN moo_role ON moo_role.id = moo_profile_roles.foreign_id
+                        WHERE moo_profile_roles.primary_id = moo_profile.id
+                    ), '[]') AS role_labels
                 FROM moo_profile
                 WHERE 1 = 1
 
@@ -169,26 +175,6 @@
                         AND 1 = 2
                     </cfif>
                 </cfif>
-
-                <cfif len(request.data.filter.employee_type?:'')>
-                    <cfswitch expression="#request.data.filter.employee_type#">
-                        <cfcase value="everyone">
-                            <!--- ignore --->
-                        </cfcase>
-                        <cfcase value="employees">
-                            AND is_employee = true
-                        </cfcase>
-                        <cfcase value="non">
-                            AND is_employee = false
-                        </cfcase>
-                        <cfdefaultcase>
-                            AND is_employee = true
-                            AND employee_type = <cfqueryparam cfsqltype="varchar" value="#request.data.filter.employee_type#" />
-                        </cfdefaultcase>
-                    </cfswitch>
-                </cfif>
-
-
 
                 <cfif !len(idList)>
                     ORDER BY moo_profile.full_name
@@ -245,101 +231,56 @@
         <cfreturn application.lib.db.search(table_name='moo_role', q="#url.q?:''#") />
     </cffunction>
 
+    <cffunction name="search.roles">
+        <cfreturn application.lib.db.search(table_name='moo_role', q="#url.q?:''#", field_list="id,label") />
+    </cffunction>
+
 
     <cffunction name="get" output="true">
-        <cf_layout_default content_class="w-full max-w-7xl mx-auto">
+        <cf_layout_default content_class="w-full">
 
-            <div x-data="profiles_admin" x-cloak class="flex flex-col gap-4">
-                <!-- Header -->
-                <div class="flex flex-col lg:flex-row lg:items-center gap-2">
-                    <div>
-                        <h1 class="m-0 text-2xl font-semibold">Profiles</h1>
-                        <p class="text-base-content/60 text-sm">Manage user profiles and access permissions.</p>
-                    </div>
-                    <div class="lg:ms-auto">
-                        <button class="btn btn-primary btn-soft" @click="addNew">
-                            <span class="fal fa-plus"></span>
-                            Add Profile
-                        </button>
-                    </div>
-                </div>
+            <div x-data="profiles_admin" x-cloak class="flex flex-col gap-6">
+                <!-- Page Title -->
+                <p class="text-lg font-medium">Profiles</p>
 
-                <!-- Main Content -->
-                <div class="flex flex-col md:flex-row md:items-start gap-4">
-                    <!-- Filters Card -->
-                    <div class="w-full md:w-80 shrink-0">
-                        <div class="card card-border bg-base-100">
-                            <!-- Filter Header -->
-                            <div class="px-5 py-4 border-b border-base-200">
-                                <h3 class="text-lg font-semibold">Filters</h3>
-                                <p class="text-sm text-base-content/60 mt-1">
-                                    <span class="font-semibold text-base-content" x-text="records.length"></span>
-                                    <span x-text="records.length === 1 ? 'profile found' : 'profiles found'"></span>
-                                </p>
+                <!-- Profiles Card -->
+                <div class="card card-border bg-base-100">
+                    <div class="card-body p-0">
+                        <!-- Filters Bar -->
+                        <div class="flex items-center justify-between px-5 pt-5">
+                            <div class="inline-flex items-center gap-3">
+                                <label class="input input-sm" @input.debounce.500ms="load()" @change.stop>
+                                    <span class="fal fa-search text-base-content/80"></span>
+                                    <input type="text" class="w-48" placeholder="Search profiles..." x-model="filters.term">
+                                </label>
+                                <button class="btn btn-ghost btn-sm" @click="resetFilters()" title="Clear filters">
+                                    <span class="fal fa-times"></span>
+                                </button>
                             </div>
-
-                            <!-- Filter Content -->
-                            <div class="px-5 py-4 space-y-4">
-                                <!-- Search -->
-                                <div>
-                                    <label class="block text-sm font-medium mb-2">Search</label>
-                                    <label class="input input-bordered w-full">
-                                        <span class="fal fa-search text-base-content/50"></span>
-                                        <input type="text" class="grow" placeholder="Search profiles..." x-model.debounce="filters.term">
-                                        <button
-                                            x-show="filters.term"
-                                            x-transition
-                                            @click="filters.term = ''"
-                                            class="text-base-content/40 hover:text-base-content/70"
-                                        >
-                                            <span class="fal fa-times"></span>
-                                        </button>
-                                    </label>
-                                </div>
-
-
-                                <!-- Type Filter -->
-                                <div>
-                                    <label class="block text-sm font-medium mb-2">Type</label>
-                                    <select class="select select-bordered w-full" x-model="filters.employee_type">
-                                        <option value="everyone">Everyone</option>
-                                        <option value="employees">Employees Only</option>
-                                        <option value="non">NON Employees Only</option>
-                                        <option value="salary">Salary Only</option>
-                                        <option value="hourly">Hourly Only</option>
-                                        <option value="contract_labour">Contract Labour Only</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <!-- Filter Footer -->
-                            <div class="px-5 py-4 border-t border-base-200 bg-base-200/30 rounded-b-2xl">
-                                <button class="btn btn-outline btn-block" @click="resetFilters()" title="Reset filters">
-                                    <span class="fal fa-refresh"></span>
-                                    Reset Filters
+                            <div class="inline-flex items-center gap-3">
+                                <button class="btn btn-primary btn-sm" @click="addNew">
+                                    <span class="fal fa-plus"></span>
+                                    New Profile
                                 </button>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Profiles Table Card -->
-                    <div class="flex-1 min-w-0">
-                        <div class="card card-border bg-base-100">
-                            <!-- Loading State -->
-                            <template x-if="loading">
-                                <div class="p-6 text-center text-base-content/60">
-                                    <span class="loading loading-spinner loading-md"></span>
-                                    <p class="mt-2">Loading profiles…</p>
-                                </div>
-                            </template>
+                        <!-- Loading State -->
+                        <template x-if="loading">
+                            <div class="p-6 text-center text-base-content/60">
+                                <span class="loading loading-spinner loading-md"></span>
+                                <p class="mt-2">Loading profiles…</p>
+                            </div>
+                        </template>
 
-                            <!-- Table -->
-                            <div class="overflow-auto" x-show="!loading">
+                        <!-- Table -->
+                        <div class="mt-4 overflow-auto" x-show="!loading">
                                 <table class="table">
                                     <thead>
                                         <tr>
                                             <th>Full Name</th>
                                             <th>Mobile</th>
+                                            <th>Roles</th>
                                             <th>Status</th>
                                             <th class="text-end">Actions</th>
                                         </tr>
@@ -350,16 +291,20 @@
                                                 <!-- Full Name with Avatar -->
                                                 <td>
                                                     <div class="flex items-center gap-3">
-                                                        <div class="avatar placeholder">
-                                                            <div class="bg-base-300 text-base-content/70 rounded-full w-10">
-                                                                <template x-if="item.profile_picture_id?.thumbnail">
-                                                                    <img :src="item.profile_picture_id.thumbnail" :alt="item.full_name" class="rounded-full">
-                                                                </template>
-                                                                <template x-if="!item.profile_picture_id?.thumbnail">
-                                                                    <span class="text-sm font-medium" x-text="(item.full_name || '?').charAt(0).toUpperCase()"></span>
-                                                                </template>
+                                                        <template x-if="item.profile_picture_id?.thumbnail">
+                                                            <div class="avatar">
+                                                                <div class="w-10 rounded-full bg-base-200">
+                                                                    <img :src="item.profile_picture_id.thumbnail" :alt="item.full_name" />
+                                                                </div>
                                                             </div>
-                                                        </div>
+                                                        </template>
+                                                        <template x-if="!item.profile_picture_id?.thumbnail">
+                                                            <div class="avatar avatar-placeholder">
+                                                                <div class="bg-neutral text-neutral-content w-10 rounded-full flex items-center justify-center">
+                                                                    <span class="text-xs font-semibold" x-text="getInitials(item.full_name)"></span>
+                                                                </div>
+                                                            </div>
+                                                        </template>
                                                         <div class="min-w-0">
                                                             <p class="font-medium truncate" x-text="item.full_name"></p>
                                                             <p class="text-xs text-base-content/60 truncate" x-text="item.email"></p>
@@ -369,6 +314,17 @@
                                                 <!-- Mobile -->
                                                 <td>
                                                     <span class="text-sm" x-text="item.mobile || '—'"></span>
+                                                </td>
+                                                <!-- Roles -->
+                                                <td>
+                                                    <div class="flex flex-wrap gap-1">
+                                                        <template x-for="role in item.role_labels" :key="role">
+                                                            <span class="badge badge-sm badge-soft badge-neutral" x-text="role"></span>
+                                                        </template>
+                                                        <template x-if="!item.role_labels?.length">
+                                                            <span class="text-base-content/40 text-sm">—</span>
+                                                        </template>
+                                                    </div>
                                                 </td>
                                                 <!-- Status -->
                                                 <td>
@@ -411,7 +367,6 @@
                                         </template>
                                     </tbody>
                                 </table>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -429,24 +384,36 @@
                         </div>
 
                         <div class="space-y-4">
-                            <cf_fields table_name="moo_profile" fields="full_name,email,mobile" />
+                            <!-- Basic Info -->
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <cf_table_controls table_name="moo_profile" fields="full_name,email,mobile" />
+                            </div>
 
-
-                            <cf_fields table_name="moo_profile" fields="profile_picture_id" />
+                            <!-- Profile Picture -->
+                            <div class="divider text-sm text-base-content/50">Profile Picture</div>
+                            <cf_table_controls table_name="moo_profile" fields="profile_picture_id" />
 
                             <button class="btn btn-outline btn-sm" @click="generateAvatar(current_record)">
                                 <span class="fal fa-wand-magic-sparkles"></span>
                                 Generate Avatar
                             </button>
 
-                            <cf_fields table_name="moo_profile" fields="roles,address,can_login" />
+                            <!-- Permissions & Address -->
+                            <div class="divider text-sm text-base-content/50">Permissions & Address</div>
+                            <cf_table_controls table_name="moo_profile" fields="roles" />
+                            <cf_table_controls table_name="moo_profile" fields="address" />
+                            <cf_table_controls table_name="moo_profile" fields="can_login" />
 
+                            <!-- Employment -->
+                            <div class="divider text-sm text-base-content/50">Employment</div>
                             <div class="flex flex-wrap gap-4">
                                 <div>
-                                    <cf_fields table_name="moo_profile" fields="is_employee" />
+                                    <cf_table_controls table_name="moo_profile" fields="is_employee" />
                                 </div>
                                 <div x-show="current_record.is_employee" x-transition class="flex-1 min-w-64">
-                                    <cf_fields table_name="moo_profile" fields="employee_type,hero_employee_id,hero_employee_number" />
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <cf_table_controls table_name="moo_profile" fields="employee_type,hero_employee_id,hero_employee_number" />
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -494,26 +461,25 @@
 
                 <script>
                 document.addEventListener('alpine:init', () => {
+                    const default_filters = { term: '' };
+
                     Alpine.data('profiles_admin', () => ({
                         loading: false,
                         records: [],
                         current_record: {},
-                        filters: {
-                            term: '',
-                            employee_type: 'everyone'
+                        filters: { ...default_filters },
+
+                        getInitials(name) {
+                            const cleaned = (name || '').trim();
+                            if (!cleaned) return '?';
+                            const parts = cleaned.split(/\s+/).filter(Boolean);
+                            if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+                            return parts.slice(0, 2).map(p => (p[0] || '')).join('').toUpperCase();
                         },
 
                         async init() {
-                            const saved = await loadFilters({
-                                term: '',
-                                employee_type: 'everyone'
-                            });
-                            this.filters = saved || this.filters;
+                            this.filters = await loadFilters(default_filters);
                             await this.load();
-                            this.$watch('filters', () => {
-                                saveFilters(this.filters);
-                                this.load();
-                            });
                         },
 
                         async load() {
@@ -526,12 +492,9 @@
                         },
 
                         async resetFilters() {
-                            this.filters = {
-                                term: '',
-                                employee_type: 'everyone'
-                            };
+                            this.filters = { ...default_filters };
                             await clearFilters();
-                            await saveFilters(this.filters);
+                            await this.load();
                         },
 
                         async generateAvatar(item) {

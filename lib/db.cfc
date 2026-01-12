@@ -1281,6 +1281,7 @@ Delete - delete
 
                     <cfcase value="many_to_many">
                         <cfset field.html.control = (field.html.control?:'control_combobox') />
+                        <cfset field.html.multiple = true />
                         <cfif not structKeyExists(field, "foreign_key_field")>
                             <cfset field.foreign_key_field = "id">
                         </cfif>
