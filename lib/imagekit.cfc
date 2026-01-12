@@ -45,11 +45,24 @@
     </cffunction>
 
 
+    <!--- RFC 3986 compliant URL encoding --->
+    <cffunction name="imagekit_encode_url" returntype="string" output="false">
+        <cfargument name="str" type="string" required="true" />
+        <cfargument name="encodeSlash" type="boolean" default="true" />
+        <cfset var result = replaceList(encodeForURL(arguments.str), '%2D,%2E,%5F,%7E,+,*', '-,.,_,~,%20,%2A') />
+        <cfif NOT arguments.encodeSlash>
+            <cfset result = replace(result, '%2F', '/', 'all') />
+        </cfif>
+        <cfreturn result />
+    </cffunction>
+
+
     <!--- Function to generate signed ImageKit URL --->
     <cffunction name="url" returntype="string" output="false">
         <cfargument name="file_path" type="string" required="true" hint="Path to the file (e.g., /folder/image.jpg)" />
         <cfargument name="expires" type="any" default="MONTH" hint="Duration in seconds (numeric) or end-of period (string like 'hour', 'day', etc.)" />
         <cfargument name="params" type="any" default="" hint="ImageKit transformation params as struct or string (e.g., {width:400, height:300} or 'w-400,h-300')" />
+        <cfargument name="thumbnail" type="boolean" default="false" hint="For PDF/video to image conversion, appends /ik-thumbnail.jpg" />
 
         <!--- Build ImageKit transformation string --->
         <cfset var transform_string = "" />
@@ -63,6 +76,22 @@
         <cfset var cleanPath = arguments.file_path />
         <cfif NOT left(cleanPath, 1) EQ "/">
             <cfset cleanPath = "/" & cleanPath />
+        </cfif>
+
+        <!--- URL-encode the path (preserving slashes) to handle spaces and special chars --->
+        <!--- The signature must be computed on the encoded URL, as that's what ImageKit receives --->
+        <cfset cleanPath = imagekit_encode_url(cleanPath, false) />
+
+        <!---
+            Append /ik-thumbnail.jpg ONLY for file types where ImageKit generates a derived thumbnail image
+            (e.g., pdf/video/psd). For normal images (jpg/png/webp/etc) transforms apply to the original
+            asset directly and we should NOT append /ik-thumbnail.jpg.
+        --->
+        <cfif arguments.thumbnail>
+            <cfset var fileExt = lcase(listLast(cleanPath, ".")) />
+            <cfif listFindNoCase("pdf,psd,eps,ai,mp4,mov,avi,webm,mkv,gif", fileExt)>
+                <cfset cleanPath = cleanPath & "/ik-thumbnail.jpg" />
+            </cfif>
         </cfif>
 
         <!--- Build the full image URL --->
@@ -199,6 +228,12 @@
         <cfif arguments.opts.keyExists("dpr") AND val(arguments.opts.dpr) GT 0>
             <cfset arrayAppend(parts, "dpr-#val(arguments.opts.dpr)#") />
         </cfif>
+
+        <!--- Page (for PDFs) --->
+        <cfif arguments.opts.keyExists("page") AND val(arguments.opts.page) GT 0>
+            <cfset arrayAppend(parts, "pg-#val(arguments.opts.page)#") />
+        </cfif>
+
 
         <cfreturn arrayToList(parts, ",") />
     </cffunction>

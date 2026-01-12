@@ -318,71 +318,11 @@ Delete - delete
     </cffunction>
 
 
-    <cffunction name="imgproxy_s3" returntype="string" hint="Returns the postgresql imgproxy_s3 function call">
-        <cfargument name="path" type="string" required="true" />
-        <cfargument name="options" type="string" required="true" default="resize:fit:800:800" />
-        <cfargument name="expires" type="numeric" required="false" default=0 hint="In Minutes:0 = no expiration, 1 = 1 minute, 60 = 1 hour, 1440 = 1 day, 10080 = 1 week, 43200 = 1 month, 525600 = 1 year" />
-        <cfargument name="imgproxy_key" type="string" required="true" default="#server.system.environment.IMGPROXY_KEY#" />
-        <cfargument name="imgproxy_salt" type="string" required="true" default="#server.system.environment.IMGPROXY_SALT#" />
-        <cfargument name="imgproxy_endpoint" type="string" required="true" default="#server.system.environment.IMGPROXY_ENDPOINT#" />
-        <cfargument name="s3_bucket" type="string" required="true" default="#server.system.environment.S3_bucket#" />
-
-
-        <cfreturn "imgproxy_s3(#arguments.path#
-            , '#arguments.s3_bucket#'
-            , '#arguments.options#'
-            , #arguments.expires#
-            , '#arguments.imgproxy_key#'
-            , '#arguments.imgproxy_salt#'
-            , '#arguments.imgproxy_endpoint#')" />
-
-    </cffunction>
-
-
-
-    <cffunction name="s3proxy" returntype="string" hint="Returns the postgresql s3proxy function call">
-        <cfargument name="path" type="string" required="true" />
-        <cfargument name="params" type="any" required="true" default="" hint="Struct of transforms or prebuilt Imagor path" />
-        <cfargument name="expires" type="any" required="false" default="MONTH" hint="Duration in seconds (numeric) or end-of period (string like 'hour', 'day', etc.)" />
-        <cfargument name="use_token" type="boolean" required="false" default="false" hint="Include s3p_token cookie in signature verification" />
-        <cfargument name="proxy_key" type="string" required="true" default="#server.system.environment.S3_PROXY_KEY#" />
-        <cfargument name="proxy_salt" type="string" required="true" default="#server.system.environment.S3_PROXY_SALT#" />
-        <cfargument name="proxy_url" type="string" required="true" default="#server.system.environment.S3_PROXY_URL#" />
-        <cfargument name="s3_bucket" type="string" required="true" default="#server.system.environment.S3_BUCKET#" />
-
-
-        <!--- NEW: turn struct params into an Imagor path --->
-        <cfset var params_path = "" />
-        <cfif isStruct(arguments.params)>
-            <cfset params_path = application.lib.s3proxy.buildImagorParams(arguments.params) />
-        <cfelseif isSimpleValue(arguments.params)>
-            <cfset params_path = toString(arguments.params) />
-        </cfif>
-
-        <!--- URL-encode params for DB function which expects already-encoded string --->
-        <cfset var params_encoded = len(params_path) ? URLEncodedFormat(params_path) : "" />
-
-        <!--- No longer passing use_token boolean to DB; rely solely on presence of s3p_token --->
-        <!--- Cookie token: throw error if use_token is true but no cookie value available --->
-        <cfif arguments.use_token AND (server.system.environment.IS_PRODUCTION?:false)>
-            <cfif NOT structKeyExists(cookie, "s3p_token") OR NOT len(trim(cookie.s3p_token))>
-                <cfthrow type="security" message="Token required but not available" detail="use_token is enabled but s3p_token cookie is missing or empty" />
-            </cfif>
-            <cfset var s3p_token_arg = cookie.s3p_token />
-        <cfelse>
-            <cfset var s3p_token_arg = "" />
-        </cfif>
-
-        <!--- Assemble Postgres function call string (note: path is an expression, not quoted) --->
-        <cfreturn "s3proxy_url('" & arguments.s3_bucket & "', " & arguments.path & ", '" & arguments.proxy_key & "', '" & arguments.proxy_salt & "', '" & arguments.proxy_url & "', '" & arguments.expires & "', '" & params_encoded & "', '" & s3p_token_arg & "')" />
-
-    </cffunction>
-
-
     <cffunction name="imagekit" returntype="string" hint="Returns the postgresql imagekit_url function call">
         <cfargument name="path" type="string" required="true" hint="Column name or SQL expression containing the file path" />
         <cfargument name="params" type="any" required="false" default="" hint="Struct of transforms or prebuilt ImageKit transform string (e.g., 'w-400,h-300')" />
         <cfargument name="expires" type="any" required="false" default="MONTH" hint="Duration in seconds (numeric) or end-of period (string like 'hour', 'day', etc.)" />
+        <cfargument name="thumbnail" type="boolean" required="false" default="false" hint="For PDF/video to image conversion, appends /ik-thumbnail.jpg" />
         <cfargument name="private_key" type="string" required="false" default="#server.system.environment.IMAGEKIT_PRIVATE_KEY#" />
         <cfargument name="url_endpoint" type="string" required="false" default="#server.system.environment.IMAGEKIT_URL_ENDPOINT#" />
 
@@ -395,7 +335,7 @@ Delete - delete
         </cfif>
 
         <!--- Assemble Postgres function call string (note: path is an expression, not quoted) --->
-        <cfreturn "imagekit_url(" & arguments.path & ", '" & arguments.private_key & "', '" & arguments.url_endpoint & "', '" & arguments.expires & "', '" & params_string & "')" />
+        <cfreturn "imagekit_url(" & arguments.path & ", '" & arguments.private_key & "', '" & arguments.url_endpoint & "', '" & arguments.expires & "', '" & params_string & "', " & arguments.thumbnail & ")" />
 
     </cffunction>
 

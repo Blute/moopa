@@ -40,7 +40,7 @@
             <cfset file_extension = listLast(arguments.data.file_name,".") />
 
             <cfset new_path = "/moo_file/#dateFormat(now(),'yyyy-mm')#/#createUniqueId()#/#arguments.data.file_name#" />
-            <cfset new_thumbnail = application.lib.s3proxy.url(file_path='/icons/square-o/#file_extension#.svg', expiry=0, params={width=100, height=100}) />
+            <cfset new_thumbnail = application.lib.imagekit.url(file_path='/icons/square-o/#file_extension#.svg', expiry=0, params={width=100, height=100, format='webp'}) />
 
 
             <cfset new_file = application.lib.db.save(
@@ -77,7 +77,7 @@
                     table_name : 'moo_file',
                     data : {
                         id : arguments.data.file_id,
-                        thumbnail: application.lib.imagekit.url(file_path=new_file.path, expiry=0, params={width=300, height=300})
+                        thumbnail: application.lib.imagekit.url(file_path=new_file.path, expiry=0, params={width=300, height=300}, thumbnail=true)
                     },
                     returnAsCFML:true
                 ) />
