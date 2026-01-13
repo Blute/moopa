@@ -1992,7 +1992,8 @@ Delete - delete
                 <cfset create_index = true>
             <cfelse>
                 <!--- We need to check to make sure everything matches. If it doesnt match, lets drop it and mark to create --->
-                <cfloop list="#structKeyList(code_index)#" item="code_index_param" index="i">
+                <!--- Only compare keys that exist in DB: fields, type, unique (not name, comment) --->
+                <cfloop list="fields,type,unique" item="code_index_param" index="i">
 
 
 
