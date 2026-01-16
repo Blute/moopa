@@ -1663,7 +1663,10 @@ Delete - delete
         <cfquery name="stIndexes" returntype="struct" columnkey="name">
           SELECT
               i.relname AS name,
-              string_agg(a.attname, ', ') AS fields,
+              string_agg(
+                  a.attname || CASE WHEN (ix.indoption[array_position(ix.indkey, a.attnum)] & 1) = 1 THEN ' desc' ELSE '' END,
+                  ', ' ORDER BY array_position(ix.indkey, a.attnum)
+              ) AS fields,
               ix.indisunique AS unique,
               am.amname AS type
           FROM
@@ -1983,6 +1986,7 @@ Delete - delete
         <cfloop collection="#code_table_schema.indexes#" item="code_index" index="code_index_name">
             <cfset drop_index = false>
             <cfset create_index = false>
+            <cfset index_mismatches = [] />
             <cftry>
             <cfset found_index_in_db = structKeyExists(db_indexes,code_index_name)>
 
@@ -2001,8 +2005,11 @@ Delete - delete
                     <cfset dbIndexFieldList = listSort(lcase(reReplace((db_indexes[code_index_name][code_index_param]?:''), "\s+", "", "ALL")),"textnocase") />
 
                     <cfif codeIndexFieldList NEQ dbIndexFieldList>
-
-
+                        <cfset arrayAppend(index_mismatches, {
+                            "param": code_index_param,
+                            "code": codeIndexFieldList,
+                            "db": dbIndexFieldList
+                        }) />
                         <cfset drop_index = true>
                         <cfset create_index = true>
                     </cfif>
@@ -2031,7 +2038,8 @@ Delete - delete
                         "priority": 5,
                         "type": "DROP/CREATE INDEX",
                         "title": "DROP/CREATE INDEX #code_index.name#",
-                        "statement": 'DROP INDEX #code_index.name#;CREATE #code_index.unique ? "UNIQUE" : ""# INDEX #code_index.name# ON #table_name# USING #code_index.type# (#index_field_list#)'
+                        "statement": 'DROP INDEX #code_index.name#;CREATE #code_index.unique ? "UNIQUE" : ""# INDEX #code_index.name# ON #table_name# USING #code_index.type# (#index_field_list#)',
+                        "mismatches": index_mismatches
                     } />
                 <cfelse>
                     <cftry>

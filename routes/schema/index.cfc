@@ -75,7 +75,22 @@
                                                 <input type="checkbox" class="checkbox checkbox-sm checkbox-primary" x-model="statement.selected" @click="toggleStatement(statement)">
                                             </td>
                                             <td x-text="statement.priority"></td>
-                                            <td x-text="statement.title"></td>
+                                            <td>
+                                                <span x-text="statement.title"></span>
+                                                <template x-if="statement.mismatches && statement.mismatches.length > 0">
+                                                    <div class="mt-2 p-2 bg-warning/10 border border-warning/30 rounded text-xs">
+                                                        <div class="font-semibold text-warning mb-1">Mismatches:</div>
+                                                        <template x-for="mismatch in statement.mismatches">
+                                                            <div class="mb-1 font-mono">
+                                                                <span class="font-semibold" x-text="mismatch.param"></span>:
+                                                                <span class="text-error">db: <span x-text="mismatch.db || '(empty)'"></span></span>
+                                                                <span class="mx-1">→</span>
+                                                                <span class="text-success">code: <span x-text="mismatch.code"></span></span>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </template>
+                                            </td>
                                             <td x-text="statement.statement"></td>
                                         </tr>
                                     </template>
