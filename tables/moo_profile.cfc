@@ -17,22 +17,22 @@
                 "full_name":
                 {
                     "type": "varchar",
-                    "searchable":true
+                    "searchable": "true"
                 },
                 "preferred_name":
                 {
                     "type": "varchar",
-                    "searchable":true
+                    "searchable": "true"
                 },
                 "company_name":
                 {
                     "type": "varchar",
-                    "searchable":true
+                    "searchable": "true"
                 },
                 "email":
                 {
                     "type": "varchar",
-                    "searchable":true,
+                    "searchable": "true",
                     "html": {
                         "type": "email"
                     }
@@ -41,7 +41,7 @@
                 {
                     "type": "varchar",
                     "max_length": 20,
-                    "searchable":true,
+                    "searchable": "true",
                     "html": {
                         "type": "tel"
                     }
@@ -62,10 +62,11 @@
                 "address":
                 {
                     "type": "jsonb",
-                    "searchable":true,
-                    "html":
-                    {
-                        "type": "address"
+                    "searchable": {
+                        "key": "formatted_address"
+                    },
+                    "html":{
+                        "control": "address"
                     }
                 },
                 "bio":

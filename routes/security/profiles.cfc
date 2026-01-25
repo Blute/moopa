@@ -141,69 +141,20 @@
 
     <cffunction name="search">
 
+        <cfset searchTerm = request.data.filter.term?:'' />
 
-        <cfset idList = "" />
-
-        <cfif len(request.data.filter.term?:'')>
-            <cfset aProfileIDs = application.lib.db.search(table_name='moo_profile', q="#request.data.filter.term?:''#", field_list="id", returnAsCFML=true) />
-
-            <cfset idList = ArrayToList(ArrayMap(aProfileIDs, function(item) {
-                return item.id;
-            }), ",")>
-        </cfif>
-
-
-
-
-        <cfquery name="qData">
-        SELECT COALESCE(array_to_json(array_agg(row_to_json(data)))::text, '[]') AS recordset
-        FROM (
-                SELECT #application.lib.db.select(table_name="moo_profile", field_list="id,full_name,email,mobile,address,roles,is_employee,employee_type,can_login,hero_employee_id,hero_employee_number,profile_picture_id,profile_avatar_id")#
-                    , COALESCE((
-                        SELECT json_agg(moo_role.name ORDER BY moo_role.name)
-                        FROM moo_profile_roles
-                        INNER JOIN moo_role ON moo_role.id = moo_profile_roles.foreign_id
-                        WHERE moo_profile_roles.primary_id = moo_profile.id
-                    ), '[]') AS role_labels
-                FROM moo_profile
-                WHERE 1 = 1
-
-                <cfif len(request.data.filter.term?:'')>
-                    <cfif len(idList)>
-                        AND moo_profile.id IN (<cfqueryparam cfsqltype="other" list="true" value="#idList#" />)
-                    <cfelse>
-                        AND 1 = 2
-                    </cfif>
-                </cfif>
-
-                <cfif !len(idList)>
-                    ORDER BY moo_profile.full_name
-                </cfif>
-
-                LIMIT 100
-        ) AS data
-        </cfquery>
-
-
-        <cfif len(idList)>
-            <!--- We need to sort the results based on the search response --->
-            <cfset unorderedRecordset = deserializeJSON(qData.recordset) />
-
-            <cfset orderedRecordset = []>
-
-            <cfloop list="#idList#" item="id">
-                <cfloop array="#unorderedRecordset#" item="record">
-                    <cfif record.id EQ id>
-                        <cfset ArrayAppend(orderedRecordset, record)>
-                        <cfbreak>
-                    </cfif>
-                </cfloop>
-            </cfloop>
-
-            <cfreturn serializeJSON(orderedRecordset) />
-        <cfelse>
-            <cfreturn qData.recordset />
-        </cfif>
+        <cfreturn application.lib.db.search(
+            table_name = "moo_profile",
+            field_list = "id,full_name,email,mobile,address,roles,is_employee,employee_type,can_login,hero_employee_id,hero_employee_number,profile_picture_id,profile_avatar_id",
+            q = searchTerm,
+            limit = 100,
+            select_append = "COALESCE((
+                SELECT json_agg(moo_role.name ORDER BY moo_role.name)
+                FROM moo_profile_roles
+                INNER JOIN moo_role ON moo_role.id = moo_profile_roles.foreign_id
+                WHERE moo_profile_roles.primary_id = moo_profile.id
+            ), '[]') AS role_labels"
+        ) />
 
     </cffunction>
 

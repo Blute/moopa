@@ -12,6 +12,10 @@
         <!--- <cfset this.normalizeFieldPattern = "::[a-zA-Z0-9_ ]*|[()]| " /> --->
         <cfset this.normalizeFieldPattern = "::[a-zA-Z0-9_ ]*|[()]| |\r?\n" />
 
+        <!--- Use the following regex pattern to normalize index field definitions --->
+        <!--- Removes: parentheses, quotes, type casts (::text, ::jsonb, etc.), spaces, newlines --->
+        <cfset this.normalizeIndexPattern = "::[a-zA-Z0-9_]*|[()']| |\r?\n" />
+
 
         <!--- Merge the results --->
         <cfset structAppend(this.codeSchema, processDirectory('/moopa'))>
@@ -112,7 +116,7 @@ Delete - delete
     </cffunction>
 
 
-    <cffunction name="getSearchableTables" hint="Returns the struct containing tables searchable in Meilisearch">
+    <cffunction name="getSearchableTables" hint="Returns the struct containing tables with BM25 full-text search enabled">
         <cfreturn this.searchable_tables />
     </cffunction>
 
@@ -410,6 +414,7 @@ Delete - delete
         <cfargument name="exclude_ids" type="string" required="false" default="" />
         <cfargument name="offset" type="numeric" required="false" />
         <cfargument name="limit" type="string" required="false" default=250 />
+        <cfargument name="select_append" type="string" required="false" default="" hint="Additional SELECT expressions to append (e.g. subqueries, computed fields)" />
         <cfargument name="returnAsCFML" type="boolean" required="false" default=false />
 
         <cfif !structKeyExists(this.codeSchema, arguments.table_name)>
@@ -422,6 +427,9 @@ Delete - delete
             SELECT COALESCE(array_to_json(array_agg(row_to_json(data)))::text, '[]') AS recordset
             FROM (
                 SELECT #select(table_name=arguments.table_name, field_list="#arguments.field_list#")#
+                    <cfif len(arguments.select_append)>
+                        , #preserveSingleQuotes(arguments.select_append)#
+                    </cfif>
                 FROM #arguments.table_name#
                 WHERE 1 = 1
 
@@ -457,33 +465,30 @@ Delete - delete
                 <cfif len(arguments.q)>
                     <cfif structKeyExists(this.searchable_tables, arguments.table_name)>
 
-                        <!--- Search the index --->
-                        <cfset search_ids = application.lib.meilisearch.search_index(
-                            index_name = "#arguments.table_name#",
-                            query = "#arguments.q#",
-                            limit = "#arguments.limit#"
-                        ) />
-
-                        <!--- Filter or set IDs based on search results --->
-                        <cfif arraylen(arguments.ids)>
-                            <!--- If IDs provided, keep only those that match search results --->
-                            <cfset arguments.ids = arrayFilter(arguments.ids, function(id) {
-                                return arrayFind(search_ids, id);
-                            }) />
-                        <cfelse>
-                            <!--- If no IDs provided, use all search results --->
-                            <cfset arguments.ids = search_ids />
-                        </cfif>
-
-
-
-
-                        <!--- WE MUST SEARCH if we passed in q regardless of if we found matching ids --->
-                        <cfif len(arguments.ids)>
-                            AND id in (<cfqueryparam cfsqltype="other" list="true" value="#arguments.ids#" />)
-                        <cfelse>
-                            AND 1 = 2 <!--- found nothing --->
-                        </cfif>
+                        <!--- Use ParadeDB BM25 full-text search with per-field OR conditions --->
+                        <!--- Rules:
+                            - text fields: field::text ||| 'query'
+                            - jsonb entire field: field::text ||| 'query'
+                            - jsonb specific key: (field->>'key')::pdb.alias('key') ||| 'query'
+                            - other fields: field ||| 'query'
+                        --->
+                        <cfset text_field_types = "varchar,text,char,nvarchar,nchar" />
+                        <cfset search_field_configs = this.searchable_tables[arguments.table_name].field_configs />
+                        AND (
+                            <cfset bFirst = true />
+                            <cfloop list="#this.searchable_tables[arguments.table_name].searchable_fields#" item="search_field_name">
+                                <cfif NOT bFirst> OR </cfif><cfset bFirst = false />
+                                <cfset search_field_type = search_field_configs[search_field_name].field_type ?: "varchar" />
+                                <cfset search_json_key = search_field_configs[search_field_name].key ?: "" />
+                                <cfif search_field_type EQ "jsonb" AND len(search_json_key)>
+                                    (#search_field_name#->>'#search_json_key#')::pdb.alias('#search_json_key#') ||| <cfqueryparam cfsqltype="varchar" value="#arguments.q#" />
+                                <cfelseif search_field_type EQ "jsonb" OR listFindNoCase(text_field_types, search_field_type)>
+                                    #search_field_name#::text ||| <cfqueryparam cfsqltype="varchar" value="#arguments.q#" />
+                                <cfelse>
+                                    #search_field_name# ||| <cfqueryparam cfsqltype="varchar" value="#arguments.q#" />
+                                </cfif>
+                            </cfloop>
+                        )
 
                     <cfelse>
 
@@ -501,7 +506,11 @@ Delete - delete
                     AND id NOT IN (<cfqueryparam cfsqltype="other" list="true" value="#arguments.exclude_ids#" />)
                 </cfif>
 
-                #orderby(table_name=arguments.table_name)#
+                <cfif len(arguments.q) AND structKeyExists(this.searchable_tables, arguments.table_name)>
+                    ORDER BY pdb.score(id) DESC
+                <cfelse>
+                    #orderby(table_name=arguments.table_name)#
+                </cfif>
 
                 <cfif structKeyExists(arguments, "offset")>
                     OFFSET <cfqueryparam cfsqltype="numeric" value="#arguments.offset#" />
@@ -530,12 +539,33 @@ Delete - delete
         </cfif>
     </cffunction>
 
-    <cffunction name="idsInSearchTerm">
+    <cffunction name="idsInSearchTerm" hint="Returns array of IDs matching the search term using BM25 full-text search">
         <cfargument name="table_name" required="true" />
         <cfargument name="term" required="true" />
         <cfargument name="limit" required="false" default="20">
 
-        <cfset search_ids = application.lib.meilisearch.search_index(index_name="#arguments.table_name#", query="#arguments.term#", limit="#arguments.limit#") />
+        <cfset search_ids = [] />
+
+        <cfif structKeyExists(this.searchable_tables, arguments.table_name) AND len(arguments.term)>
+
+            <cfquery name="qSearchIds">
+                SELECT id
+                FROM #arguments.table_name#
+                WHERE (
+                    <cfset bFirst = true />
+                    <cfloop list="#this.searchable_tables[arguments.table_name].searchable_fields#" item="search_field_name">
+                        <cfif NOT bFirst> OR </cfif><cfset bFirst = false />
+                        #search_field_name#::text ||| <cfqueryparam cfsqltype="varchar" value="#arguments.term#" />
+                    </cfloop>
+                )
+                ORDER BY pdb.score(id) DESC
+                LIMIT <cfqueryparam cfsqltype="numeric" value="#arguments.limit#" />
+            </cfquery>
+
+            <cfloop query="qSearchIds">
+                <cfset arrayAppend(search_ids, qSearchIds.id) />
+            </cfloop>
+        </cfif>
 
         <cfif !arrayLen(search_ids)>
             <cfset search_ids = ['607ceee8-2cc0-4f9a-bed8-9f2f3affc575']>
@@ -600,10 +630,7 @@ Delete - delete
             WHERE id = <cfqueryparam cfsqltype="other" value="#idValue#" />
         </cfquery>
 
-        <cfif structKeyExists(this.searchable_tables, arguments.table_name)>
-            <cfset application.lib.meilisearch.delete_record(index_name="#arguments.table_name#", id="#idValue#") />
-        </cfif>
-
+        <!--- Note: BM25 search index is automatically updated when record is deleted --->
 
         <cfif arguments.returnAsCFML>
             <cfreturn result />
@@ -954,10 +981,7 @@ Delete - delete
             </cfif>
         </cfloop>
 
-        <cfif arguments.index_record AND structKeyExists(this.searchable_tables, arguments.table_name)>
-            <cfset application.lib.meilisearch.index_record(index_name="#arguments.table_name#", id="#result.id#") />
-        </cfif>
-
+        <!--- Note: BM25 search indexing is now handled automatically via the search_text generated column --->
 
         <!--- PURCHASE LOGGING --->
         <cfif arguments.table_name EQ "purchase">
@@ -1411,17 +1435,92 @@ Delete - delete
 
 
 
-            <!--- Now lets get the searchable columns --->
+            <!--- Now lets get the searchable columns with per-field tokenizer config --->
+            <!--- searchable can be: true (defaults to ngram), "simple", "ngram", or struct with tokenizer config --->
+            <!--- Note: jsonb fields with simple tokenizer must NOT have ::text cast, but ngram requires ::text cast --->
+            <!--- Clear any pre-existing searchable_fields to rebuild from field definitions --->
+            <cfset table.searchable_fields = "" />
+            <cfset searchable_field_configs = {} />
             <cfloop collection="#table.fields#" item="field" index="field_name">
-                <cfif (field.searchable?:false)>
+                <cfif structKeyExists(field, "searchable") AND isSimpleValue(field.searchable) AND field.searchable NEQ false AND len(field.searchable)>
                     <cfset table.searchable_fields = listAppend(table.searchable_fields, field_name) />
 
+                    <!--- Parse tokenizer config from searchable property --->
+                    <cfif isBoolean(field.searchable) AND field.searchable>
+                        <!--- searchable: true defaults to ngram --->
+                        <cfset searchable_field_configs[field_name] = { "tokenizer": "ngram", "field_type": field.type } />
+                    <cfelse>
+                        <!--- searchable: "simple" or "ngram" --->
+                        <cfset searchable_field_configs[field_name] = { "tokenizer": field.searchable, "field_type": field.type } />
+                    </cfif>
+                <cfelseif structKeyExists(field, "searchable") AND isStruct(field.searchable)>
+                    <cfset table.searchable_fields = listAppend(table.searchable_fields, field_name) />
+                    <!--- searchable: { tokenizer: "ngram", min_gram: 3, max_gram: 3 } --->
+                    <cfset searchable_field_configs[field_name] = field.searchable />
+                    <cfset searchable_field_configs[field_name].field_type = field.type />
+                    <cfif !structKeyExists(searchable_field_configs[field_name], "tokenizer")>
+                        <cfset searchable_field_configs[field_name].tokenizer = "ngram" />
+                    </cfif>
                 </cfif>
             </cfloop>
 
             <cfif len(table.searchable_fields)>
 
-                <cfset this.searchable_tables[table.table_name] = {'table_name': table.table_name, 'searchable_fields': table.searchable_fields} />
+                <cfset this.searchable_tables[table.table_name] = {
+                    'table_name': table.table_name,
+                    'searchable_fields': table.searchable_fields,
+                    'field_configs': searchable_field_configs
+                } />
+
+                <!--- Build BM25 index fields with per-field tokenizer expressions --->
+                <!--- Rules:
+                    - text-type fields: cast to ::text with ::pdb.ngram (default) or ::pdb.simple
+                    - jsonb entire field: (field::text::pdb.ngram(min,max,'alias=field'))
+                    - jsonb specific key: ((field->>'key')::pdb.ngram(min,max,'alias=key'))
+                    - other non-text fields (date, timestamp, uuid, etc.): index directly, no tokenizer
+                --->
+                <cfset bm25_field_parts = ["id"] />
+                <cfset text_field_types = "varchar,text,char,nvarchar,nchar" />
+                <cfloop list="#table.searchable_fields#" item="searchable_field_name">
+                    <cfset field_config = searchable_field_configs[searchable_field_name] />
+                    <cfset field_tokenizer = field_config.tokenizer ?: "ngram" />
+                    <cfset field_type = field_config.field_type ?: "varchar" />
+                    <cfset json_key = field_config.key ?: "" />
+
+                    <cfif field_type EQ "jsonb" AND len(json_key)>
+                        <!--- jsonb with specific key: use ngram with alias --->
+                        <cfset min_gram = field_config.min_gram ?: 3 />
+                        <cfset max_gram = field_config.max_gram ?: 3 />
+                        <cfset arrayAppend(bm25_field_parts, "((#searchable_field_name#->>'#json_key#')::pdb.ngram(#min_gram#,#max_gram#,'alias=#json_key#'))") />
+                    <cfelseif field_type EQ "jsonb">
+                        <!--- jsonb entire field: use ::text with ngram tokenizer and alias --->
+                        <cfset min_gram = field_config.min_gram ?: 3 />
+                        <cfset max_gram = field_config.max_gram ?: 3 />
+                        <cfset arrayAppend(bm25_field_parts, "(#searchable_field_name#::text::pdb.ngram(#min_gram#,#max_gram#,'alias=#searchable_field_name#'))") />
+                    <cfelseif field_tokenizer EQ "simple">
+                        <!--- simple tokenizer: cast to ::text with simple --->
+                        <cfset arrayAppend(bm25_field_parts, "(#searchable_field_name#::text::pdb.simple)") />
+                    <cfelseif listFindNoCase(text_field_types, field_type)>
+                        <!--- text-type fields: cast to ::text with ngram tokenizer (default) --->
+                        <cfset min_gram = field_config.min_gram ?: 3 />
+                        <cfset max_gram = field_config.max_gram ?: 3 />
+                        <cfset arrayAppend(bm25_field_parts, "(#searchable_field_name#::text::pdb.ngram(#min_gram#,#max_gram#))") />
+                    <cfelse>
+                        <!--- other non-text fields (date, timestamp, uuid, etc.): index directly --->
+                        <cfset arrayAppend(bm25_field_parts, "#searchable_field_name#") />
+                    </cfif>
+                </cfloop>
+
+                <!--- Add the BM25 index for full-text search with per-field tokenizers --->
+                <cfset table.indexes['#table.table_name#_search_idx'] = {
+                    "name": "#table.table_name#_search_idx",
+                    "type": "bm25",
+                    "fields": arrayToList(bm25_field_parts, ", "),
+                    "unique": false,
+                    "with_options": "key_field='id'",
+                    "searchable_fields": "#table.searchable_fields#",
+                    "field_configs": searchable_field_configs
+                } />
 
             </cfif>
 
@@ -1668,7 +1767,8 @@ Delete - delete
                   ', ' ORDER BY array_position(ix.indkey, a.attnum)
               ) AS fields,
               ix.indisunique AS unique,
-              am.amname AS type
+              am.amname AS type,
+              pg_get_indexdef(i.oid) AS indexdef
           FROM
               pg_class t
           JOIN
@@ -1686,7 +1786,7 @@ Delete - delete
               AND t.relname = <cfqueryparam value="#arguments.tablename#" cfsqltype="varchar">
               AND c.conname IS NULL
             GROUP BY
-                t.relname, i.relname, ix.indisunique, am.amname
+                t.relname, i.relname, ix.indisunique, am.amname, i.oid
         </cfquery>
         <cfreturn stIndexes>
       </cffunction>
@@ -1931,6 +2031,20 @@ Delete - delete
                 <!--- DEBUG --->
                 <!--- SELECT column_name, generation_expression FROM information_schema.columns WHERE table_name = 'your_table_name' --->
 
+                <!--- If this is the search_text column, we need to drop and recreate the BM25 index --->
+                <cfif field_name EQ "search_text" AND structKeyExists(code_table_schema.indexes, "#table_name#_search_idx")>
+                    <cfset bm25_index = code_table_schema.indexes["#table_name#_search_idx"] />
+
+                    <!--- Drop the BM25 index first (before dropping column) --->
+                    <cfset ArrayAppend(result, {
+                        "table_name": table_name,
+                        "priority": 4,
+                        "type": "DROP INDEX",
+                        "title": "DROP INDEX: #table_name#_search_idx (required before dropping search_text column)",
+                        "statement": "DROP INDEX IF EXISTS #table_name#_search_idx;"
+                    })>
+                </cfif>
+
                 <cfset ArrayAppend(result, {
                     "table_name": table_name,
                     "priority": 6,
@@ -1948,6 +2062,21 @@ Delete - delete
                     "title": "ADD COLUMN: #table_name#.#field_name#",
                     "statement": "ALTER TABLE " & table_name & " ADD COLUMN " & columnDef
                 })>
+
+                <!--- Recreate the BM25 index after adding the column back --->
+                <cfif field_name EQ "search_text" AND structKeyExists(code_table_schema.indexes, "#table_name#_search_idx")>
+                    <cfset with_clause = "" />
+                    <cfif len(bm25_index.with_options?:'')>
+                        <cfset with_clause = " WITH (#bm25_index.with_options#)" />
+                    </cfif>
+                    <cfset ArrayAppend(result, {
+                        "table_name": table_name,
+                        "priority": 14,
+                        "type": "CREATE INDEX",
+                        "title": "CREATE INDEX: #table_name#_search_idx (after recreating search_text column)",
+                        "statement": "CREATE INDEX #table_name#_search_idx ON #table_name# USING bm25 (#bm25_index.fields#)#with_clause#"
+                    })>
+                </cfif>
 
 
             </cfif>
@@ -1997,7 +2126,56 @@ Delete - delete
             <cfelse>
                 <!--- We need to check to make sure everything matches. If it doesnt match, lets drop it and mark to create --->
                 <!--- Only compare keys that exist in DB: fields, type, unique (not name, comment) --->
-                <cfloop list="fields,type,unique" item="code_index_param" index="i">
+                <cfset params_to_compare = "fields,type,unique" />
+                <cfif code_index.type EQ "bm25">
+                    <!--- For BM25 indexes, compare the index definition directly since it contains per-field tokenizers --->
+                    <cfset db_indexdef = lcase(db_indexes[code_index_name].indexdef?:'') />
+
+                    <!--- Extract the fields portion from DB index definition --->
+                    <!--- Format: CREATE INDEX name ON table USING bm25 (id, ((field)::pdb.simple), ...) WITH (...) --->
+                    <!--- Find position after "using bm25 (" and before ") with" --->
+                    <cfset bm25_start = findNoCase("using bm25 (", db_indexdef) />
+                    <cfset with_pos = findNoCase(") with", db_indexdef) />
+                    <cfif bm25_start GT 0 AND with_pos GT bm25_start>
+                        <cfset db_bm25_fields = trim(mid(db_indexdef, bm25_start + 12, with_pos - bm25_start - 12)) />
+                        <!--- Remove spaces for consistent comparison --->
+                        <cfset db_bm25_fields = reReplace(db_bm25_fields, "\s+", "", "ALL") />
+                        <!--- Normalize DB format: ((field_name)::text::pdb.xxx) to (field_name::text::pdb.xxx) to match code format --->
+                        <!--- PostgreSQL wraps field names in extra parens, e.g. ((field)::text) becomes (field::text) --->
+                        <cfset db_bm25_fields = reReplace(db_bm25_fields, "\(\(([a-z_]+)\)::", "($1::", "ALL") />
+                    <cfelse>
+                        <cfset db_bm25_fields = "" />
+                    </cfif>
+
+                    <!--- Normalize code fields for comparison (lowercase, no spaces) --->
+                    <cfset code_bm25_fields = lcase(reReplace(code_index.fields, "\s+", "", "ALL")) />
+
+                    <!--- Normalize both sides by removing parentheses for consistent comparison --->
+                    <cfset normalized_db_bm25 = reReplace(db_bm25_fields, "#this.normalizeIndexPattern#", "", "ALL") />
+                    <cfset normalized_code_bm25 = reReplace(code_bm25_fields, "#this.normalizeIndexPattern#", "", "ALL") />
+
+                    <!--- Compare the normalized BM25 field definitions --->
+                    <cfif normalized_code_bm25 NEQ normalized_db_bm25>
+                        <!--- Create display-friendly versions by removing extra parentheses PostgreSQL adds --->
+                        <!--- Simplify: replace (( with ( and )) with ) to clean up nested parens --->
+                        <cfset display_db_bm25 = replace(db_bm25_fields, "((", "(", "ALL") />
+                        <cfset display_db_bm25 = replace(display_db_bm25, "))", ")", "ALL") />
+                        <!--- Remove extra ::text that PostgreSQL adds after JSON key extraction --->
+                        <cfset display_db_bm25 = reReplace(display_db_bm25, "->>'([^']+)'::text", "->>'$1'", "ALL") />
+                        <cfset arrayAppend(index_mismatches, {
+                            "param": "bm25_fields",
+                            "code": code_bm25_fields,
+                            "db": display_db_bm25
+                        }) />
+                        <cfset drop_index = true>
+                        <cfset create_index = true>
+                    </cfif>
+
+                    <!--- Skip regular fields comparison for BM25 --->
+                    <cfset params_to_compare = "type,unique" />
+                </cfif>
+
+                <cfloop list="#params_to_compare#" item="code_index_param" index="i">
 
 
 
@@ -2032,13 +2210,19 @@ Delete - delete
                     <cfset index_field_list = ListMap(index_field_list, function(term) { return term & " gin_trgm_ops"; })>
                 </cfif>
 
+                <!--- Build the WITH clause for BM25 indexes --->
+                <cfset with_clause = "" />
+                <cfif len(code_index.with_options?:'')>
+                    <cfset with_clause = " WITH (#code_index.with_options#)" />
+                </cfif>
+
                 <cfif drop_index>
                     <cfset sqlStatement = {
                         "table_name": "#table_name#",
                         "priority": 5,
                         "type": "DROP/CREATE INDEX",
                         "title": "DROP/CREATE INDEX #code_index.name#",
-                        "statement": 'DROP INDEX #code_index.name#;CREATE #code_index.unique ? "UNIQUE" : ""# INDEX #code_index.name# ON #table_name# USING #code_index.type# (#index_field_list#)',
+                        "statement": 'DROP INDEX #code_index.name#;CREATE #code_index.unique ? "UNIQUE" : ""# INDEX #code_index.name# ON #table_name# USING #code_index.type# (#index_field_list#)#with_clause#',
                         "mismatches": index_mismatches
                     } />
                 <cfelse>
@@ -2048,7 +2232,7 @@ Delete - delete
                         "priority": 14,
                         "type": "CREATE INDEX",
                         "title": "CREATE INDEX #code_index.name#",
-                        "statement": "CREATE #code_index.unique ? "UNIQUE" : ""# INDEX #code_index.name# ON #table_name# USING #code_index.type# (#index_field_list#)"
+                        "statement": "CREATE #code_index.unique ? "UNIQUE" : ""# INDEX #code_index.name# ON #table_name# USING #code_index.type# (#index_field_list#)#with_clause#"
                     } />
 
                     <cfcatch>
