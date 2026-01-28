@@ -62,11 +62,18 @@
                 "address":
                 {
                     "type": "jsonb",
-                    "searchable": {
-                        "key": "formatted_address"
-                    },
                     "html":{
                         "control": "address"
+                    }
+                },
+                "formatted_address":
+                {
+                    "label": "Formatted Address (Generated)",
+                    "type": "text",
+                    "generation_expression": "address->>'formatted_address'",
+                    "searchable": true,
+                    "html": {
+                        "hidden": true
                     }
                 },
                 "bio":
