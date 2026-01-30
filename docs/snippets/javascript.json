@@ -1,0 +1,95 @@
+{
+
+    "req": {
+        "prefix": "req",
+        "body": [
+            "req({",
+            "    endpoint: \"$1\"",
+            "}).then(res => {",
+            "    this.$2 = res;",
+            "}).catch(error => {",
+            "    console.error('Error:', error);",
+            "});"
+        ],
+        "description": "Promise-based req snippet with error handling"
+    },
+    "req_await": {
+        "prefix": "req_await",
+        "body": [
+            "this.$1 = await req({",
+            "    endpoint: \"$2\"",
+            "});"
+        ],
+        "description": "Async/await req snippet"
+    },
+
+
+    "Alpine.data": {
+        "prefix": "alpine.data",
+        "body": [
+            "<div x-data=\"$1\">",
+            "    ",
+            "</div>",
+            "",
+            "<script>",
+            "    document.addEventListener(\"alpine:init\", () => {",
+            "        Alpine.data(\"$1\", () => ({",
+            "            init(){",
+            "                // do something",
+            "            },",
+            "        }))",
+            "    })",
+            "</script>"
+        ],
+        "description": "Alpine.data"
+    },
+
+    "Moo Updated Event Listener": {
+        "prefix": "listen:moo:updated",
+        "body": [
+        "this.$el.addEventListener('moo:updated', (event) => {",
+        "\tconst { path, oldValue, newValue } = event.detail;",
+        "",
+        "\tif (path.startsWith('$1.')) {",
+        "\t\tthis.handleAutoSave();",
+        "\t}",
+        "});"
+        ],
+        "description": "Moo framework updated event listener"
+    },
+    "Moo Updated Event Listener with Custom Logic": {
+        "prefix": "listen:moo:updated-custom",
+        "body": [
+        "this.$el.addEventListener('moo:updated', (event) => {",
+        "\tconst { path, oldValue, newValue } = event.detail;",
+        "",
+        "\tswitch (path) {",
+        "\t\tcase '$1':",
+        "\t\t\t$2",
+        "\t\t\tbreak;",
+        "\t\tcase '$3':",
+        "\t\t\t$4",
+        "\t\t\tbreak;",
+        "\t\tdefault:",
+        "\t\t\tif (path.startsWith('$5.')) {",
+        "\t\t\t\tthis.handleAutoSave();",
+        "\t\t\t}",
+        "\t}",
+        "});"
+        ],
+        "description": "Moo framework updated event listener with custom path logic"
+    },
+    "Moo Updating Event Listener": {
+        "prefix": "listen:moo:updating",
+        "body": [
+        "this.$el.addEventListener('moo:updating', (event) => {",
+        "\tconst { path, oldValue, newValue } = event.detail;",
+        "",
+        "\tif (path.startsWith('$1.')) {",
+        "\t\tthis.handleAutoSave();",
+        "\t}",
+        "});"
+        ],
+        "description": "Moo framework updating event listener (before value changes)"
+    },
+}
