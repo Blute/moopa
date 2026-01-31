@@ -197,6 +197,10 @@
         <cf_layout_blank>
 
         <style>
+            /* Ensure th cells get the full height for the rotated headers */
+            thead th {
+                vertical-align: bottom;
+            }
             .rotated-th {
                 /**
                 * Since the rotated text is taken out of the DOM flow (position: absolute), we
@@ -214,10 +218,10 @@
             */
             .rotated-th__label {
                 bottom: 5px ;
-                left: 50% ;
+
                 position: absolute ;
-                transform: rotate( -45deg ) ;
-                transform-origin: center left ;
+                transform: rotate( 45deg ) ;
+                transform-origin: center right ;
                 white-space: nowrap ;
             }
         </style>
@@ -275,19 +279,19 @@
 
                             <template x-if="(current_route.profiles?.length > 0) || (current_route.roles?.length > 0)">
                                 <div class="overflow-x-auto">
-                                    <table class="table w-auto">
+                                    <table class="table w-full">
                                         <thead>
-                                            <tr>
-                                                <th class="text-center bg-base-200/50">&nbsp;</th>
+                                            <tr class="bg-base-200/50">
+                                                <th class="text-center" style="height: 110px;">&nbsp;</th>
                                                 <template x-for="profile in current_route.profiles" :key="profile.id">
-                                                    <th class="text-sm bg-base-200/50">
+                                                    <th class="text-sm">
                                                         <div class="rotated-th">
                                                             <span class="rotated-th__label" x-text="profile.full_name"></span>
                                                         </div>
                                                     </th>
                                                 </template>
                                                 <template x-for="role in current_route.roles" :key="role.id">
-                                                    <th class="text-sm bg-base-200/50">
+                                                    <th class="text-sm">
                                                         <div class="rotated-th">
                                                             <span class="rotated-th__label font-semibold text-primary" x-text="role.label"></span>
                                                         </div>
