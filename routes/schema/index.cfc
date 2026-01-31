@@ -42,9 +42,26 @@
             <div class="w-64 shrink-0">
                 <div class="card card-border bg-base-100">
                     <div class="card-body">
-                        <!--- <cf_control_text label="Table name" model="filter.table" modifiers=".debounce" />
-                        <cf_control_text label="Statement" model="filter.statement" modifiers=".debounce" /> --->
-                        <button type="button" class="btn btn-outline btn-info btn-sm" @click="filter.table = '';filter.statement = '';">Reset</button>
+                        <label class="label">
+                            <span class="label-text font-medium">Table</span>
+                        </label>
+                        <select class="select select-bordered select-sm w-full" x-model="filter.table">
+                            <option value="">All Tables</option>
+                            <template x-for="table in getUniqueTables()" :key="table">
+                                <option :value="table" x-text="table"></option>
+                            </template>
+                        </select>
+
+                        <label class="label mt-2">
+                            <span class="label-text font-medium">Statement</span>
+                        </label>
+                        <input type="text" class="input input-bordered input-sm w-full" x-model.debounce="filter.statement" placeholder="Filter statements...">
+
+                        <button type="button" class="btn btn-outline btn-info btn-sm mt-4" @click="filter.table = '';filter.statement = '';">Reset Filters</button>
+
+                        <div class="text-xs text-base-content/60 mt-2">
+                            Showing <span x-text="getFilteredStatements().length" class="font-semibold"></span> of <span x-text="statements.length" class="font-semibold"></span> statements
+                        </div>
                     </div>
                 </div>
             </div>
@@ -76,20 +93,26 @@
                                             </td>
                                             <td x-text="statement.priority"></td>
                                             <td>
-                                                <span x-text="statement.title"></span>
-                                                <template x-if="statement.mismatches && statement.mismatches.length > 0">
-                                                    <div class="mt-2 p-2 bg-warning/10 border border-warning/30 rounded text-xs">
-                                                        <div class="font-semibold text-warning mb-1">Mismatches:</div>
-                                                        <template x-for="mismatch in statement.mismatches">
-                                                            <div class="mb-1 font-mono">
-                                                                <span class="font-semibold" x-text="mismatch.param"></span>:
-                                                                <span class="text-error">db: <span x-text="mismatch.db || '(empty)'"></span></span>
-                                                                <span class="mx-1">→</span>
-                                                                <span class="text-success">code: <span x-text="mismatch.code"></span></span>
+                                                <div class="flex items-center gap-2">
+                                                    <span x-text="statement.title"></span>
+                                                    <template x-if="statement.mismatches && statement.mismatches.length > 0">
+                                                        <div class="dropdown dropdown-hover dropdown-right">
+                                                            <div tabindex="0" class="badge badge-warning badge-xs cursor-pointer gap-1">
+                                                                <span x-text="statement.mismatches.length"></span> diff
                                                             </div>
-                                                        </template>
-                                                    </div>
-                                                </template>
+                                                            <div tabindex="0" class="dropdown-content z-50 p-3 shadow-lg bg-base-200 rounded-lg text-xs w-max max-w-md">
+                                                                <div class="font-semibold text-warning mb-2">Mismatches:</div>
+                                                                <template x-for="mismatch in statement.mismatches">
+                                                                    <div class="mb-2 font-mono">
+                                                                        <span class="font-semibold" x-text="mismatch.param"></span>:<br>
+                                                                        <span class="text-error">db: <span x-text="mismatch.db || '(empty)'"></span></span><br>
+                                                                        <span class="text-success">code: <span x-text="mismatch.code"></span></span>
+                                                                    </div>
+                                                                </template>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+                                                </div>
                                             </td>
                                             <td x-text="statement.statement"></td>
                                         </tr>
@@ -140,13 +163,17 @@
                     statement:''
                 },
 
-                getFilteredStatements() {
+                getUniqueTables() {
+                    const tables = [...new Set(this.statements.map(s => s.table_name))];
+                    return tables.sort();
+                },
 
+                getFilteredStatements() {
                     return this.statements.filter((statement) => {
-                        const tableMatch = statement.table_name.toLowerCase().includes(this.filter.table.toLowerCase());
+                        const tableMatch = this.filter.table === '' || statement.table_name === this.filter.table;
                         const statementMatch = statement.statement.toLowerCase().includes(this.filter.statement.toLowerCase());
 
-                        return (this.filter.table.length === 0 || tableMatch) && (this.filter.statement.length === 0 || statementMatch);
+                        return tableMatch && statementMatch;
                     });
                 },
 
