@@ -527,6 +527,8 @@ TODO: need to check if old way works for the following and which has precedence:
         <!--- Regular security check --->
 
         <cftry>
+
+            <cfset start_time = getTickCount()>
             <cfquery name="qSecurityCheck">
             select *
             from moo_route_permission
@@ -555,6 +557,12 @@ TODO: need to check if old way works for the following and which has precedence:
                 )
             )
             </cfquery>
+
+            <!--- Only log security check in development environment --->
+            <cfif (server.system.environment.CURRENT_ENVIRONMENT?:'production') EQ "development">
+                <cflog type="information" file="security_check"  text="Security check for route #arguments.route_data.stRoute.url# and endpoint #arguments.endpoint# took #getTickCount() - start_time#ms">
+            </cfif>
+
             <cfcatch type="any">
                 <cfcontent reset="true" />
                 <cfdump var="#cfcatch#"><cfabort>
