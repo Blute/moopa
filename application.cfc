@@ -150,7 +150,7 @@
                 <cfset application.about_to_initialize = true />
 
                 <!--- Give other requests 1 second to finish processing on production --->
-                <cfif (server.system.environment.IS_PRODUCTION?:false)>
+                <cfif (server.system.environment.CURRENT_ENVIRONMENT?:'production') EQ 'production'>
                     <cfset delay_init = 1000 />
 
                     <cfsleep time="#delay_init#" />
@@ -318,7 +318,8 @@
                     returnAsCFML=true
                 ) />
 
-            <cfif (server.system.environment.IS_PRODUCTION?:false)>
+            <!--- Only send email in production environment --->
+            <cfif (server.system.environment.CURRENT_ENVIRONMENT?:'production') EQ 'production'>
                 <cfset email_subject = "MOOPA FRAMEWORK 500 ERROR [#dateFormat(now(),'ddd dd-mmm-yyyy')#]"/>
 
                 <cfsavecontent variable="email_body">
@@ -347,7 +348,8 @@
             <cfcontent type="application/json" reset="true">
 
 
-            <cfif !(server.system.environment.IS_PRODUCTION?:false) OR (url.debug?:'') EQ 9>
+            <!--- Only show debug information in development environment or if debug parameter is set to the debug key --->
+            <cfif (server.system.environment.CURRENT_ENVIRONMENT?:'production') EQ 'development' OR (url.debug?:'') EQ (server.system.environment.DEBUG_KEY?:createUUID())>
                 <cfset error_response = {
                     error: arguments.Exception.message,
                     line: error_line,
@@ -384,7 +386,8 @@
                     <a href="/" class="btn btn-primary btn-lg" id="try-again-button">Return home</a>
                 </div>
 
-                <cfif !(server.system.environment.IS_PRODUCTION?:false) OR (url.debug?:'') EQ 9>
+                <!--- Only show debug information in development environment or if debug parameter is set to 9 --->
+                <cfif (server.system.environment.CURRENT_ENVIRONMENT?:'production') EQ 'development' OR (url.debug?:'') EQ (server.system.environment.DEBUG_KEY?:createUUID())>
                     <hr>
 
                     <p class="h1">#arguments.exception.message?:''#.</p>
