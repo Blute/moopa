@@ -116,7 +116,7 @@ Delete - delete
     </cffunction>
 
 
-    <cffunction name="getSearchableTables" hint="Returns the struct containing tables with BM25 full-text search enabled">
+    <cffunction name="getSearchableTables" hint="Returns the struct containing tables with pg_trgm trigram search enabled">
         <cfreturn this.searchable_tables />
     </cffunction>
 
@@ -465,22 +465,9 @@ Delete - delete
                 <cfif len(arguments.q)>
                     <cfif structKeyExists(this.searchable_tables, arguments.table_name)>
 
-                        <!--- Use ParadeDB legacy API BM25 full-text search --->
-                        <!--- Legacy syntax: field @@@ 'query' --->
-                        <!--- See: https://docs.paradedb.com/legacy/full-text/overview --->
-                        <!--- NOTE: Skip JSONB fields - they are not indexed in legacy API --->
-                        <cfset search_field_configs = this.searchable_tables[arguments.table_name].field_configs />
-                        AND (
-                            <cfset bFirst = true />
-                            <cfloop list="#this.searchable_tables[arguments.table_name].searchable_fields#" item="search_field_name">
-                                <!--- Skip JSONB fields --->
-                                <cfif (search_field_configs[search_field_name].field_type ?: "varchar") EQ "jsonb">
-                                    <cfcontinue />
-                                </cfif>
-                                <cfif NOT bFirst> OR </cfif><cfset bFirst = false />
-                                #search_field_name# @@@ <cfqueryparam cfsqltype="varchar" value="#replace(arguments.q, "'", "''", "ALL")#" />
-                            </cfloop>
-                        )
+                        <!--- Use pg_trgm trigram similarity search on search_text column --->
+                        <!--- The <% operator finds rows where query has word similarity to search_text --->
+                        AND <cfqueryparam cfsqltype="varchar" value="#arguments.q#" /> <% search_text
 
                     <cfelse>
 
@@ -498,8 +485,10 @@ Delete - delete
                     AND id NOT IN (<cfqueryparam cfsqltype="other" list="true" value="#arguments.exclude_ids#" />)
                 </cfif>
 
-                <!--- Legacy ParadeDB: @@@ operator returns results in relevance order by default --->
-                <cfif NOT (len(arguments.q) AND structKeyExists(this.searchable_tables, arguments.table_name))>
+                <!--- Order by word_similarity score when searching, otherwise use default order --->
+                <cfif len(arguments.q) AND structKeyExists(this.searchable_tables, arguments.table_name)>
+                    ORDER BY word_similarity(<cfqueryparam cfsqltype="varchar" value="#arguments.q#" />, search_text) DESC
+                <cfelse>
                     #orderby(table_name=arguments.table_name)#
                 </cfif>
 
@@ -530,7 +519,7 @@ Delete - delete
         </cfif>
     </cffunction>
 
-    <cffunction name="idsInSearchTerm" hint="Returns array of IDs matching the search term using BM25 full-text search">
+    <cffunction name="idsInSearchTerm" hint="Returns array of IDs matching the search term using pg_trgm trigram similarity">
         <cfargument name="table_name" required="true" />
         <cfargument name="term" required="true" />
         <cfargument name="limit" required="false" default="20">
@@ -539,24 +528,12 @@ Delete - delete
 
         <cfif structKeyExists(this.searchable_tables, arguments.table_name) AND len(arguments.term)>
 
-            <!--- Legacy ParadeDB: field @@@ 'query' --->
-            <!--- See: https://docs.paradedb.com/legacy/full-text/overview --->
-            <!--- NOTE: Skip JSONB fields - they are not indexed in legacy API --->
-            <cfset search_field_configs = this.searchable_tables[arguments.table_name].field_configs />
+            <!--- Use pg_trgm trigram similarity on search_text column --->
             <cfquery name="qSearchIds">
                 SELECT id
                 FROM #arguments.table_name#
-                WHERE (
-                    <cfset bFirst = true />
-                    <cfloop list="#this.searchable_tables[arguments.table_name].searchable_fields#" item="search_field_name">
-                        <!--- Skip JSONB fields --->
-                        <cfif (search_field_configs[search_field_name].field_type ?: "varchar") EQ "jsonb">
-                            <cfcontinue />
-                        </cfif>
-                        <cfif NOT bFirst> OR </cfif><cfset bFirst = false />
-                        #search_field_name# @@@ <cfqueryparam cfsqltype="varchar" value="#replace(arguments.term, "'", "''", "ALL")#" />
-                    </cfloop>
-                )
+                WHERE <cfqueryparam cfsqltype="varchar" value="#arguments.term#" /> <% search_text
+                ORDER BY word_similarity(<cfqueryparam cfsqltype="varchar" value="#arguments.term#" />, search_text) DESC
                 LIMIT <cfqueryparam cfsqltype="numeric" value="#arguments.limit#" />
             </cfquery>
 
@@ -628,7 +605,7 @@ Delete - delete
             WHERE id = <cfqueryparam cfsqltype="other" value="#idValue#" />
         </cfquery>
 
-        <!--- Note: BM25 search index is automatically updated when record is deleted --->
+        <!--- Note: pg_trgm search uses the search_text generated column which is automatically updated --->
 
         <cfif arguments.returnAsCFML>
             <cfreturn result />
@@ -979,7 +956,7 @@ Delete - delete
             </cfif>
         </cfloop>
 
-        <!--- Note: BM25 search indexing is now handled automatically via the search_text generated column --->
+        <!--- Note: pg_trgm search uses the search_text generated column which is automatically updated --->
 
         <!--- PURCHASE LOGGING --->
         <cfif arguments.table_name EQ "purchase">
@@ -1433,31 +1410,20 @@ Delete - delete
 
 
 
-            <!--- Now lets get the searchable columns with per-field tokenizer config --->
-            <!--- searchable can be: true (defaults to ngram), "simple", "ngram", or struct with tokenizer config --->
-            <!--- Note: jsonb fields with simple tokenizer must NOT have ::text cast, but ngram requires ::text cast --->
+            <!--- Collect searchable fields for pg_trgm trigram search --->
+            <!--- searchable can be: true, or any truthy value --->
+            <!--- JSONB fields are tracked but skipped when building the search_text column --->
             <!--- Clear any pre-existing searchable_fields to rebuild from field definitions --->
             <cfset table.searchable_fields = "" />
             <cfset searchable_field_configs = {} />
             <cfloop collection="#table.fields#" item="field" index="field_name">
-                <cfif structKeyExists(field, "searchable") AND isSimpleValue(field.searchable) AND field.searchable NEQ false AND len(field.searchable)>
-                    <cfset table.searchable_fields = listAppend(table.searchable_fields, field_name) />
-
-                    <!--- Parse tokenizer config from searchable property --->
-                    <cfif isBoolean(field.searchable) AND field.searchable>
-                        <!--- searchable: true defaults to ngram --->
-                        <cfset searchable_field_configs[field_name] = { "tokenizer": "ngram", "field_type": field.type } />
-                    <cfelse>
-                        <!--- searchable: "simple" or "ngram" --->
-                        <cfset searchable_field_configs[field_name] = { "tokenizer": field.searchable, "field_type": field.type } />
-                    </cfif>
-                <cfelseif structKeyExists(field, "searchable") AND isStruct(field.searchable)>
-                    <cfset table.searchable_fields = listAppend(table.searchable_fields, field_name) />
-                    <!--- searchable: { tokenizer: "ngram", min_gram: 3, max_gram: 3 } --->
-                    <cfset searchable_field_configs[field_name] = field.searchable />
-                    <cfset searchable_field_configs[field_name].field_type = field.type />
-                    <cfif !structKeyExists(searchable_field_configs[field_name], "tokenizer")>
-                        <cfset searchable_field_configs[field_name].tokenizer = "ngram" />
+                <cfif structKeyExists(field, "searchable") AND field.searchable NEQ false>
+                    <cfif isSimpleValue(field.searchable) AND len(field.searchable)>
+                        <cfset table.searchable_fields = listAppend(table.searchable_fields, field_name) />
+                        <cfset searchable_field_configs[field_name] = { "field_type": field.type } />
+                    <cfelseif isStruct(field.searchable)>
+                        <cfset table.searchable_fields = listAppend(table.searchable_fields, field_name) />
+                        <cfset searchable_field_configs[field_name] = { "field_type": field.type } />
                     </cfif>
                 </cfif>
             </cfloop>
@@ -1470,61 +1436,59 @@ Delete - delete
                     'field_configs': searchable_field_configs
                 } />
 
-                <!--- Build BM25 index fields using ParadeDB legacy API --->
-                <!--- Legacy API uses plain field names in index, tokenizer config goes in WITH clause --->
-                <!--- See: https://docs.paradedb.com/legacy/indexing/field-options --->
-                <!--- NOTE: JSONB fields are skipped - use generated columns to extract text for searching --->
-                <cfset bm25_field_parts = ["id"] />
-                <cfset text_fields_config = {} />
-                <cfset text_field_types = "varchar,text,char,nvarchar,nchar" />
+                <!--- Build search_text generated column using pg_trgm trigram similarity --->
+                <!--- This concatenates all searchable fields into a single text column for efficient searching --->
+                <!--- JSONB fields are skipped - use generated columns or searchable with json_path to extract text --->
+                <cfset search_text_parts = [] />
                 <cfloop list="#table.searchable_fields#" item="searchable_field_name">
                     <cfset field_config = searchable_field_configs[searchable_field_name] />
-                    <cfset field_tokenizer = field_config.tokenizer ?: "ngram" />
                     <cfset field_type = field_config.field_type ?: "varchar" />
+                    <cfset field_def = table.fields[searchable_field_name] />
 
-                    <!--- Skip JSONB fields - legacy ParadeDB on Neon doesn't support json_fields properly --->
-                    <!--- For JSONB fields, create a generated column to extract the text value instead --->
+                    <!--- Skip JSONB fields - these should have separate generated columns for searching --->
                     <cfif field_type EQ "jsonb">
                         <cfcontinue />
                     </cfif>
 
-                    <!--- Add field name to index (plain, no type casting) --->
-                    <cfset arrayAppend(bm25_field_parts, searchable_field_name) />
-
-                    <cfif field_tokenizer EQ "simple">
-                        <!--- simple tokenizer for text fields --->
-                        <cfset text_fields_config[searchable_field_name] = {
-                            "tokenizer": {"type": "default"}
-                        } />
-                    <cfelseif listFindNoCase(text_field_types, field_type)>
-                        <!--- text-type fields with ngram tokenizer (default) --->
-                        <cfset min_gram = field_config.min_gram ?: 3 />
-                        <cfset max_gram = field_config.max_gram ?: 3 />
-                        <cfset text_fields_config[searchable_field_name] = {
-                            "tokenizer": {"type": "ngram", "min_gram": min_gram, "max_gram": max_gram, "prefix_only": false}
-                        } />
+                    <!--- If the field has a generation_expression, use that expression directly --->
+                    <!--- This avoids PostgreSQL error: cannot reference another generated column --->
+                    <cfif len(field_def.generation_expression?:'')>
+                        <cfset arrayAppend(search_text_parts, "COALESCE((#field_def.generation_expression#)::text, '')") />
                     <cfelse>
-                        <!--- other non-text fields (date, timestamp, uuid, etc.): no tokenizer config needed --->
+                        <!--- Regular field - reference by name --->
+                        <cfset arrayAppend(search_text_parts, "COALESCE(#searchable_field_name#::text, '')") />
                     </cfif>
                 </cfloop>
 
-                <!--- Build WITH options with text_fields config (no json_fields for legacy API) --->
-                <cfset with_options_parts = ["key_field='id'"] />
-                <cfif !structIsEmpty(text_fields_config)>
-                    <cfset arrayAppend(with_options_parts, "text_fields='" & serializeJSON(text_fields_config) & "'") />
-                </cfif>
+                <!--- Only create search_text if we have searchable text fields --->
+                <cfif arrayLen(search_text_parts)>
+                    <!--- Build the generation expression: COALESCE(f1,'') || ' ' || COALESCE(f2,'') ... --->
+                    <cfset search_text_expression = arrayToList(search_text_parts, " || ' ' || ") />
 
-                <!--- Add the BM25 index for full-text search with legacy API syntax --->
-                <cfset table.indexes['#table.table_name#_search_idx'] = {
-                    "name": "#table.table_name#_search_idx",
-                    "type": "bm25",
-                    "fields": arrayToList(bm25_field_parts, ", "),
-                    "unique": false,
-                    "with_options": arrayToList(with_options_parts, ", "),
-                    "searchable_fields": "#table.searchable_fields#",
-                    "field_configs": searchable_field_configs,
-                    "text_fields_config": text_fields_config
-                } />
+                    <!--- Add search_text as a generated column --->
+                    <!--- All field properties must be set since this is added after the field processing loop --->
+                    <cfset table.fields['search_text'] = {
+                        "name": "search_text",
+                        "label": "Search Text",
+                        "type": "text",
+                        "cfsqltype": "varchar",
+                        "is_system": true,
+                        "is_nullable": true,
+                        "searchable": false,
+                        "default": "",
+                        "sql_select_simple": "",
+                        "html": {},
+                        "generation_expression": "#search_text_expression#"
+                    } />
+
+                    <!--- Add GIN index with gin_trgm_ops for trigram similarity search --->
+                    <cfset table.indexes['#table.table_name#_search_trgm_idx'] = {
+                        "name": "#table.table_name#_search_trgm_idx",
+                        "type": "gin",
+                        "fields": "search_text",
+                        "unique": false
+                    } />
+                </cfif>
 
             </cfif>
 
@@ -2035,17 +1999,15 @@ Delete - delete
                 <!--- DEBUG --->
                 <!--- SELECT column_name, generation_expression FROM information_schema.columns WHERE table_name = 'your_table_name' --->
 
-                <!--- If this is the search_text column, we need to drop and recreate the BM25 index --->
-                <cfif field_name EQ "search_text" AND structKeyExists(code_table_schema.indexes, "#table_name#_search_idx")>
-                    <cfset bm25_index = code_table_schema.indexes["#table_name#_search_idx"] />
-
-                    <!--- Drop the BM25 index first (before dropping column) --->
+                <!--- If this is the search_text column, we need to drop and recreate the GIN trigram index --->
+                <cfif field_name EQ "search_text" AND structKeyExists(code_table_schema.indexes, "#table_name#_search_trgm_idx")>
+                    <!--- Drop the GIN index first (before dropping column) --->
                     <cfset ArrayAppend(result, {
                         "table_name": table_name,
                         "priority": 4,
                         "type": "DROP INDEX",
-                        "title": "DROP INDEX: #table_name#_search_idx (required before dropping search_text column)",
-                        "statement": "DROP INDEX IF EXISTS #table_name#_search_idx;"
+                        "title": "DROP INDEX: #table_name#_search_trgm_idx (required before dropping search_text column)",
+                        "statement": "DROP INDEX IF EXISTS #table_name#_search_trgm_idx;"
                     })>
                 </cfif>
 
@@ -2067,18 +2029,14 @@ Delete - delete
                     "statement": "ALTER TABLE " & table_name & " ADD COLUMN " & columnDef
                 })>
 
-                <!--- Recreate the BM25 index after adding the column back --->
-                <cfif field_name EQ "search_text" AND structKeyExists(code_table_schema.indexes, "#table_name#_search_idx")>
-                    <cfset with_clause = "" />
-                    <cfif len(bm25_index.with_options?:'')>
-                        <cfset with_clause = " WITH (#bm25_index.with_options#)" />
-                    </cfif>
+                <!--- Recreate the GIN trigram index after adding the column back --->
+                <cfif field_name EQ "search_text" AND structKeyExists(code_table_schema.indexes, "#table_name#_search_trgm_idx")>
                     <cfset ArrayAppend(result, {
                         "table_name": table_name,
                         "priority": 14,
                         "type": "CREATE INDEX",
-                        "title": "CREATE INDEX: #table_name#_search_idx (after recreating search_text column)",
-                        "statement": "CREATE INDEX #table_name#_search_idx ON #table_name# USING bm25 (#bm25_index.fields#)#with_clause#"
+                        "title": "CREATE INDEX: #table_name#_search_trgm_idx (after recreating search_text column)",
+                        "statement": "CREATE INDEX #table_name#_search_trgm_idx ON #table_name# USING gin (search_text gin_trgm_ops)"
                     })>
                 </cfif>
 
@@ -2131,130 +2089,6 @@ Delete - delete
                 <!--- We need to check to make sure everything matches. If it doesnt match, lets drop it and mark to create --->
                 <!--- Only compare keys that exist in DB: fields, type, unique (not name, comment) --->
                 <cfset params_to_compare = "fields,type,unique" />
-                <cfif code_index.type EQ "bm25">
-                    <!--- For BM25 indexes with legacy API, compare field names and WITH clause --->
-                    <!--- Legacy format: CREATE INDEX name ON table USING bm25 (id, field1, field2) WITH (key_field='id', text_fields='...') --->
-                    <cfset db_indexdef = lcase(db_indexes[code_index_name].indexdef?:'') />
-
-                    <!--- Extract the fields portion from DB index definition --->
-                    <cfset bm25_start = findNoCase("using bm25 (", db_indexdef) />
-                    <cfset with_pos = findNoCase(") with", db_indexdef) />
-                    <cfif bm25_start GT 0 AND with_pos GT bm25_start>
-                        <cfset db_bm25_fields = trim(mid(db_indexdef, bm25_start + 12, with_pos - bm25_start - 12)) />
-                        <!--- Remove spaces for consistent comparison --->
-                        <cfset db_bm25_fields = reReplace(db_bm25_fields, "\s+", "", "ALL") />
-                    <cfelse>
-                        <cfset db_bm25_fields = "" />
-                    </cfif>
-
-                    <!--- Normalize code fields for comparison (lowercase, no spaces) --->
-                    <cfset code_bm25_fields = lcase(reReplace(code_index.fields, "\s+", "", "ALL")) />
-
-                    <!--- Compare the plain field lists --->
-                    <cfif code_bm25_fields NEQ db_bm25_fields>
-                        <cfset arrayAppend(index_mismatches, {
-                            "param": "bm25_fields",
-                            "code": code_bm25_fields,
-                            "db": db_bm25_fields
-                        }) />
-                        <cfset drop_index = true>
-                        <cfset create_index = true>
-                    </cfif>
-
-                    <!--- Also compare the WITH clause options (contains tokenizer config) --->
-                    <!--- Need to normalize: DB may omit quotes on key_field, JSON key order may differ --->
-                    <cfset with_start = findNoCase("with (", db_indexdef) />
-                    <cfif with_start GT 0>
-                        <cfset db_with_options = trim(mid(db_indexdef, with_start + 6, len(db_indexdef) - with_start - 6)) />
-                        <cfset code_with_options = code_index.with_options />
-
-                        <!--- Normalize both for comparison --->
-                        <!--- 1. Lowercase and remove spaces --->
-                        <cfset db_with_normalized = lcase(reReplace(db_with_options, "\s+", "", "ALL")) />
-                        <cfset code_with_normalized = lcase(reReplace(code_with_options, "\s+", "", "ALL")) />
-
-                        <!--- 2. Normalize key_field quotes: key_field=id -> key_field='id' --->
-                        <cfset db_with_normalized = reReplace(db_with_normalized, "key_field=([^',]+)", "key_field='\1'", "ALL") />
-                        <!--- Fix double quotes if already had them: key_field=''id'' -> key_field='id' --->
-                        <cfset db_with_normalized = replace(db_with_normalized, "key_field=''", "key_field='", "ALL") />
-                        <cfset db_with_normalized = reReplace(db_with_normalized, "''(,|$)", "'\1", "ALL") />
-
-                        <!--- 3. Parse and re-serialize JSON portions to normalize key order --->
-                        <!--- Extract text_fields JSON from both --->
-                        <cfset db_text_fields_match = reFind("text_fields='(\{[^']+\})'", db_with_normalized, 1, true) />
-                        <cfset code_text_fields_match = reFind("text_fields='(\{[^']+\})'", code_with_normalized, 1, true) />
-
-                        <cfset with_options_match = true />
-
-                        <!--- Compare text_fields JSON if present in both --->
-                        <cfif arrayLen(db_text_fields_match.pos) GTE 2 AND db_text_fields_match.pos[2] GT 0
-                              AND arrayLen(code_text_fields_match.pos) GTE 2 AND code_text_fields_match.pos[2] GT 0>
-                            <cfset db_text_json = mid(db_with_normalized, db_text_fields_match.pos[2], db_text_fields_match.len[2]) />
-                            <cfset code_text_json = mid(code_with_normalized, code_text_fields_match.pos[2], code_text_fields_match.len[2]) />
-                            <cftry>
-                                <cfset db_text_struct = deserializeJSON(db_text_json) />
-                                <cfset code_text_struct = deserializeJSON(code_text_json) />
-                                <!--- Re-serialize both to canonical form for comparison --->
-                                <cfset db_text_canonical = serializeJSON(db_text_struct) />
-                                <cfset code_text_canonical = serializeJSON(code_text_struct) />
-                                <cfif lcase(db_text_canonical) NEQ lcase(code_text_canonical)>
-                                    <cfset with_options_match = false />
-                                </cfif>
-                                <cfcatch>
-                                    <!--- JSON parse failed, fall back to string comparison --->
-                                    <cfif db_text_json NEQ code_text_json>
-                                        <cfset with_options_match = false />
-                                    </cfif>
-                                </cfcatch>
-                            </cftry>
-                        <cfelseif (arrayLen(db_text_fields_match.pos) GTE 2 AND db_text_fields_match.pos[2] GT 0)
-                                  NEQ (arrayLen(code_text_fields_match.pos) GTE 2 AND code_text_fields_match.pos[2] GT 0)>
-                            <!--- One has text_fields, the other doesn't --->
-                            <cfset with_options_match = false />
-                        </cfif>
-
-                        <!--- Compare json_fields JSON if present in both --->
-                        <cfset db_json_fields_match = reFind("json_fields='(\{[^']+\})'", db_with_normalized, 1, true) />
-                        <cfset code_json_fields_match = reFind("json_fields='(\{[^']+\})'", code_with_normalized, 1, true) />
-
-                        <cfif arrayLen(db_json_fields_match.pos) GTE 2 AND db_json_fields_match.pos[2] GT 0
-                              AND arrayLen(code_json_fields_match.pos) GTE 2 AND code_json_fields_match.pos[2] GT 0>
-                            <cfset db_json_json = mid(db_with_normalized, db_json_fields_match.pos[2], db_json_fields_match.len[2]) />
-                            <cfset code_json_json = mid(code_with_normalized, code_json_fields_match.pos[2], code_json_fields_match.len[2]) />
-                            <cftry>
-                                <cfset db_json_struct = deserializeJSON(db_json_json) />
-                                <cfset code_json_struct = deserializeJSON(code_json_json) />
-                                <cfset db_json_canonical = serializeJSON(db_json_struct) />
-                                <cfset code_json_canonical = serializeJSON(code_json_struct) />
-                                <cfif lcase(db_json_canonical) NEQ lcase(code_json_canonical)>
-                                    <cfset with_options_match = false />
-                                </cfif>
-                                <cfcatch>
-                                    <cfif db_json_json NEQ code_json_json>
-                                        <cfset with_options_match = false />
-                                    </cfif>
-                                </cfcatch>
-                            </cftry>
-                        <cfelseif (arrayLen(db_json_fields_match.pos) GTE 2 AND db_json_fields_match.pos[2] GT 0)
-                                  NEQ (arrayLen(code_json_fields_match.pos) GTE 2 AND code_json_fields_match.pos[2] GT 0)>
-                            <cfset with_options_match = false />
-                        </cfif>
-
-                        <!--- If mismatch detected, flag for recreation --->
-                        <cfif NOT with_options_match>
-                            <cfset arrayAppend(index_mismatches, {
-                                "param": "with_options",
-                                "code": code_index.with_options,
-                                "db": db_with_options
-                            }) />
-                            <cfset drop_index = true>
-                            <cfset create_index = true>
-                        </cfif>
-                    </cfif>
-
-                    <!--- Skip regular fields comparison for BM25 --->
-                    <cfset params_to_compare = "type,unique" />
-                </cfif>
 
                 <cfloop list="#params_to_compare#" item="code_index_param" index="i">
 
@@ -2291,7 +2125,7 @@ Delete - delete
                     <cfset index_field_list = ListMap(index_field_list, function(term) { return term & " gin_trgm_ops"; })>
                 </cfif>
 
-                <!--- Build the WITH clause for BM25 indexes --->
+                <!--- Build the WITH clause if index has options --->
                 <cfset with_clause = "" />
                 <cfif len(code_index.with_options?:'')>
                     <cfset with_clause = " WITH (#code_index.with_options#)" />

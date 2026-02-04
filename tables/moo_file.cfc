@@ -117,15 +117,16 @@
             "JPG,JPEG,PNG,GIF,WEBP,SVG,TIFF,BMP,HEIF,PDF,MOV,MP4,AVI,MKV,WEBM",
             file_extension
         )>
+            <cfset thumbnail_url = application.lib.imagekit.url(file_path=new_file.path, expiry=0, params={width=300, height=300}, thumbnail=true) />
+
             <cfset save_data = application.lib.db.save(
                     table_name : 'moo_file',
                     data : {
                         id : arguments.data.file_id,
-                        thumbnail: application.lib.imagekit.url(file_path=new_file.path, expiry=0, params={width=300, height=300}, thumbnail=true)
+                        thumbnail: thumbnail_url
                     },
                     returnAsCFML:true
                 ) />
-
 
             <cfset new_file = application.lib.db.read( table_name : 'moo_file', id : arguments.data.file_id, returnAsCFML:true ) />
         </cfif>
