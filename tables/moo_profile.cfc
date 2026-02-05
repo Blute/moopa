@@ -54,6 +54,22 @@
                         "type": "switch"
                     }
                 },
+                "external_auth_id": {
+                    "label": "External Auth ID",
+                    "type": "varchar",
+                    "unique": true,
+                    "searchable": true,
+                    "html": {
+                        "placeholder": "user_2abc123..."
+                    }
+                },
+                "external_auth_payload": {
+                    "label": "External Auth Payload",
+                    "type": "jsonb",
+                    "html": {
+                        "hidden": true
+                    }
+                },
                 "dob":
                 {
                     "label": "Date Of Birth",
@@ -114,6 +130,13 @@
                 },
 
 
+            ],
+            indexes: [
+                "idx_moo_profile_external_auth_id": {
+                    "type": "btree",
+                    "fields": "external_auth_id",
+                    "unique": true
+                }
             ]
         ]
 

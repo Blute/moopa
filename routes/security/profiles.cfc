@@ -145,7 +145,7 @@
 
         <cfreturn application.lib.db.search(
             table_name = "moo_profile",
-            field_list = "id,full_name,email,mobile,address,roles,is_employee,employee_type,can_login,hero_employee_id,hero_employee_number,profile_picture_id,profile_avatar_id",
+            field_list = "id,full_name,email,mobile,address,roles,is_employee,employee_type,can_login,hero_employee_id,hero_employee_number,profile_picture_id,profile_avatar_id,external_auth_id",
             q = searchTerm,
             limit = 100,
             select_append = "COALESCE((
@@ -233,12 +233,13 @@
                                             <th>Mobile</th>
                                             <th>Roles</th>
                                             <th>Status</th>
+                                            <th>External Auth ID</th>
                                             <th class="text-end">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <template x-for="item in records" :key="item.id">
-                                            <tr class="hover:bg-base-200/40 cursor-pointer" @dblclick="select(item)">
+                                            <tr class="hover:bg-base-200/40 cursor-pointer" @click="select(item)">
                                                 <!-- Full Name with Avatar -->
                                                 <td>
                                                     <div class="flex items-center gap-3">
@@ -293,6 +294,10 @@
                                                         </template>
                                                     </div>
                                                 </td>
+                                                <!-- External Auth ID -->
+                                                <td>
+                                                    <span class="text-xs font-mono text-base-content/70" x-text="item.external_auth_id || '—'"></span>
+                                                </td>
                                                 <!-- Actions -->
                                                 <td>
                                                     <div class="flex items-center justify-end gap-1">
@@ -310,7 +315,7 @@
                                         <!-- Empty State -->
                                         <template x-if="!loading && records.length === 0">
                                             <tr>
-                                                <td colspan="5" class="text-center py-8 text-base-content/60">
+                                                <td colspan="6" class="text-center py-8 text-base-content/60">
                                                     <span class="fal fa-users fa-2x mb-2 block"></span>
                                                     No profiles found
                                                 </td>
@@ -355,18 +360,11 @@
                             <cf_table_controls table_name="moo_profile" fields="address" />
                             <cf_table_controls table_name="moo_profile" fields="can_login" />
 
-                            <!-- Employment -->
-                            <div class="divider text-sm text-base-content/50">Employment</div>
-                            <div class="flex flex-wrap gap-4">
-                                <div>
-                                    <cf_table_controls table_name="moo_profile" fields="is_employee" />
-                                </div>
-                                <div x-show="current_record.is_employee" x-transition class="flex-1 min-w-64">
-                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <cf_table_controls table_name="moo_profile" fields="employee_type,hero_employee_id,hero_employee_number" />
-                                    </div>
-                                </div>
-                            </div>
+                            <!-- External Auth -->
+                            <div class="divider text-sm text-base-content/50">External Authentication</div>
+                            <cf_table_controls table_name="moo_profile" fields="external_auth_id" />
+
+
                         </div>
 
                         <div class="modal-action">
