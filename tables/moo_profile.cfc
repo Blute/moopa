@@ -147,60 +147,34 @@
 
 
     <cffunction name="login">
-        <cfargument name="profile_id" default="" />
-        <cfargument name="full_name" default="" />
-        <cfargument name="company_name" default="" />
-        <cfargument name="email" default="" />
-        <cfargument name="mobile" default="" />
+        <cfargument name="profile_id" required="true" />
         <cfargument name="auto_login" default=false />
         <cfargument name="stay_logged_in" default=true /> <!--- If true, the user will be logged in for 30 days. Default is true. --->
         <cfargument name="user_directory" default="" />
         <cfargument name="authentication_service_user" default="" />
 
 
-        <cfif !len(arguments.profile_id) AND !len(arguments.email) AND !len(arguments.mobile)>
-            <cfabort showerror="YOU MUST LOGIN WITH AN ID OR EMAIL OR MOBILE" />
+        <cfif !len(arguments.profile_id)>
+            <cfabort showerror="YOU MUST LOGIN WITH A PROFILE ID" />
         </cfif>
 
 
-        <cflock name="session_#arguments.profile_id?:''#_#arguments.email?:''#_#arguments.mobile?:''#" timeout="10">
+        <cflock name="session_#arguments.profile_id#" timeout="10">
 
             <cfset session.auth = {} />
 
-            <cfif len(arguments.profile_id)>
-                <cfset profile_to_login = application.lib.db.read(
-                    table_name = "moo_profile",
-                    id = arguments.profile_id,
-                    field_list = "id,full_name,full_name,email,mobile,profile_avatar_id,profile_picture_id,can_login,roles",
-                    returnAsCFML=true
-                ) />
+            <cfset profile_to_login = application.lib.db.read(
+                table_name = "moo_profile",
+                id = arguments.profile_id,
+                field_list = "id,full_name,email,mobile,profile_avatar_id,profile_picture_id,can_login,roles",
+                returnAsCFML=true
+            ) />
 
-                <cfif !profile_to_login.can_login>
-                    <cfabort showerror="YOU DO NOT HAVE ACCESS TO LOGIN" />
-                </cfif>
-
-                <cfset session.auth.profile = profile_to_login />
-            <cfelse>
-                <cfset new_profile = application.lib.db.save(
-                    table_name = "moo_profile",
-                    data = {
-                        full_name = "#arguments.full_name#",
-                        company_name = "#arguments.company_name#",
-                        email = "#arguments.email?:''#",
-                        mobile = "#arguments.mobile?:''#",
-                        can_login = true
-                    },
-                    returnAsCFML=true
-                ) />
-
-
-                <cfset session.auth.profile = application.lib.db.read(
-                    table_name = "moo_profile",
-                    id = new_profile.id,
-                    field_list = "id,full_name,full_name,email,mobile,profile_avatar_id,profile_picture_id,can_login,roles",
-                    returnAsCFML=true
-                ) />
+            <cfif !profile_to_login.can_login>
+                <cfabort showerror="YOU DO NOT HAVE ACCESS TO LOGIN" />
             </cfif>
+
+            <cfset session.auth.profile = profile_to_login />
 
 
             <cfset session.auth.isLoggedIn = true />
@@ -288,9 +262,6 @@
                 <cfset session.auth.navs[navKey] = filterNavItems(duplicate(application.navs[navKey]))>
             </cfloop>
 
-            <!---
-            <cfset session.auth.primary_nav = filterNavItems(duplicate(application.primary_nav))>
-            <cfset session.auth.primary_navid = application.primary_navid?:''> --->
         </cfif>
     </cffunction>
 
