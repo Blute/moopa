@@ -128,15 +128,6 @@
                     "type": "many_to_many",
                     "foreign_key_table": "moo_role"
                 },
-                "current_sell_address_id":
-                {
-                    "type": "uuid",
-                    "nullable": true,
-                    "foreign_key_table": "sell_address",
-                    "html": {
-                        "hidden": true
-                    }
-                },
 
 
             ],
@@ -252,34 +243,6 @@
                     stay_logged_in = session.auth.stay_logged_in
                 }
             ) />
-
-            <!--- Migrate anonymous sell_address records to this profile --->
-            <cfif structKeyExists(session, "sessionid") AND len(session.sessionid)>
-                <cfquery name="qMigrated">
-                UPDATE sell_address
-                SET profile_id = <cfqueryparam cfsqltype="other" value="#arguments.profile_id#" />,
-                    session_id = NULL
-                WHERE session_id = <cfqueryparam cfsqltype="varchar" value="#session.sessionid#" />
-                AND profile_id IS NULL
-                RETURNING id
-                </cfquery>
-
-                <!--- Set the most recently migrated record as current if profile has no current --->
-                <cfif qMigrated.recordCount GT 0>
-                    <cfquery name="qHasCurrent">
-                    SELECT current_sell_address_id
-                    FROM moo_profile
-                    WHERE id = <cfqueryparam cfsqltype="other" value="#arguments.profile_id#" />
-                    </cfquery>
-
-                    <cfif !len(qHasCurrent.current_sell_address_id?:'')>
-                        <cfset application.lib.db.save(table_name="moo_profile", data={
-                            "id": arguments.profile_id,
-                            "current_sell_address_id": qMigrated.id
-                        }) />
-                    </cfif>
-                </cfif>
-            </cfif>
 
         </cflock>
 
