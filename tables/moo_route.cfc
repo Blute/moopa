@@ -40,7 +40,8 @@
                   "type": "relation",
                   "foreign_key_table": "moo_route_endpoint",
                   "foreign_key_field": "route_id"
-                }
+                },
+                "screenshot": {}
             }
           }
 

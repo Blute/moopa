@@ -194,7 +194,7 @@
     <cffunction name="get" output="true">
         <cfargument name="route_id" />
 
-        <cf_layout_blank>
+        <cf_layout_default show_chrome="false" show_fab="false">
 
         <style>
             /* Ensure th cells get the full height for the rotated headers */
@@ -536,7 +536,7 @@
         </script>
 
 
-        </cf_layout_blank>
+        </cf_layout_default>
     </cffunction>
 
 
