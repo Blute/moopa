@@ -1154,12 +1154,13 @@ Delete - delete
 
 
                 <cfif not structKeyExists(field, "is_nullable")>
-                    <cfif (field.primary_key?:false) OR arrayFind(table.primary_keys,field.name)>
+                    <cfif structKeyExists(field, "nullable")>
+                        <cfset field.is_nullable = field.nullable>
+                    <cfelseif (field.primary_key?:false) OR arrayFind(table.primary_keys,field.name)>
                         <cfset field.is_nullable = false>
                     <cfelse>
                         <cfset field.is_nullable = true>
                     </cfif>
-
                 </cfif>
 
                 <cfif not structKeyExists(field, "default")>
@@ -1713,13 +1714,14 @@ Delete - delete
             ) as column_default,
             is_generated,
             regexp_replace(
-                    generation_expression,
+                    COALESCE(generation_expression, ''),
                     '#this.normalizeFieldPattern#',
                     '',
                     'g'
                 ) AS generation_expression
           FROM information_schema.columns
-          WHERE table_name = <cfqueryparam value="#arguments.tablename#" cfsqltype="varchar">
+          WHERE table_schema = current_schema()
+            AND table_name = <cfqueryparam value="#arguments.tablename#" cfsqltype="varchar">
           ORDER BY ordinal_position;
         </cfquery>
         <cfreturn qColumns>
@@ -1942,22 +1944,22 @@ Delete - delete
                 <!--- <cfoutput>#table_name#.#field_name#: #code_field_schema.is_nullable# neq #column_in_db.is_nullable#</cfoutput><cfabort> --->
 
                 <cfif code_field_schema.is_nullable>
-
-                    <cfset ArrayAppend(result, {
-                        "table_name": table_name,
-                        "priority": 1,
-                        "type": "ALTER COLUMN",
-                        "title": "ALTER COLUMN: #table_name#.#field_name#",
-                        "statement": "ALTER TABLE #table_name# ALTER COLUMN #field_name# SET NOT NULL;"
-                    })>
-                <cfelse>
-
+                    <!--- Code wants nullable: DROP NOT NULL to allow nulls --->
                     <cfset ArrayAppend(result, {
                         "table_name": table_name,
                         "priority": 1,
                         "type": "ALTER COLUMN",
                         "title": "ALTER COLUMN: #table_name#.#field_name#",
                         "statement": "ALTER TABLE #table_name# ALTER COLUMN #field_name# DROP NOT NULL;"
+                    })>
+                <cfelse>
+                    <!--- Code wants NOT NULL: SET NOT NULL to disallow nulls --->
+                    <cfset ArrayAppend(result, {
+                        "table_name": table_name,
+                        "priority": 1,
+                        "type": "ALTER COLUMN",
+                        "title": "ALTER COLUMN: #table_name#.#field_name#",
+                        "statement": "ALTER TABLE #table_name# ALTER COLUMN #field_name# SET NOT NULL;"
                       })>
                 </cfif>
             </cfif>
@@ -1993,9 +1995,14 @@ Delete - delete
 
 
             <!--- GENERATED COLUMNS CAN NOT BE ALTERED. WE NEED TO DROP AND ADD A GENERATED COLUMN IN THE NEXT REFRESH. --->
-            <cfset simplifyExpression = reReplace((code_field_schema.generation_expression?:''), "#this.normalizeFieldPattern#", "", "ALL") />
+            <cfset simplifyExpression = trim(reReplace((code_field_schema.generation_expression?:''), "#this.normalizeFieldPattern#", "", "ALL")) />
+            <cfset simplifyDbExpression = trim(column_in_db.generation_expression ?: '') />
 
-            <cfif simplifyExpression neq column_in_db.generation_expression>
+            <!--- PostgreSQL rewrites TRIM(...) as TRIM(BOTH FROM ...) internally; normalize both sides --->
+            <cfset simplifyExpression = replaceNoCase(simplifyExpression, "TRIMBOTHFROM", "TRIM", "ALL") />
+            <cfset simplifyDbExpression = replaceNoCase(simplifyDbExpression, "TRIMBOTHFROM", "TRIM", "ALL") />
+
+            <cfif simplifyExpression neq simplifyDbExpression>
                 <!--- DEBUG --->
                 <!--- SELECT column_name, generation_expression FROM information_schema.columns WHERE table_name = 'your_table_name' --->
 
@@ -2011,13 +2018,19 @@ Delete - delete
                     })>
                 </cfif>
 
+                <cfset genMismatches = [{
+                    "param": "generation_expression",
+                    "db": simplifyDbExpression,
+                    "code": simplifyExpression
+                }] />
+
                 <cfset ArrayAppend(result, {
                     "table_name": table_name,
                     "priority": 6,
                     "type": "DROP COLUMN",
                     "title": "DROP COLUMN: #table_name#.#field_name#",
                     "statement": "ALTER TABLE " & table_name & " DROP COLUMN " & field_name & ";",
-                    "hint": "generation_expression: #code_field_schema.generation_expression# simplified into: #simplifyExpression# NEQ #column_in_db.generation_expression#"
+                    "mismatches": genMismatches
                   })>
 
                 <cfset columnDef = getColumnDef(code_field_schema) />
@@ -2026,7 +2039,8 @@ Delete - delete
                     "priority": 10,
                     "type": "ADD COLUMN",
                     "title": "ADD COLUMN: #table_name#.#field_name#",
-                    "statement": "ALTER TABLE " & table_name & " ADD COLUMN " & columnDef
+                    "statement": "ALTER TABLE " & table_name & " ADD COLUMN " & columnDef,
+                    "mismatches": genMismatches
                 })>
 
                 <!--- Recreate the GIN trigram index after adding the column back --->

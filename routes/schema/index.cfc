@@ -75,8 +75,14 @@
                                 <button type="button" class="btn btn-outline btn-secondary btn-sm" @click="deselectAll">Deselect All</button>
                             </div>
                         </div>
-                        <div class="overflow-x-auto">
-                            <table class="table table-sm">
+                        <div class="overflow-x-auto min-w-0">
+                            <table class="table table-sm table-fixed w-full">
+                                <colgroup>
+                                    <col class="w-8">
+                                    <col class="w-14">
+                                    <col class="w-48">
+                                    <col>
+                                </colgroup>
                                 <thead>
                                 <tr>
                                     <th>##</th>
@@ -96,25 +102,13 @@
                                                 <div class="flex items-center gap-2">
                                                     <span x-text="statement.title"></span>
                                                     <template x-if="statement.mismatches && statement.mismatches.length > 0">
-                                                        <div class="dropdown dropdown-hover dropdown-right">
-                                                            <div tabindex="0" class="badge badge-warning badge-xs cursor-pointer gap-1">
-                                                                <span x-text="statement.mismatches.length"></span> diff
-                                                            </div>
-                                                            <div tabindex="0" class="dropdown-content z-50 p-3 shadow-lg bg-base-200 rounded-lg text-xs w-max max-w-md">
-                                                                <div class="font-semibold text-warning mb-2">Mismatches:</div>
-                                                                <template x-for="mismatch in statement.mismatches">
-                                                                    <div class="mb-2 font-mono">
-                                                                        <span class="font-semibold" x-text="mismatch.param"></span>:<br>
-                                                                        <span class="text-error">db: <span x-text="mismatch.db || '(empty)'"></span></span><br>
-                                                                        <span class="text-success">code: <span x-text="mismatch.code"></span></span>
-                                                                    </div>
-                                                                </template>
-                                                            </div>
-                                                        </div>
+                                                        <button type="button" class="badge badge-warning badge-xs cursor-pointer gap-1" @click="openMismatch = statement">
+                                                            <span x-text="statement.mismatches.length"></span> diff
+                                                        </button>
                                                     </template>
                                                 </div>
                                             </td>
-                                            <td x-text="statement.statement"></td>
+                                            <td class="break-all font-mono text-xs align-top" x-text="statement.statement"></td>
                                         </tr>
                                     </template>
         <!---
@@ -131,6 +125,44 @@
                             </table>
                         </div>
                     </div>
+
+                    <!--- Mismatch modal (outside overflow, fixed positioning) --->
+                    <template x-teleport="body">
+                        <div x-show="openMismatch" x-cloak
+                            class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50"
+                            @click.self="openMismatch = null"
+                            x-transition:enter="transition ease-out duration-200"
+                            x-transition:enter-start="opacity-0"
+                            x-transition:enter-end="opacity-100"
+                            x-transition:leave="transition ease-in duration-150"
+                            x-transition:leave-start="opacity-100"
+                            x-transition:leave-end="opacity-0">
+                            <div class="bg-base-100 rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-4"
+                                @click.stop>
+                                <div class="flex justify-between items-center mb-4">
+                                    <h3 class="font-semibold text-lg" x-text="openMismatch ? openMismatch.title : ''"></h3>
+                                    <button type="button" class="btn btn-ghost btn-sm btn-circle" @click="openMismatch = null">
+                                        <i class="fal fa-times"></i>
+                                    </button>
+                                </div>
+                                <div class="font-semibold text-warning mb-2">Current vs Expected:</div>
+                                <template x-for="mismatch in (openMismatch?.mismatches || [])">
+                                    <div class="mb-4">
+                                        <div class="font-semibold mb-1 text-sm" x-text="mismatch.param"></div>
+                                        <div class="bg-error/10 border border-error/20 rounded p-2 mb-1 font-mono text-xs break-all whitespace-pre-wrap">
+                                            <span class="text-error font-semibold text-[10px] uppercase">db (current):</span>
+                                            <span class="text-error block mt-1" x-text="mismatch.db || '(empty)'"></span>
+                                        </div>
+                                        <div class="bg-success/10 border border-success/20 rounded p-2 font-mono text-xs break-all whitespace-pre-wrap">
+                                            <span class="text-success font-semibold text-[10px] uppercase">code (expected):</span>
+                                            <span class="text-success block mt-1" x-text="mismatch.code || '(empty)'"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
                     <div class="card card-border bg-base-100">
                         <div class="card-body">
                             <h2 class="card-title text-lg">Selected Statements</h2>
@@ -158,6 +190,7 @@
 
             Alpine.data("coapi", () => ({
                 statements : #serializeJson(statements)#,
+                openMismatch: null,
                 filter:{
                     table:'',
                     statement:''
