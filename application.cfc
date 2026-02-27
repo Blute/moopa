@@ -8,8 +8,11 @@
 
 
     <!--- S3 --->
-    <cfset this.s3.accesskeyid = server.system.environment.S3_accesskeyid />
-    <cfset this.s3.awssecretkey = server.system.environment.S3_awssecretkey />
+    <!--- TODO: REMOVE THIS BLOCK WHEN WE HAVE SWITCHED TO CLOUDFLARE R2 --->
+    <!--- <cfset this.s3.accesskeyid = server.system.environment.S3_accesskeyid />
+    <cfset this.s3.awssecretkey = server.system.environment.S3_awssecretkey /> --->
+
+    
     <!--- <cfset this.s3.host = server.system.environment.S3_host /> --->
 
 
