@@ -28,13 +28,18 @@ export default {
         return new Response("Expired", { status: 403 });
       }
   
-      const canonical = buildCanonical(url);
-      const expectedSig = await hmacSha256Hex(canonical, env.SIGNING_KEY_B64);
-      if (!constantTimeEqualHex(expectedSig, sig)) {
-        return new Response("Unauthorized", { status: 401 });
-      }
-  
-      const objectKey = getObjectKey(url.pathname, kind);
+    const decodedPathname = decodePathname(url.pathname);
+    if (!decodedPathname) {
+      return new Response("Bad path", { status: 400 });
+    }
+
+    const canonical = buildCanonical(url, decodedPathname);
+    const expectedSig = await hmacSha256Hex(canonical, env.SIGNING_KEY_B64);
+    if (!constantTimeEqualHex(expectedSig, sig)) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const objectKey = getObjectKey(decodedPathname, kind);
       if (!objectKey) {
         return new Response("Not found", { status: 404 });
       }
@@ -62,9 +67,9 @@ export default {
     return pathname.slice(3).trim();
   }
   
-  function buildCanonical(url) {
-    const params = [];
-    const rawQuery = url.search.startsWith("?") ? url.search.slice(1) : url.search;
+function buildCanonical(url, decodedPathname) {
+  const params = [];
+  const rawQuery = url.search.startsWith("?") ? url.search.slice(1) : url.search;
   
     for (const segment of rawQuery.split("&")) {
       if (!segment) continue;
@@ -75,11 +80,19 @@ export default {
   
       const value = equals === -1 ? "" : segment.slice(equals + 1);
       params.push([key, value]);
-    }
-    params.sort((a, b) => a[0].localeCompare(b[0]));
-    const canonicalQuery = params.map(([k, v]) => `${k}=${v}`).join("&");
-    return `${url.pathname}?${canonicalQuery}`;
   }
+  params.sort((a, b) => a[0].localeCompare(b[0]));
+  const canonicalQuery = params.map(([k, v]) => `${k}=${v}`).join("&");
+  return `${decodedPathname}?${canonicalQuery}`;
+}
+
+function decodePathname(pathname) {
+  try {
+    return decodeURIComponent(pathname);
+  } catch (_error) {
+    return "";
+  }
+}
   
   async function handleAssetProxy({ request, env, objectKey, method, url }) {
     const rangeHeader = request.headers.get("Range");
@@ -127,7 +140,8 @@ export default {
   async function handleImageTransform({ request, env, objectKey, method, url, ctx }) {
     const width = toPositiveInt(url.searchParams.get("width"));
     const height = toPositiveInt(url.searchParams.get("height"));
-    const fit = url.searchParams.get("fit") || "cover";
+    /** @type {"contain"|"cover"|"crop"|"pad"|"scale-down"|"squeeze"} */
+    const fit = normalizeImageFit(url.searchParams.get("fit"));
     const quality = toPositiveInt(url.searchParams.get("quality"));
     const ttl = getSignedTtlSeconds(url);
   
@@ -142,7 +156,7 @@ export default {
       signingKeyB64: env.SIGNING_KEY_B64
     });
   
-    const image = { fit, format: "auto" };
+    const image = { fit };
     if (width) image.width = width;
     if (height) image.height = height;
     if (quality) image.quality = quality;
@@ -260,6 +274,28 @@ export default {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return null;
     return Math.floor(n);
+  }
+
+  /**
+   * @returns {"contain"|"cover"|"crop"|"pad"|"scale-down"|"squeeze"}
+   */
+  function normalizeImageFit(value) {
+    switch ((value || "cover").toLowerCase()) {
+      case "contain":
+        return "contain";
+      case "cover":
+        return "cover";
+      case "crop":
+        return "crop";
+      case "pad":
+        return "pad";
+      case "scale-down":
+        return "scale-down";
+      case "squeeze":
+        return "squeeze";
+      default:
+        return "cover";
+    }
   }
   
   async function buildSignedUrl({ origin, pathname, params, signingKeyB64 }) {

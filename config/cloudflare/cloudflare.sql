@@ -102,6 +102,38 @@ SELECT string_agg(key || '=' || value, '&' ORDER BY key)
 FROM escaped;
 $$;
 
+CREATE OR REPLACE FUNCTION uri_encode_path(p_input text)
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+    raw_bytes bytea := convert_to(coalesce(p_input, ''), 'utf8');
+    out text := '';
+    i integer;
+    b integer;
+BEGIN
+    IF octet_length(raw_bytes) = 0 THEN
+        RETURN out;
+    END IF;
+
+    FOR i IN 0..octet_length(raw_bytes) - 1 LOOP
+        b := get_byte(raw_bytes, i);
+
+        IF (b BETWEEN 48 AND 57)
+           OR (b BETWEEN 65 AND 90)
+           OR (b BETWEEN 97 AND 122)
+           OR b IN (45, 46, 95, 126, 47) THEN
+            out := out || chr(b);
+        ELSE
+            out := out || '%' || lpad(upper(to_hex(b)), 2, '0');
+        END IF;
+    END LOOP;
+
+    RETURN out;
+END;
+$$;
+
 
 CREATE OR REPLACE FUNCTION signed_asset_url(
     p_r2_key text,
@@ -114,11 +146,13 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     kind text;
+    clean_key text;
     base_url text;
     signing_key_b64 text;
     exp_unix bigint;
     query_no_sig text;
-    path text;
+    path_raw text;
+    path_encoded text;
     canonical text;
     sig_hex text;
     signing_key bytea;
@@ -139,7 +173,9 @@ BEGIN
         ELSE 'a'
     END;
 
-    path := '/' || kind || '/' || ltrim(p_r2_key, '/');
+    clean_key := ltrim(p_r2_key, '/');
+    path_raw := '/' || kind || '/' || clean_key;
+    path_encoded := '/' || kind || '/' || uri_encode_path(clean_key);
 
     base_url := nullif(current_setting('app.assets_base_url', true), '');
     IF base_url IS NULL THEN
@@ -154,7 +190,7 @@ BEGIN
     exp_unix := signed_url_expiry(p_expiry_type);
     query_no_sig := signed_url_query(p_options, exp_unix);
 
-    canonical := path || '?' || query_no_sig;
+    canonical := path_raw || '?' || query_no_sig;
 
     signing_key_b64 := nullif(current_setting('app.signing_key_b64', true), '');
     IF signing_key_b64 IS NULL THEN
@@ -172,6 +208,6 @@ BEGIN
         'hex'
     );
 
-    RETURN base_url || path || '?' || query_no_sig || '&sig=' || sig_hex;
+    RETURN base_url || path_encoded || '?' || query_no_sig || '&sig=' || sig_hex;
 END;
 $$;
