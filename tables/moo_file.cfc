@@ -39,11 +39,14 @@
 
             <cfset res = {} />
 
-            <cfset file_extension = listLast(arguments.data.file_name,".") />
+            <cfset file_extension = lCase(listLast(arguments.data.file_name,".")) />
+            <cfif !listFindNoCase("JPG,JPEG,PNG,GIF,WEBP,SVG,TIFF,BMP,HEIF,PDF,MOV,MP4,AVI,MKV,WEBM", file_extension)>
+                <cfset file_extension = "default" />
+            </cfif>
 
             <cfset safe_filename = application.lib.core.sanitize_s3_key(arguments.data.file_name) />
             <cfset new_path = "/moo_file/#dateFormat(now(),'yyyy-mm')#/#createUniqueId()#/#safe_filename#" />
-            <cfset new_thumbnail = application.lib.imagekit.url(file_path='/icons/square-o/#file_extension#.svg', expiry=0, params={width=100, height=100}) />
+            <cfset new_thumbnail = '/_static/icons/fa/#file_extension#.svg' />
 
 
             <cfset new_file = application.lib.db.save(
@@ -73,13 +76,18 @@
 
         <cfset new_file = application.lib.db.read( table_name : 'moo_file', id : arguments.data.file_id, returnAsCFML:true ) />
 
-        <cfset file_extension = listLast(new_file.name,".") />
+        <cfset file_extension = lCase(listLast(new_file.name,".")) />
 
         <cfif listFindNoCase(
-            "JPG,JPEG,PNG,GIF,WEBP,SVG,TIFF,BMP,HEIF,PDF,MOV,MP4,AVI,MKV,WEBM",
+            "JPG,JPEG,PNG,GIF,WEBP,SVG,TIFF,BMP,HEIF",
             file_extension
         )>
-            <cfset thumbnail_url = application.lib.imagekit.url(file_path=new_file.path, expiry=0, params={width=300, height=300}, thumbnail=true) />
+            <cfset thumbnail_url = application.lib.cloudflare.signed_asset_url(
+                key = new_file.path,
+                expiry_type = "NEVER",
+                kind = "i",
+                options = { width = 300, height = 300, fit = "cover" }
+            ) />
 
             <cfset save_data = application.lib.db.save(
                     table_name : 'moo_file',

@@ -72,6 +72,7 @@
         <cfset var ts = now() />
         <cfset var result = ts />
         <cfset var exp = uCase(trim(arguments.expiry_type ?: "")) />
+        <cfset var never_exp_unix = 253402300799 />
 
         <cfswitch expression="#exp#">
             <cfcase value="MINUTE,N,EOMIN">
@@ -94,6 +95,9 @@
             </cfcase>
             <cfcase value="YEAR,Y,EOY">
                 <cfset result = createDateTime(year(ts), 12, 31, 23, 59, 59) />
+            </cfcase>
+            <cfcase value="NEVER,NONE,INFINITE,INF,PERMANENT">
+                <cfreturn never_exp_unix />
             </cfcase>
             <cfdefaultcase>
                 <cfthrow type="configuration" message="Invalid expiry type: #arguments.expiry_type#" />

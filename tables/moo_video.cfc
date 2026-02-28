@@ -26,78 +26,6 @@
 
 
 
-    <!---
-    <cfreturn application.lib.db.getService(table_name="moo_video").uploadFileToServerWithProgress(request.data) />
-     --->
-    <cffunction name="uploadFileToServerWithProgress">
-
-        <cfargument name="data" type="struct" required="true" />
-
-
-        <!--- Calling without the ID will generate the record for us to the call the function again sending the actual file --->
-        <cfif !len(arguments.data.file_id?:'')>
-
-            <cfset res = {} />
-
-            <cfset file_extension = listLast(arguments.data.file_name,".") />
-
-            <cfset safe_filename = application.lib.core.sanitize_s3_key(arguments.data.file_name) />
-            <cfset new_path = "/moo_video/#dateFormat(now(),'yyyy-mm')#/#createUniqueId()#/#safe_filename#" />
-            <cfset new_thumbnail = application.lib.imagekit.url(file_path='/icons/square-o/#file_extension#.svg', expiry=0, params={width=100, height=100}) />
-
-
-            <cfset new_video = application.lib.db.save(
-                table_name : 'moo_video',
-                data : {
-                    name : arguments.data.file_name,
-                    size : arguments.data.file_size,
-                    thumbnail: new_thumbnail,
-                    path : new_path
-                },
-                returnAsCFML:true
-            ) />
-            <cfset res.file = application.lib.db.read( table_name : 'moo_video', id : new_video.id, returnAsCFML=true ) />
-
-
-            <cfset res.presignedURL = s3generatePresignedUrl(
-                bucket= '#server.system.environment.S3_bucket#',
-                objectName = new_path,
-                httpMethod = "PUT",
-                expireDate = dateAdd('n', 120, now())
-            ) />
-
-
-            <cfreturn res />
-        </cfif>
-
-
-        <cfset new_video = application.lib.db.read( table_name : 'moo_video', id : arguments.data.file_id, returnAsCFML:true ) />
-
-        <cfset file_extension = listLast(new_video.name,".") />
-
-        <cfif listFindNoCase(
-            "JPG,JPEG,PNG,GIF,WEBP,SVG,TIFF,BMP,HEIF,PDF,MOV,MP4,AVI,MKV,WEBM",
-            file_extension
-        )>
-            <cfset thumbnail_url = application.lib.imagekit.url(file_path=new_video.path, expiry=0, params={width=300, height=300}, thumbnail=true) />
-
-            <cfset save_data = application.lib.db.save(
-                    table_name : 'moo_video',
-                    data : {
-                        id : arguments.data.file_id,
-                        thumbnail: thumbnail_url
-                    },
-                    returnAsCFML:true
-                ) />
-
-            <cfset new_video = application.lib.db.read( table_name : 'moo_video', id : arguments.data.file_id, returnAsCFML:true ) />
-        </cfif>
-
-
-        <cfreturn new_video>
-    </cffunction>
-
-
     <cffunction name="getVideoMetadata" access="private" returntype="struct" output="false">
         <cfargument name="video_record" type="struct" required="true" />
 
@@ -289,9 +217,12 @@
 
         <cfset var file_name = trim(arguments.data.file_name ?: "") />
         <cfset var extension = lCase(listLast(file_name, ".")) />
+        <cfif !listFindNoCase("JPG,JPEG,PNG,GIF,WEBP,SVG,TIFF,BMP,HEIF,PDF,MOV,MP4,AVI,MKV,WEBM", extension)>
+            <cfset extension = "default" />
+        </cfif>
         <cfset var safe_filename = application.lib.core.sanitize_s3_key(file_name) />
         <cfset var new_path = "/moo_video/#dateFormat(now(),'yyyy-mm')#/#createUniqueId()#/#safe_filename#" />
-        <cfset var new_thumbnail = application.lib.imagekit.url(file_path='/icons/square-o/#extension#.svg', expiry=0, params={width=100, height=100}) />
+        <cfset var new_thumbnail = '/_static/icons/fa/#extension#.svg' />
         <cfset var new_video = application.lib.db.save(
             table_name = "moo_video",
             data = {
