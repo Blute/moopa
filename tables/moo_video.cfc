@@ -351,9 +351,18 @@
         <cfset var video_record = application.lib.db.read(table_name = "moo_video", id = clean_video_id, returnAsCFML = true) />
         <cfset var metadata = getVideoMetadata(video_record) />
         <cfset var stream_id = trim(video_record.cloudflare_stream_id ?: "") />
+        <cfset var cloudflare_delete = {} />
 
         <cfif len(stream_id)>
-            <cfset requestCloudflare(method = "DELETE", path = "/stream/#urlEncodedFormat(stream_id)#") />
+            <cfset cloudflare_delete = requestCloudflare(method = "DELETE", path = "/stream/#urlEncodedFormat(stream_id)#") />
+
+            <cfif NOT (cloudflare_delete.details.success ?: false)>
+                <cfreturn {
+                    success: false,
+                    error: "Failed to delete Cloudflare stream",
+                    details: cloudflare_delete.details ?: {}
+                } />
+            </cfif>
         </cfif>
 
         <cfset metadata.deleted_at = dateTimeFormat(now(), "yyyy-mm-dd HH:nn:ss") />
