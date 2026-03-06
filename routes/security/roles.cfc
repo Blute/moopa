@@ -513,8 +513,8 @@
 
                         showNotification(message, type = 'info') {
                             // Simple notification - you can replace with your preferred notification system
-                            if (window.notyf) {
-                                window.notyf.open({
+                            if (window.toast) {
+                                window.toast({
                                     type: type,
                                     message: message,
                                     duration: 3000,

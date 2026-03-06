@@ -212,7 +212,7 @@
                         copyToClipboard() {
                             navigator.clipboard.writeText(this.current_record.line).then(() => {
 
-                                window.notyf.open({
+                                window.toast({
                                     type:'default',
                                     message:'Text copied to clipboard!',
                                     duration:1000,

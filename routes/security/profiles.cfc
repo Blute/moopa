@@ -456,8 +456,8 @@
                             this.$refs.editModal.close();
                             this.current_record = {};
                             await this.load();
-                            if (window.notyf?.open) {
-                                window.notyf.open({ type: 'success', message: 'Profile saved successfully', duration: 2000 });
+                            if (window.toast) {
+                                window.toast({ type: 'success', message: 'Profile saved successfully', duration: 2000 });
                             }
                         },
 
@@ -481,8 +481,8 @@
                             this.$refs.deleteModal.close();
                             this.current_record = {};
                             await this.load();
-                            if (window.notyf?.open) {
-                                window.notyf.open({ type: 'success', message: 'Profile deleted', duration: 2000 });
+                            if (window.toast) {
+                                window.toast({ type: 'success', message: 'Profile deleted', duration: 2000 });
                             }
                         }
                     }));

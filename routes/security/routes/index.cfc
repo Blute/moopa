@@ -314,8 +314,8 @@
                 copy_url(url) {
                   if (!url) return;
                   navigator.clipboard.writeText(url).then(() => {
-                    if (window.notyf?.open) {
-                      window.notyf.open({
+                    if (window.toast) {
+                      window.toast({
                         type: 'success',
                         message: 'URL copied to clipboard',
                         duration: 1500,
