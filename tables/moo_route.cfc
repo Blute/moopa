@@ -124,6 +124,7 @@ TODO: need to check if old way works for the following and which has precedence:
                 <cfset stRoute.endpoints = {} />
                 <cfset stRoute.md = duplicate(getMetaData(createObject("component", "#stRoute.componentPath#"))) />
                 <cfset stRoute['open_to'] = stRoute.md['open_to']?:'security' /> <!--- public,bearer,logged_in,security --->
+                <cfset stRoute['auth_type'] = stRoute.md['auth_type']?:stRoute.md['auth']?:'' />
 
                 <!--- Need to determine if the route is already defined --->
 
@@ -135,7 +136,8 @@ TODO: need to check if old way works for the following and which has precedence:
 
                 <cfloop array="#stRoute.md.functions#" item="fn">
                     <cfset stRoute.endpoints[fn.name] = fn />
-                    <cfset stRoute.endpoints[fn.name]['open_to'] = stRoute.endpoints[fn.name]['open_to']?:'security' /> <!--- public,bearer,logged_in,security --->
+                    <cfset stRoute.endpoints[fn.name]['open_to'] = stRoute.endpoints[fn.name]['open_to']?:stRoute['open_to'] /> <!--- public,bearer,logged_in,security --->
+                    <cfset stRoute.endpoints[fn.name]['auth_type'] = stRoute.endpoints[fn.name]['auth_type']?:stRoute.endpoints[fn.name]['auth']?:stRoute['auth_type'] />
                 </cfloop>
 
 
@@ -448,6 +450,24 @@ TODO: need to check if old way works for the following and which has precedence:
         <cfreturn response>
     </cffunction>
 
+    <cffunction name="isAuthTypeAllowed" access="private" returntype="boolean" output="false">
+        <cfargument name="required_auth_types" required="true" />
+        <cfargument name="profile_auth_type" required="false" default="" />
+
+        <cfset var normalizedRequiredAuthTypes = trim(arguments.required_auth_types ?: "") />
+        <cfset var normalizedProfileAuthType = lCase(trim(arguments.profile_auth_type ?: "")) />
+
+        <cfif !len(normalizedRequiredAuthTypes)>
+            <cfreturn true />
+        </cfif>
+
+        <cfif !len(normalizedProfileAuthType)>
+            <cfreturn false />
+        </cfif>
+
+        <cfreturn listFindNoCase(normalizedRequiredAuthTypes, normalizedProfileAuthType) GT 0 />
+    </cffunction>
+
 
 
     <cffunction name="checkAccess">
@@ -471,9 +491,13 @@ TODO: need to check if old way works for the following and which has precedence:
             </cfif>
         </cfif>
 
-        <cfset open_to  =   arguments.route_data.stRoute.md.open_to ?:
-                            arguments.route_data.stRoute.endpoints[arguments.endpoint]['open_to'] ?:
+        <cfset open_to  =   arguments.route_data.stRoute.endpoints[arguments.endpoint]['open_to'] ?:
+                            arguments.route_data.stRoute.md.open_to ?:
                             'security' />
+
+        <cfset required_auth_types = arguments.route_data.stRoute.endpoints[arguments.endpoint]['auth_type'] ?:
+                                    arguments.route_data.stRoute.md.auth_type ?:
+                                    '' />
 
 
         <!--- Public routes are always accessible --->
@@ -495,6 +519,18 @@ TODO: need to check if old way works for the following and which has precedence:
 
         <!--- Must be logged in for remaining checks --->
         <cfif !application.lib.auth.isLoggedIn()>
+            <cfreturn false />
+        </cfif>
+
+
+        <!--- sysadmin bypass --->
+        <cfif arguments.sysadmin_has_access AND application.lib.auth.isSysAdmin()>
+            <cfreturn true />
+        </cfif>
+
+
+        <!--- auth_type restriction --->
+        <cfif !isAuthTypeAllowed(required_auth_types, session.auth.profile.auth_type ?: '')>
             <cfreturn false />
         </cfif>
 
@@ -574,19 +610,6 @@ TODO: need to check if old way works for the following and which has precedence:
         <cfif qSecurityCheck.recordcount>
             <cfreturn true />
         </cfif>
-
-
-
-
-        <!--- sysadmin check --->
-        <cfif arguments.sysadmin_has_access AND application.lib.auth.isSysAdmin()>
-            <cfreturn true />
-        </cfif>
-
-
-
-
-
         <cfreturn false />
     </cffunction>
 

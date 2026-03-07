@@ -54,22 +54,6 @@
                         "type": "switch"
                     }
                 },
-                "external_auth_id": {
-                    "label": "External Auth ID",
-                    "type": "varchar",
-                    "unique": true,
-                    "searchable": true,
-                    "html": {
-                        "placeholder": "user_2abc123..."
-                    }
-                },
-                "external_auth_payload": {
-                    "label": "External Auth Payload",
-                    "type": "jsonb",
-                    "html": {
-                        "hidden": true
-                    }
-                },
                 "dob":
                 {
                     "label": "Date Of Birth",
@@ -128,6 +112,30 @@
                     "type": "many_to_many",
                     "foreign_key_table": "moo_role"
                 },
+                "auth_type":
+                {
+                    "type": "varchar",
+                    "default": "'moopa'",
+                    "html": {
+                        "type": "text"
+                    }
+                },
+                "external_auth_id": {
+                    "label": "External Auth ID",
+                    "type": "varchar",
+                    "unique": true,
+                    "searchable": true,
+                    "html": {
+                        "placeholder": "user_2abc123..."
+                    }
+                },
+                "external_auth_payload": {
+                    "label": "External Auth Payload",
+                    "type": "jsonb",
+                    "html": {
+                        "hidden": true
+                    }
+                }
 
 
             ],
@@ -166,7 +174,7 @@
             <cfset profile_to_login = application.lib.db.read(
                 table_name = "moo_profile",
                 id = arguments.profile_id,
-                field_list = "id,full_name,email,mobile,profile_avatar_id,profile_picture_id,can_login,roles",
+                field_list = "id,full_name,email,mobile,auth_type,profile_avatar_id,profile_picture_id,can_login,roles",
                 returnAsCFML=true
             ) />
 
