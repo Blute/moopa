@@ -126,6 +126,72 @@
     </cffunction>
 
 
+    <cffunction name="generateVerificationCode" access="public" output="false" returntype="string">
+        <cfargument name="length" type="numeric" required="false" default="6" />
+
+        <cfset var code = "" />
+        <cfset var i = 0 />
+
+        <cfloop from="1" to="#arguments.length#" index="i">
+            <cfset code &= randRange(0, 9) />
+        </cfloop>
+
+        <cfreturn code />
+    </cffunction>
+
+
+    <cffunction name="hashCode" access="public" output="false" returntype="string">
+        <cfargument name="code" type="string" required="true" />
+        <cfargument name="salt" type="string" required="true" />
+
+        <cfreturn lCase(hash("#arguments.salt#:#trim(arguments.code)#", "SHA-256")) />
+    </cffunction>
+
+
+    <cffunction name="normalizeRedirectRoute" access="public" output="false" returntype="string">
+        <cfargument name="route" type="string" required="true" />
+        <cfargument name="fallback" type="string" required="false" default="" />
+
+        <cfset var normalizedRoute = trim(arguments.route ?: "") />
+
+        <cfif !len(normalizedRoute)>
+            <cfreturn arguments.fallback />
+        </cfif>
+
+        <cfif left(normalizedRoute, 1) NEQ "/" OR left(normalizedRoute, 2) EQ "//">
+            <cfreturn arguments.fallback />
+        </cfif>
+
+        <cfreturn normalizedRoute />
+    </cffunction>
+
+
+    <cffunction name="getRedirectUrl" access="public" output="false" returntype="string">
+        <cfargument name="clear" type="boolean" required="false" default="false" />
+        <cfargument name="fallback" type="string" required="false" default="/" />
+
+        <cfset var redirectUrl = arguments.fallback />
+
+        <cfif structKeyExists(session, "login_redirect_route")>
+            <cfset redirectUrl = normalizeRedirectRoute(session.login_redirect_route ?: "", arguments.fallback) />
+            <cfif arguments.clear>
+                <cfset structDelete(session, "login_redirect_route") />
+            </cfif>
+        </cfif>
+
+        <cfreturn redirectUrl />
+    </cffunction>
+
+
+    <cffunction name="isSuccessfulStatusCode" access="public" output="false" returntype="boolean">
+        <cfargument name="statusCode" type="string" required="true" />
+
+        <cfset var parsedCode = val(listFirst(trim(arguments.statusCode ?: ""), " ")) />
+
+        <cfreturn parsedCode GTE 200 AND parsedCode LT 300 />
+    </cffunction>
+
+
 
 
 
