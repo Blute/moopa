@@ -70,7 +70,7 @@
                   <div>
                     <label class="block text-sm font-medium mb-2">Search</label>
                     <label class="input input-bordered w-full">
-                      <span class="fal fa-search text-base-content/50"></span>
+                      <cf_icon icon="fal fa-search text-base-content/50" />
                       <input type="text" class="grow" placeholder="Search routes..." x-model.debounce="filters.q">
                       <button
                         x-show="filters.q"
@@ -78,7 +78,7 @@
                         @click="filters.q = ''"
                         class="text-base-content/40 hover:text-base-content/70"
                       >
-                        <span class="fal fa-times"></span>
+                        <cf_icon icon="fal fa-times" />
                       </button>
                     </label>
                   </div>
@@ -87,7 +87,7 @@
                 <!-- Filter Footer -->
                 <div class="px-5 py-4 border-t border-base-200 bg-base-200/30 rounded-b-2xl">
                   <button class="btn btn-outline btn-block" @click="reset_filters()" title="Reset filters">
-                    <span class="fal fa-refresh"></span>
+                    <cf_icon icon="fal fa-refresh" />
                     Reset Filters
                   </button>
                 </div>
@@ -103,7 +103,7 @@
                     <div class="flex items-center gap-2">
                       <span>Route</span>
                       <button class="btn btn-ghost btn-xs" @click="toggle_all()">
-                        <span class="fal" :class="is_all_expanded() ? 'fa-compress-alt' : 'fa-expand-alt'"></span>
+                        <cf_icon icon="fal" x-bind:class="is_all_expanded() ? 'fa-compress-alt' : 'fa-expand-alt'" />
                         <span x-text="is_all_expanded() ? 'Collapse' : 'Expand'"></span>
                       </button>
                     </div>
@@ -130,14 +130,14 @@
                         <div class="flex items-center min-w-0" :style="`padding-left: ${row.depth * 24}px`">
                           <template x-if="row.node.children.length">
                             <button class="btn btn-ghost btn-xs btn-square" @click="toggle(row.node.id)">
-                              <span class="fal" :class="is_expanded(row.node.id) ? 'fa-angle-down' : 'fa-angle-right'"></span>
+                              <cf_icon icon="fal" x-bind:class="is_expanded(row.node.id) ? 'fa-angle-down' : 'fa-angle-right'" />
                             </button>
                           </template>
                           <template x-if="!row.node.children.length">
-                            <span class="w-6 text-center text-base-content/40"><span class="fal fa-file"></span></span>
+                            <span class="w-6 text-center text-base-content/40"><cf_icon icon="fal fa-file" /></span>
                           </template>
                           <template x-if="row.node.children.length">
-                            <span class="ms-1 text-base-content/60"><span class="fal" :class="is_expanded(row.node.id) ? 'fa-folder-open' : 'fa-folder'"></span></span>
+                            <span class="ms-1 text-base-content/60"><cf_icon icon="fal" x-bind:class="is_expanded(row.node.id) ? 'fa-folder-open' : 'fa-folder'" /></span></span>
                           </template>
                           <span class="ms-2 font-medium truncate" x-text="row.node.name"></span>
                           <span class="ms-2 text-xs text-base-content/50 font-mono truncate cursor-pointer hover:text-primary"
@@ -161,7 +161,7 @@
                         <div class="flex items-center justify-end">
                           <template x-if="row.node.route">
                             <button class="btn btn-primary btn-soft btn-sm" @click="open_secure(row.node.route)">
-                              <span class="fal fa-shield"></span>
+                              <cf_icon icon="fal fa-shield" />
                               Manage
                             </button>
                           </template>

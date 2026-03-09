@@ -102,7 +102,7 @@
                         <div class="flex items-center justify-between px-5 pt-5">
                             <div class="inline-flex items-center gap-3">
                                 <label class="input input-sm">
-                                    <span class="fal fa-search text-base-content/80 text-sm"></span>
+                                    <cf_icon icon="fal fa-search text-base-content/80 text-sm" />
                                     <input
                                         class="w-24 sm:w-36"
                                         placeholder="Search roles..."

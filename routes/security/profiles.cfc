@@ -201,16 +201,16 @@
                         <div class="flex items-center justify-between px-5 pt-5">
                             <div class="inline-flex items-center gap-3">
                                 <label class="input input-sm" @input.debounce.500ms="load()" @change.stop>
-                                    <span class="fal fa-search text-base-content/80"></span>
+                                    <cf_icon icon="fal fa-search text-base-content/80" />
                                     <input type="text" class="w-48" placeholder="Search profiles..." x-model="filters.term">
                                 </label>
                                 <button class="btn btn-ghost btn-sm" @click="resetFilters()" title="Clear filters">
-                                    <span class="fal fa-times"></span>
+                                    <cf_icon icon="fal fa-times" />
                                 </button>
                             </div>
                             <div class="inline-flex items-center gap-3">
                                 <button class="btn btn-primary btn-sm" @click="addNew">
-                                    <span class="fal fa-plus"></span>
+                                    <cf_icon icon="fal fa-plus" />
                                     New Profile
                                 </button>
                             </div>
@@ -282,9 +282,9 @@
                                                 <td>
                                                     <div class="flex items-center gap-2 flex-wrap">
                                                         <!-- Login Status -->
-                                                        <span class="fal fa-right-to-bracket"
-                                                              :class="item.can_login ? 'text-success' : 'text-base-content/30'"
-                                                              :title="item.can_login ? 'Can Login' : 'Cannot Login'"></span>
+                                                        <cf_icon icon="fal fa-right-to-bracket"
+                                                              x-bind:class="item.can_login ? 'text-success' : 'text-base-content/30'"
+                                                              x-bind:title="item.can_login ? 'Can Login' : 'Cannot Login'" />
                                                         <!-- Employee Badge -->
                                                         <template x-if="item.is_employee">
                                                             <span class="badge badge-sm badge-soft badge-info capitalize" x-text="item.employee_type || 'employee'"></span>
@@ -302,11 +302,11 @@
                                                 <td>
                                                     <div class="flex items-center justify-end gap-1">
                                                         <button class="btn btn-ghost btn-sm btn-square" @click.stop="select(item)" title="Edit">
-                                                            <span class="fal fa-pencil text-base-content/70"></span>
+                                                            <cf_icon icon="fal fa-pencil text-base-content/70" />
                                                         </button>
 
                                                         <button class="btn btn-ghost btn-sm btn-square text-error" @click.stop="openDeleteModal(item)" title="Delete">
-                                                            <span class="fal fa-trash"></span>
+                                                            <cf_icon icon="fal fa-trash" />
                                                         </button>
                                                     </div>
                                                 </td>
@@ -316,7 +316,7 @@
                                         <template x-if="!loading && records.length === 0">
                                             <tr>
                                                 <td colspan="6" class="text-center py-8 text-base-content/60">
-                                                    <span class="fal fa-users fa-2x mb-2 block"></span>
+                                                    <cf_icon icon="fal fa-users fa-2x mb-2 block" />
                                                     No profiles found
                                                 </td>
                                             </tr>
@@ -334,7 +334,7 @@
                             <h3 class="text-lg font-semibold" x-text="current_record.id ? 'Edit Profile' : 'New Profile'"></h3>
                             <form method="dialog">
                                 <button class="btn btn-sm btn-ghost btn-circle" aria-label="Close">
-                                    <span class="fal fa-times"></span>
+                                    <cf_icon icon="fal fa-times" />
                                 </button>
                             </form>
                         </div>
@@ -350,7 +350,7 @@
                             <cf_table_controls table_name="moo_profile" fields="profile_picture_id" />
 
                             <button class="btn btn-outline btn-sm" @click="generateAvatar(current_record)">
-                                <span class="fal fa-wand-magic-sparkles"></span>
+                                <cf_icon icon="fal fa-wand-magic-sparkles" />
                                 Generate Avatar
                             </button>
 
@@ -372,7 +372,7 @@
                                 <button class="btn btn-ghost">Cancel</button>
                             </form>
                             <button class="btn btn-primary" @click="handleSave">
-                                <span class="fal fa-check"></span>
+                                <cf_icon icon="fal fa-check" />
                                 Save
                             </button>
                         </div>
@@ -386,7 +386,7 @@
                 <dialog id="delete_modal" class="modal" x-ref="deleteModal">
                     <div class="modal-box max-w-sm text-center">
                         <div class="py-4">
-                            <span class="fal fa-triangle-exclamation fa-3x text-error mb-4 block"></span>
+                            <cf_icon icon="fal fa-triangle-exclamation fa-3x text-error mb-4 block" />
                             <h3 class="text-lg font-semibold">Delete Profile</h3>
                             <p class="text-base-content/70 mt-2">
                                 Are you sure you want to delete <span class="font-medium" x-text="current_record.full_name"></span>?
@@ -398,7 +398,7 @@
                                 <button class="btn btn-ghost">Cancel</button>
                             </form>
                             <button class="btn btn-error" @click="deleteRecord">
-                                <span class="fal fa-trash"></span>
+                                <cf_icon icon="fal fa-trash" />
                                 Delete
                             </button>
                         </div>
