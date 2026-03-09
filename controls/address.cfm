@@ -68,7 +68,7 @@ The address object stored in the model will contain (from GET /v1/predictive/add
                     type="button"
                     title="Clear address"
                 >
-                    <i class="fa-regular fa-xmark"></i>
+                    <cf_icon icon="fa-regular fa-xmark" />
                 </button>
             </div>
         </template>
@@ -82,7 +82,7 @@ The address object stored in the model will contain (from GET /v1/predictive/add
                     :style="`anchor-name: --${$id('addr-anchor')}`"
                 >
                     <template x-if="!loading">
-                        <i class="fa-regular fa-magnifying-glass text-base-content/50"></i>
+                        <cf_icon icon="fa-regular fa-magnifying-glass text-base-content/50" />
                     </template>
                     <template x-if="loading">
                         <span class="loading loading-spinner loading-sm"></span>
@@ -108,7 +108,7 @@ The address object stored in the model will contain (from GET /v1/predictive/add
                         @click="searchQuery = ''; suggestions = []; closePopover();"
                         tabindex="-1"
                     >
-                        <i class="fa-regular fa-xmark"></i>
+                        <cf_icon icon="fa-regular fa-xmark" />
                     </button>
                 </label>
 
@@ -128,7 +128,7 @@ The address object stored in the model will contain (from GET /v1/predictive/add
 
                     <!--- Error state --->
                     <div x-show="error" class="px-4 py-3 text-error text-sm">
-                        <i class="fa-regular fa-circle-exclamation mr-1"></i>
+                        <cf_icon icon="fa-regular fa-circle-exclamation mr-1" />
                         <span x-text="error"></span>
                     </div>
 
@@ -147,7 +147,7 @@ The address object stored in the model will contain (from GET /v1/predictive/add
                                     :class="{'active': highlightedIndex === index}"
                                     class="flex items-center gap-2 py-2"
                                 >
-                                    <i class="fa-regular fa-location-dot text-base-content/50 flex-shrink-0"></i>
+                                    <cf_icon icon="fa-regular fa-location-dot text-base-content/50 flex-shrink-0" />
                                     <span x-text="suggestion.full"></span>
                                 </a>
                             </li>

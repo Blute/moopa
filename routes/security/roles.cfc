@@ -115,7 +115,7 @@
 
                             </div>
                             <button class="btn btn-sm btn-primary" @click="addNew">
-                                <i class="fal fa-plus"></i>
+                                <cf_icon icon="fal fa-plus" />
                                 <span class="hidden sm:inline">New Role</span>
                             </button>
                         </div>
@@ -143,7 +143,7 @@
                                                     class="badge badge-ghost hover:badge-primary cursor-pointer gap-1.5 transition-colors"
                                                     :class="{ 'badge-outline': item.user_count === 0 }"
                                                 >
-                                                    <i class="fal fa-users text-xs"></i>
+                                                    <cf_icon icon="fal fa-users text-xs" />
                                                     <span x-text="item.user_count"></span>
                                                 </button>
                                             </td>
@@ -153,16 +153,16 @@
                                                     class="badge badge-ghost hover:badge-secondary cursor-pointer gap-1.5 transition-colors"
                                                     :class="{ 'badge-outline': item.route_count === 0 }"
                                                 >
-                                                    <i class="fal fa-route text-xs"></i>
+                                                    <cf_icon icon="fal fa-route text-xs" />
                                                     <span x-text="item.route_count"></span>
                                                 </button>
                                             </td>
                                             <td>
                                                 <button @click="select(item)" class="btn btn-square btn-ghost btn-sm" aria-label="Edit">
-                                                    <i class="fal fa-pencil text-base-content/80"></i>
+                                                    <cf_icon icon="fal fa-pencil text-base-content/80" />
                                                 </button>
                                                 <button @click="confirmDelete(item)" class="btn btn-square btn-ghost btn-sm" aria-label="Delete">
-                                                    <i class="fal fa-trash text-error/80"></i>
+                                                    <cf_icon icon="fal fa-trash text-error/80" />
                                                 </button>
                                             </td>
                                         </tr>
@@ -173,12 +173,12 @@
 
                         <!-- Empty State -->
                         <div x-show="records.length === 0" class="text-center py-16">
-                            <i class="fal fa-users text-base-content/30 text-5xl"></i>
+                            <cf_icon icon="fal fa-users text-base-content/30 text-5xl" />
                             <h3 class="mt-2 text-sm font-medium">No roles found</h3>
                             <p class="mt-1 text-sm text-base-content/60">Try adjusting your search or create a new role</p>
                             <div class="mt-6">
                                 <button @click="addNew" class="btn btn-primary">
-                                    <i class="fal fa-plus"></i>
+                                    <cf_icon icon="fal fa-plus" />
                                     New Role
                                 </button>
                             </div>
@@ -220,7 +220,7 @@
                                 Cancel
                             </button>
                             <button type="button" @click="handleSave" class="btn btn-primary">
-                                <i class="fal fa-save"></i>
+                                <cf_icon icon="fal fa-save" />
                                 Save
                             </button>
                         </div>
@@ -235,7 +235,7 @@
                     <div class="modal-box">
                         <div class="flex items-start gap-4">
                             <div class="flex-shrink-0 w-10 h-10 rounded-full bg-error/10 flex items-center justify-center">
-                                <i class="fal fa-exclamation-triangle text-error"></i>
+                                <cf_icon icon="fal fa-exclamation-triangle text-error" />
                             </div>
                             <div>
                                 <h3 class="text-lg font-semibold">Delete Role</h3>
@@ -248,7 +248,7 @@
                                 Cancel
                             </button>
                             <button type="button" @click="handleDelete" class="btn btn-error">
-                                <i class="fal fa-trash"></i>
+                                <cf_icon icon="fal fa-trash" />
                                 Delete
                             </button>
                         </div>
@@ -266,7 +266,7 @@
                                 Users with role: <span class="text-primary" x-text="usersModalRole?.name"></span>
                             </h3>
                             <button @click="showUsersModal = false" class="btn btn-sm btn-circle btn-ghost">
-                                <i class="fal fa-times"></i>
+                                <cf_icon icon="fal fa-times" />
                             </button>
                         </div>
 
@@ -298,7 +298,7 @@
                             <!-- Empty state -->
                             <template x-if="roleUsers.length === 0">
                                 <div class="text-center py-8">
-                                    <i class="fal fa-user-slash text-base-content/30 text-4xl"></i>
+                                    <cf_icon icon="fal fa-user-slash text-base-content/30 text-4xl" />
                                     <p class="mt-2 text-sm text-base-content/60">No users have this role</p>
                                 </div>
                             </template>
@@ -323,7 +323,7 @@
                                 Routes for role: <span class="text-secondary" x-text="routesModalRole?.name"></span>
                             </h3>
                             <button @click="showRoutesModal = false" class="btn btn-sm btn-circle btn-ghost">
-                                <i class="fal fa-times"></i>
+                                <cf_icon icon="fal fa-times" />
                             </button>
                         </div>
 
@@ -339,7 +339,7 @@
                                     <template x-for="route in roleRoutes" :key="route.id">
                                         <div class="flex items-center gap-3 py-3">
                                             <div class="flex-shrink-0 w-8 h-8 rounded bg-secondary/10 flex items-center justify-center">
-                                                <i class="fal fa-route text-secondary text-sm"></i>
+                                                <cf_icon icon="fal fa-route text-secondary text-sm" />
                                             </div>
                                             <div class="flex-1 min-w-0">
                                                 <p class="font-mono text-sm font-medium truncate" x-text="route.url"></p>
@@ -353,7 +353,7 @@
                             <!-- Empty state -->
                             <template x-if="roleRoutes.length === 0">
                                 <div class="text-center py-8">
-                                    <i class="fal fa-map-signs text-base-content/30 text-4xl"></i>
+                                    <cf_icon icon="fal fa-map-signs text-base-content/30 text-4xl" />
                                     <p class="mt-2 text-sm text-base-content/60">No routes assigned to this role</p>
                                 </div>
                             </template>
