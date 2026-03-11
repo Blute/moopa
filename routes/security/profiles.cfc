@@ -145,7 +145,7 @@
 
         <cfreturn application.lib.db.search(
             table_name = "moo_profile",
-            field_list = "id,full_name,email,mobile,address,roles,is_employee,employee_type,can_login,hero_employee_id,hero_employee_number,profile_picture_id,profile_avatar_id,external_auth_id",
+            field_list = "id,full_name,email,mobile,address,roles,is_employee,employee_type,can_login,profile_picture_id,profile_avatar_id,external_auth_id,last_login_at",
             q = searchTerm,
             limit = 100,
             select_append = "COALESCE((
@@ -234,6 +234,7 @@
                                             <th>Roles</th>
                                             <th>Status</th>
                                             <th>External Auth ID</th>
+                                            <th>Last Login</th>
                                             <th class="text-end">Actions</th>
                                         </tr>
                                     </thead>
@@ -297,6 +298,10 @@
                                                 <!-- External Auth ID -->
                                                 <td>
                                                     <span class="text-xs font-mono text-base-content/70" x-text="item.external_auth_id || '—'"></span>
+                                                </td>
+                                                <!-- Last Login -->
+                                                <td>
+                                                    <span class="text-xs font-mono text-base-content/70" x-text="prettyDate(item.last_login_at) || '—'" :title="prettyDateTitle(item.last_login_at) || '—'"></span>
                                                 </td>
                                                 <!-- Actions -->
                                                 <td>

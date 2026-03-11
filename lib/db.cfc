@@ -1104,7 +1104,7 @@ Delete - delete
                                                         "index": true,
                                                         "foreign_key_table": "moo_profile",
                                                         "foreign_key_field": "id",
-                                                        "foreign_key_onDelete": "NO ACTION",
+                                                        "foreign_key_onDelete": "SET NULL",
                                                         "foreign_key_onUpdate": "NO ACTION",
                                                         "html": {
                                                             "type": "input_many_to_one"
@@ -1120,7 +1120,7 @@ Delete - delete
                                                         "index": true,
                                                         "foreign_key_table": "moo_profile",
                                                         "foreign_key_field": "id",
-                                                        "foreign_key_onDelete": "NO ACTION",
+                                                        "foreign_key_onDelete": "SET NULL",
                                                         "foreign_key_onUpdate": "NO ACTION",
                                                         "html": {
                                                             "type": "input_many_to_one"

@@ -11,6 +11,12 @@
             "order_by": "created_at desc",
             "searchable_fields": "mobile",
             "fields": {
+                "profile_id": {
+                    "type": "uuid",
+                    "nullable": true,
+                    "foreign_key_table": "moo_profile",
+                    "foreign_key_onDelete": "SET NULL"
+                },
                 "mobile": {},
                 "status": {},
                 "stay_logged_in": {"type":"bool", "default": false},

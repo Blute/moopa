@@ -135,6 +135,13 @@
                     "html": {
                         "hidden": true
                     }
+                },
+                "last_login_at": {
+                    "type": "timestamptz",
+                    "nullable": true,
+                    "html": {
+                        "type": "datetime"
+                    }
                 }
 
 
