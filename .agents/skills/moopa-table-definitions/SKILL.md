@@ -408,3 +408,4 @@ Visit `/schema/` to compare code definitions with database and generate ALTER st
 6. Default values use SQL syntax: strings need quotes `"'value'"`, booleans are `"true"/"false"`
 7. Use `int4` for integers, NOT `int` - the framework only recognizes `int2`, `int4`, `int8`
 8. Use `timestamptz` for timestamps (not `timestamp`)
+9. **Never use PostgreSQL reserved words as column names** — the framework does not quote column names in generated SQL. Common reserved words to avoid: `references`, `user`, `order`, `group`, `table`, `column`, `check`, `key`, `default`, `index`, `comment`, `primary`, `foreign`, `all`, `select`, `where`, `limit`, `offset`, `grant`. Prefix with a domain qualifier instead (e.g. `email_references` instead of `references`, `user_role` instead of `role`)
