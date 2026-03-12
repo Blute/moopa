@@ -142,19 +142,36 @@
     <cffunction name="search">
 
         <cfset searchTerm = request.data.filter.term?:'' />
+        <cfset authTypeFilter = request.data.filter.auth_type?:'' />
 
-        <cfreturn application.lib.db.search(
-            table_name = "moo_profile",
-            field_list = "id,full_name,email,mobile,address,roles,is_employee,employee_type,can_login,profile_picture_id,profile_avatar_id,external_auth_id,last_login_at",
-            q = searchTerm,
-            limit = 100,
-            select_append = "COALESCE((
-                SELECT json_agg(moo_role.name ORDER BY moo_role.name)
-                FROM moo_profile_roles
-                INNER JOIN moo_role ON moo_role.id = moo_profile_roles.foreign_id
-                WHERE moo_profile_roles.primary_id = moo_profile.id
-            ), '[]') AS role_labels"
-        ) />
+        <cfquery name="qData">
+        SELECT COALESCE(array_to_json(array_agg(row_to_json(data)))::text, '[]') AS recordset
+        FROM (
+            SELECT #application.lib.db.select(table_name="moo_profile", field_list="id,full_name,email,mobile,address,roles,is_employee,employee_type,can_login,profile_picture_id,profile_avatar_id,auth_type,external_auth_id,last_login_at")#,
+                COALESCE((
+                    SELECT json_agg(moo_role.name ORDER BY moo_role.name)
+                    FROM moo_profile_roles
+                    INNER JOIN moo_role ON moo_role.id = moo_profile_roles.foreign_id
+                    WHERE moo_profile_roles.primary_id = moo_profile.id
+                ), '[]') AS role_labels
+            FROM moo_profile
+            WHERE 1=1
+            <cfif len(searchTerm)>
+                AND <cfqueryparam cfsqltype="varchar" value="#searchTerm#" /> <% search_text
+            </cfif>
+            <cfif len(authTypeFilter)>
+                AND moo_profile.auth_type = <cfqueryparam cfsqltype="varchar" value="#authTypeFilter#" />
+            </cfif>
+            <cfif len(searchTerm)>
+                ORDER BY word_similarity(<cfqueryparam cfsqltype="varchar" value="#searchTerm#" />, search_text) DESC
+            <cfelse>
+                ORDER BY moo_profile.full_name
+            </cfif>
+            LIMIT 100
+        ) AS data
+        </cfquery>
+
+        <cfreturn qData.recordset />
 
     </cffunction>
 
@@ -204,6 +221,12 @@
                                     <cf_icon icon="fal fa-search text-base-content/80" />
                                     <input type="text" class="w-48" placeholder="Search profiles..." x-model="filters.term">
                                 </label>
+                                <select class="select select-sm" x-model="filters.auth_type" @change="load()">
+                                    <option value="">All Auth Types</option>
+                                    <template x-for="type in auth_types" :key="type">
+                                        <option :value="type" x-text="type"></option>
+                                    </template>
+                                </select>
                                 <button class="btn btn-ghost btn-sm" @click="resetFilters()" title="Clear filters">
                                     <cf_icon icon="fal fa-times" />
                                 </button>
@@ -233,6 +256,7 @@
                                             <th>Mobile</th>
                                             <th>Roles</th>
                                             <th>Status</th>
+                                            <th>Auth Type</th>
                                             <th>External Auth ID</th>
                                             <th>Last Login</th>
                                             <th class="text-end">Actions</th>
@@ -295,6 +319,10 @@
                                                         </template>
                                                     </div>
                                                 </td>
+                                                <!-- Auth Type -->
+                                                <td>
+                                                    <span class="text-xs font-mono text-base-content/70" x-text="item.auth_type || '—'"></span>
+                                                </td>
                                                 <!-- External Auth ID -->
                                                 <td>
                                                     <span class="text-xs font-mono text-base-content/70" x-text="item.external_auth_id || '—'"></span>
@@ -306,6 +334,9 @@
                                                 <!-- Actions -->
                                                 <td>
                                                     <div class="flex items-center justify-end gap-1">
+                                                        <template x-if="['gday','agent'].includes(item.auth_type)">
+                                                            <cf_impersonate_button click="impersonate(item.id)" />
+                                                        </template>
                                                         <button class="btn btn-ghost btn-sm btn-square" @click.stop="select(item)" title="Edit">
                                                             <cf_icon icon="fal fa-pencil text-base-content/70" />
                                                         </button>
@@ -415,13 +446,14 @@
 
                 <script>
                 document.addEventListener('alpine:init', () => {
-                    const default_filters = { term: '' };
+                    const default_filters = { term: '', auth_type: '' };
 
                     Alpine.data('profiles_admin', () => ({
                         loading: false,
                         records: [],
                         current_record: {},
                         filters: { ...default_filters },
+                        auth_types: [],
 
                         getInitials(name) {
                             const cleaned = (name || '').trim();
@@ -442,6 +474,9 @@
                                 endpoint: 'search',
                                 body: { filter: this.filters }
                             });
+                            if (!this.auth_types.length) {
+                                this.auth_types = [...new Set(this.records.map(r => r.auth_type).filter(Boolean))].sort();
+                            }
                             this.loading = false;
                         },
 
