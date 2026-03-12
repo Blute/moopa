@@ -140,16 +140,39 @@ In CFML, `#` is used for variable interpolation. Use `##` to output a literal `#
 <a href="##section">Jump to section</a>
 ```
 
-## Endpoint Naming Conventions
+## HTTP Method → Function Name Routing
 
-| Endpoint Name | Purpose | HTTP Method |
+Moopa routes HTTP methods directly to CFC functions with matching names. A `GET` request calls `get()`, a `POST` request calls `post()`, etc. The `req()` helper on the frontend uses the `x-endpoint` URL parameter to override this default, allowing named endpoints like `load`, `save`, `search`.
+
+| HTTP Method | Function Called | How It's Triggered |
+|-------------|---------------|-------------------|
+| `GET` (no endpoint) | `get()` | Browser navigation, direct URL |
+| `POST` (no endpoint) | `post()` | Direct POST (e.g. webhooks, external services) |
+| via `req({endpoint: 'load'})` | `load()` | Frontend `req()` adds `?x-endpoint=load` |
+| via `req({endpoint: 'save', body: ...})` | `save()` | Frontend `req()` adds `?x-endpoint=save` |
+
+**Key implication:** For webhooks and external callbacks that POST directly (without `x-endpoint`), the function **must** be named `post`, not a custom name like `webhook`:
+
+```cfml
+<!--- Webhook route: external service POSTs directly --->
+<cfcomponent key="..." open_to="public">
+    <cffunction name="post">
+        <!--- Handle inbound POST from external service --->
+    </cffunction>
+</cfcomponent>
+```
+
+### Named Endpoints (via req)
+
+For frontend-driven routes, use descriptive function names. The `req()` function passes the endpoint name via `x-endpoint`:
+
+| Endpoint Name | Purpose | Triggered By |
 |---------------|---------|-------------|
-| `get` | Render HTML page | GET (no body) |
-| `load` | Fetch single record or list | GET |
-| `save` | Create or update record | POST |
-| `search` | Search with filters | POST |
-| `delete` | Delete record | POST |
-| `create` | Create new record | POST |
+| `get` | Render HTML page | Browser GET request |
+| `load` | Fetch single record or list | `req({endpoint: 'load'})` |
+| `save` | Create or update record | `req({endpoint: 'save', body: ...})` |
+| `search` | Search with filters | `req({endpoint: 'search', body: ...})` |
+| `delete` | Delete record | `req({endpoint: 'delete', body: ...})` |
 
 ### Nested Endpoints (Dot Notation)
 
@@ -164,6 +187,10 @@ Use dots to organize related endpoints:
     <!--- Called via endpoint: 'search.filters.status' --->
 </cffunction>
 ```
+
+### Route Initialisation
+
+After adding a new route CFC or renaming/adding functions in an existing route, you must re-initialise the application for Moopa to register the changes. Visit `/init` or restart the app server.
 
 ## Frontend API Calls with req()
 
