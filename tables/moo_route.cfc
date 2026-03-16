@@ -124,7 +124,7 @@ TODO: need to check if old way works for the following and which has precedence:
                 <cfset stRoute.endpoints = {} />
                 <cfset stRoute.md = duplicate(getMetaData(createObject("component", "#stRoute.componentPath#"))) />
                 <cfset stRoute['open_to'] = stRoute.md['open_to']?:'security' /> <!--- public,bearer,logged_in,security --->
-                <cfset stRoute['auth_type'] = stRoute.md['auth_type']?:stRoute.md['auth']?:'' />
+                <cfset stRoute['auth_type'] = stRoute.md['auth_type']?:stRoute.md['auth']?:'moopa' />
 
                 <!--- Need to determine if the route is already defined --->
 
