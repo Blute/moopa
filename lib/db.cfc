@@ -243,6 +243,7 @@ Delete - delete
         <cfargument name="exclude_list" type="string" default="" hint="List of fields to exclude" />
         <cfargument name="sql_type" type="string" default="expanded" hint="simple,expanded,condensed" />
         <cfargument name="sql_table_name" type="string" default="#arguments.table_name#" />
+        <cfargument name="include_sensitive" type="boolean" default="false" hint="Include fields marked sensitive: true" />
 
         <cfif arguments.field_list EQ "*">
             <cfset field_list_to_loop = structKeyList(this.codeSchema[arguments.table_name].fields) />
@@ -263,6 +264,20 @@ Delete - delete
                     <cfset field_list_to_loop = listDeleteAt(field_list_to_loop, pos) />
                 </cfif>
             </cfloop>
+        </cfif>
+
+        <!--- Exclude sensitive fields unless explicitly included in field_list or include_sensitive=true --->
+        <cfset var explicit_field_list = len(trim(arguments.field_list)) AND arguments.field_list NEQ "*" />
+        <cfif !arguments.include_sensitive AND !explicit_field_list>
+            <cfset var sensitive_fields = this.codeSchema[arguments.table_name]._sensitive_fields ?: "" />
+            <cfif len(sensitive_fields)>
+                <cfloop list="#sensitive_fields#" item="sensitive_field">
+                    <cfset pos = listFindNoCase(field_list_to_loop, sensitive_field) />
+                    <cfif pos GT 0>
+                        <cfset field_list_to_loop = listDeleteAt(field_list_to_loop, pos) />
+                    </cfif>
+                </cfloop>
+            </cfif>
         </cfif>
 
         <cfset return_select_fields = "" />
@@ -352,6 +367,7 @@ Delete - delete
         <cfargument name="exclude_list" type="string" default="" hint="List of fields to exclude" />
         <cfargument name="sql_type" type="string" default="expanded" hint="Simple, expanded, condensed" />
         <cfargument name="returnAsCFML" type="boolean" required="false" default=false />
+        <cfargument name="include_sensitive" type="boolean" required="false" default=false hint="Include fields marked sensitive: true" />
 
         <cfset res = {} />
 
@@ -371,7 +387,7 @@ Delete - delete
             <cfquery name="qData" result="qResult">
                 SELECT COALESCE(row_to_json(data)::text, '{}') as recordset
                 FROM (
-                    SELECT #select(table_name=arguments.table_name, field_list="#arguments.field_list#", exclude_list="#arguments.exclude_list#", sql_type="#arguments.sql_type#")#
+                    SELECT #select(table_name=arguments.table_name, field_list="#arguments.field_list#", exclude_list="#arguments.exclude_list#", sql_type="#arguments.sql_type#", include_sensitive=arguments.include_sensitive)#
                     FROM #arguments.table_name#
                     WHERE id = <cfqueryparam cfsqltype="other" value="#local.idValue#" />
                     #orderby(table_name=arguments.table_name)#
