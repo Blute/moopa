@@ -103,7 +103,7 @@
                     <div class="flex items-center gap-2">
                       <span>Route</span>
                       <button class="btn btn-ghost btn-xs" @click="toggle_all()">
-                        <i class="fal is_all_expanded() ? 'fa-compress-alt' : 'fa-expand-alt'" x-bind:></i>
+                        <i class="fal" :class="is_all_expanded() ? 'fa-compress-alt' : 'fa-expand-alt'"></i>
                         <span x-text="is_all_expanded() ? 'Collapse' : 'Expand'"></span>
                       </button>
                     </div>
@@ -130,14 +130,14 @@
                         <div class="flex items-center min-w-0" :style="`padding-left: ${row.depth * 24}px`">
                           <template x-if="row.node.children.length">
                             <button class="btn btn-ghost btn-xs btn-square" @click="toggle(row.node.id)">
-                              <i class="fal is_expanded(row.node.id) ? 'fa-angle-down' : 'fa-angle-right'" x-bind:></i>
+                              <i class="fal" :class="is_expanded(row.node.id) ? 'fa-angle-down' : 'fa-angle-right'"></i>
                             </button>
                           </template>
                           <template x-if="!row.node.children.length">
                             <span class="w-6 text-center text-base-content/40"><i class="fal fa-file"></i></span>
                           </template>
                           <template x-if="row.node.children.length">
-                            <span class="ms-1 text-base-content/60"><i class="fal is_expanded(row.node.id) ? 'fa-folder-open' : 'fa-folder'" x-bind:></i></span></span>
+                            <span class="ms-1 text-base-content/60"><i class="fal" :class="is_expanded(row.node.id) ? 'fa-folder-open' : 'fa-folder'"></i></span></span>
                           </template>
                           <span class="ms-2 font-medium truncate" x-text="row.node.name"></span>
                           <span class="ms-2 text-xs text-base-content/50 font-mono truncate cursor-pointer hover:text-primary"

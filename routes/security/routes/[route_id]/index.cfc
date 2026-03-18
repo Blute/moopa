@@ -304,12 +304,12 @@
                                                 <th class="font-semibold text-sm">ALL ACCESS</th>
                                                 <template x-for="profile in current_route.profiles" :key="profile.id">
                                                     <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleProfileAccess(profile.id)">
-                                                        <i class="fas fa-xl isProfileAccessSet(profile.id) ? 'fa-shield-check text-success' : 'fa-shield-check opacity-20'" x-bind:></i>
+                                                        <i class="fas fa-xl" :class="isProfileAccessSet(profile.id) ? 'fa-shield-check text-success' : 'fa-shield-check opacity-20'"></i>
                                                     </td>
                                                 </template>
                                                 <template x-for="role in current_route.roles" :key="role.id">
                                                     <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleRoleAccess(role.id)">
-                                                        <i class="fas fa-xl isRoleAccessSet(role.id) ? 'fa-shield-check text-success' : 'fa-shield-check opacity-20'" x-bind:></i>
+                                                        <i class="fas fa-xl" :class="isRoleAccessSet(role.id) ? 'fa-shield-check text-success' : 'fa-shield-check opacity-20'"></i>
                                                     </td>
                                                 </template>
                                             </tr>
@@ -323,7 +323,7 @@
                                                                 <i class="fat fa-xl fa-shield-check text-success/50"></i>
                                                             </div>
                                                             <div x-show="!isProfileAccessSet(profile.id)">
-                                                                <i class="far fa-xl isProfileAccessSet(profile.id, endpoint.id) ? 'fa-shield-check text-success' : 'fa-shield-check text-error/60'" x-bind:></i>
+                                                                <i class="far fa-xl" :class="isProfileAccessSet(profile.id, endpoint.id) ? 'fa-shield-check text-success' : 'fa-shield-check text-error/60'"></i>
                                                             </div>
                                                         </td>
                                                     </template>
@@ -333,7 +333,7 @@
                                                                 <i class="fat fa-xl fa-shield-check text-success/50"></i>
                                                             </div>
                                                             <div x-show="!isRoleAccessSet(role.id)">
-                                                                <i class="far fa-xl isRoleAccessSet(role.id, endpoint.id) ? 'fa-shield-check text-success' : 'fa-shield-check text-error/60'" x-bind:></i>
+                                                                <i class="far fa-xl" :class="isRoleAccessSet(role.id, endpoint.id) ? 'fa-shield-check text-success' : 'fa-shield-check text-error/60'"></i>
                                                             </div>
                                                         </td>
                                                     </template>

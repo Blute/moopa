@@ -307,7 +307,7 @@
                                                 <td>
                                                     <div class="flex items-center gap-2 flex-wrap">
                                                         <!-- Login Status -->
-                                                        <i class="fal fa-right-to-bracket item.can_login ? 'text-success' : 'text-base-content/30'" x-bind: x-bind:title="item.can_login ? 'Can Login' : 'Cannot Login'"></i>
+                                                        <i class="fal fa-right-to-bracket" :class="item.can_login ? 'text-success' : 'text-base-content/30'" x-bind:title="item.can_login ? 'Can Login' : 'Cannot Login'"></i>
                                                         <!-- Employee Badge -->
                                                         <template x-if="item.is_employee">
                                                             <span class="badge badge-sm badge-soft badge-info capitalize" x-text="item.employee_type || 'employee'"></span>

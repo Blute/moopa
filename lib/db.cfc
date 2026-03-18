@@ -1152,6 +1152,12 @@ Delete - delete
                     <cfset field.searchable = false />
                 </cfif>
 
+                <cfif !structKeyExists(field, "condensed")>
+                    <cfset field.condensed = false />
+                </cfif>
+                <cfif !structKeyExists(field, "sensitive")>
+                    <cfset field.sensitive = false />
+                </cfif>
 
                 <cfif not structKeyExists(field, "is_nullable")>
                     <cfif structKeyExists(field, "nullable")>
@@ -1493,7 +1499,21 @@ Delete - delete
 
             </cfif>
 
-
+            <!--- Build condensed/sensitive field lists for FK/M2M/relation SQL generation --->
+            <cfset table._condensed_fields = "" />
+            <cfset table._sensitive_fields = "" />
+            <cfloop collection="#table.fields#" item="f" index="fn">
+                <cfif f.condensed ?: false>
+                    <cfset table._condensed_fields = listAppend(table._condensed_fields, fn) />
+                </cfif>
+                <cfif f.sensitive ?: false>
+                    <cfset table._sensitive_fields = listAppend(table._sensitive_fields, fn) />
+                </cfif>
+            </cfloop>
+            <!--- Ensure id is always in condensed --->
+            <cfif len(table._condensed_fields) AND !listFindNoCase(table._condensed_fields, "id")>
+                <cfset table._condensed_fields = listPrepend(table._condensed_fields, "id") />
+            </cfif>
 
             <cfloop collection="#table.indexes#" item="index" index="index_name">
                 <cfif !len(index.name?:'')>
@@ -1530,6 +1550,10 @@ Delete - delete
                     <cfset json_build_object_field_list = "" />
                     <cfloop collection="#arguments.codeSchemaInput[field.foreign_key_table].fields#" item="foreign_table_field" index="foreign_table_field_name">
                         <cfif len(foreign_table_field['sql_select_simple'])>
+                            <!--- Skip sensitive fields from expanded view --->
+                            <cfif listFindNoCase(arguments.codeSchemaInput[field.foreign_key_table]._sensitive_fields ?: "", foreign_table_field_name)>
+                                <cfcontinue />
+                            </cfif>
                             <cfset json_build_object_field_sql_select_simple = rereplace(foreign_table_field['sql_select_simple'], "(?i)\bas\b.*", "", "ALL") /> <!--- Strip the "as fieldname" from the end of the sql_select_simple --->
                             <cfset json_build_object_field_list = listAppend(json_build_object_field_list, "'#foreign_table_field_name#', #json_build_object_field_sql_select_simple#") />
                         </cfif>
@@ -1548,11 +1572,21 @@ Delete - delete
                         ),'[]')::jsonb AS #field_name#
                     </cfoutput>
                     </cfsavecontent>
+                    <!--- Build condensed pairs from _condensed_fields, fall back to id,label --->
+                    <cfset condensed_fields = arguments.codeSchemaInput[field.foreign_key_table]._condensed_fields ?: "" />
+                    <cfif !len(condensed_fields)>
+                        <cfset condensed_pairs = "'id',id,'label',label" />
+                    <cfelse>
+                        <cfset condensed_pairs = "" />
+                        <cfloop list="#condensed_fields#" item="cf">
+                            <cfset condensed_pairs = listAppend(condensed_pairs, "'#cf#',#cf#") />
+                        </cfloop>
+                    </cfif>
                     <cfsavecontent variable="field.sql_select_condensed">
                     <cfoutput>
                         coalesce((
                             SELECT jsonb_agg(
-                                jsonb_build_object('id',id,'label',label)
+                                jsonb_build_object(#condensed_pairs#)
                                 ORDER BY #field.bridgingTableName#.sequence
                             )
                             FROM #field.bridgingTableName#
@@ -1581,6 +1615,11 @@ Delete - delete
                                     <cfcontinue />
                                 </cfif>
 
+                                <!--- Skip sensitive fields from expanded view --->
+                                <cfif listFindNoCase(arguments.codeSchemaInput[field.foreign_key_table]._sensitive_fields ?: "", foreign_table_field_name)>
+                                    <cfcontinue />
+                                </cfif>
+
                                 <!--- <cfif foreign_table_field.type EQ "uuid">
                                     <cfset json_build_object_field_list = listAppend(json_build_object_field_list, "'#foreign_table_field_name#', #foreign_table_field_name#::text") />
                                     <cfcontinue />
@@ -1601,10 +1640,20 @@ Delete - delete
                             ),'{}')::jsonb AS #field.name#
                         </cfoutput>
                         </cfsavecontent>
+                        <!--- Build condensed pairs from _condensed_fields, fall back to id,label --->
+                        <cfset condensed_fields = arguments.codeSchemaInput[field.foreign_key_table]._condensed_fields ?: "" />
+                        <cfif !len(condensed_fields)>
+                            <cfset condensed_pairs = "'id',id,'label',label" />
+                        <cfelse>
+                            <cfset condensed_pairs = "" />
+                            <cfloop list="#condensed_fields#" item="cf">
+                                <cfset condensed_pairs = listAppend(condensed_pairs, "'#cf#',#cf#") />
+                            </cfloop>
+                        </cfif>
                         <cfsavecontent variable="field.sql_select_condensed">
                         <cfoutput>
                             coalesce((
-                                SELECT json_build_object('id',id,'label',label)
+                                SELECT json_build_object(#condensed_pairs#)
                                 FROM #field.foreign_key_table# as sub
                                 WHERE sub.id = #table.table_name#.#field.name#
                             ),'{}')::jsonb AS #field.name#
@@ -1637,6 +1686,10 @@ Delete - delete
                         <cfloop collection="#arguments.codeSchemaInput[field.foreign_key_table].fields#" item="foreign_table_field" index="foreign_table_field_name">
 
                             <cfif len(foreign_table_field['sql_select_simple'])>
+                                <!--- Skip sensitive fields from expanded view --->
+                                <cfif listFindNoCase(arguments.codeSchemaInput[field.foreign_key_table]._sensitive_fields ?: "", foreign_table_field_name)>
+                                    <cfcontinue />
+                                </cfif>
                                 <cfset json_build_object_field_list = listAppend(json_build_object_field_list, foreign_table_field['sql_select_simple']) />
                             </cfif>
 
@@ -1656,12 +1709,19 @@ Delete - delete
                             ),'[]')::jsonb AS #field_name#
                         </cfoutput>
                         </cfsavecontent>
+                        <!--- Build condensed field list from _condensed_fields, fall back to id,label --->
+                        <cfset condensed_fields = arguments.codeSchemaInput[field.foreign_key_table]._condensed_fields ?: "" />
+                        <cfif !len(condensed_fields)>
+                            <cfset condensed_field_list = "id,label" />
+                        <cfelse>
+                            <cfset condensed_field_list = condensed_fields />
+                        </cfif>
                         <cfsavecontent variable="field.sql_select_condensed">
                             <cfoutput>
                             coalesce((
                                 SELECT jsonb_agg(to_jsonb(sq.*))
                                 FROM (
-                                    SELECT id,label
+                                    SELECT #condensed_field_list#
                                     FROM #field.foreign_key_table#
                                     WHERE #field.foreign_key_table#.#field.foreign_key_field# = #table.table_name#.id
                                     ORDER BY #arguments.codeSchemaInput[field.foreign_key_table].order_by#
