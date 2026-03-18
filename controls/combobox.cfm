@@ -45,7 +45,7 @@
                             @click.stop="removeSelectedItem(index)"
                             aria-label="Remove"
                         >
-                            <cf_icon icon="fa-regular fa-xmark text-xs" />
+                            <i class="fa-regular fa-xmark text-xs"></i>
                         </button>
                     </span>
                 </template>
@@ -82,7 +82,7 @@
                     @click.stop.prevent="clearSelection()"
                     tabindex="-1"
                 >
-                    <cf_icon icon="fa-regular fa-xmark" />
+                    <i class="fa-regular fa-xmark"></i>
                 </button>
             </template>
             <template x-if="!loading && !hasSelection()">
@@ -92,7 +92,7 @@
                     @click.stop.prevent="togglePopover()"
                     tabindex="-1"
                 >
-                    <cf_icon icon="fa-regular fa-chevron-down" />
+                    <i class="fa-regular fa-chevron-down"></i>
                 </button>
             </template>
         </label>

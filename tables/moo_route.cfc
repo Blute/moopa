@@ -761,7 +761,7 @@ TODO: need to check if old way works for the following and which has precedence:
              </style>
 
             <div class="security-icon" @click="moo_iframe_modal_open('/security/routes/#request.route_id#')">
-                <cf_icon icon="fal fa-shield-keyhole" />
+                <i class="fal fa-shield-keyhole"></i>
             </div>
 
 

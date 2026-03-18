@@ -142,7 +142,7 @@
                                 <div class="flex justify-between items-center mb-4">
                                     <h3 class="font-semibold text-lg" x-text="openMismatch ? openMismatch.title : ''"></h3>
                                     <button type="button" class="btn btn-ghost btn-sm btn-circle" @click="openMismatch = null">
-                                        <cf_icon icon="fal fa-times" />
+                                        <i class="fal fa-times"></i>
                                     </button>
                                 </div>
                                 <div class="font-semibold text-warning mb-2">Current vs Expected:</div>

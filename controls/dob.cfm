@@ -34,7 +34,7 @@
             class="btn btn-square join-item"
             title="Clear date"
         >
-            <cf_icon icon="fa-regular fa-xmark" />
+            <i class="fa-regular fa-xmark"></i>
         </button>
 
         <!-- DaisyUI Dialog Modal -->
