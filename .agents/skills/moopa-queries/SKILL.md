@@ -70,7 +70,7 @@ Generates SQL field lists from table schema. Handles foreign keys, computed colu
 #application.lib.db.select(table_name="my_table", field_list="id,name,status")#
 <!--- Returns only specified fields --->
 
-#application.lib.db.select(table_name="my_table", exclude_list="created_at,updated_at")#
+#application.lib.db.select(table_name="my_table", exclude_list="created_at,last_updated_at")#
 <!--- Returns all fields except specified --->
 ```
 
