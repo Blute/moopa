@@ -226,7 +226,7 @@
             ) />
 
         <!--- Only send email in production environment --->
-        <cfif (server.system.environment.CURRENT_ENVIRONMENT?:'production') EQ 'production'>
+        <cfif (server.system.environment.APP_ENVIRONMENT?:'production') EQ 'production'>
             <cfset email_subject = "JOIN 500 ERROR [#dateFormat(now(),'ddd dd-mmm-yyyy')#]"/>
 
             <cfsavecontent variable="email_body">
