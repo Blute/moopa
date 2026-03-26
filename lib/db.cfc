@@ -241,7 +241,7 @@ Delete - delete
         <cfargument name="table_name" required="true" type="string" />
         <cfargument name="field_list" type="string" default="" hint="List of fields to include" />
         <cfargument name="exclude_list" type="string" default="" hint="List of fields to exclude" />
-        <cfargument name="sql_type" type="string" default="expanded" hint="simple,expanded,condensed" />
+        <cfargument name="sql_type" type="string" default="condensed" hint="simple,expanded,condensed" />
         <cfargument name="sql_table_name" type="string" default="#arguments.table_name#" />
         <cfargument name="include_sensitive" type="boolean" default="false" hint="Include fields marked sensitive: true" />
 
@@ -365,7 +365,7 @@ Delete - delete
         <cfargument name="data" type="struct" required="false" default="#structNew()#" />
         <cfargument name="field_list" type="string" default="" hint="List of fields to include" />
         <cfargument name="exclude_list" type="string" default="" hint="List of fields to exclude" />
-        <cfargument name="sql_type" type="string" default="expanded" hint="Simple, expanded, condensed" />
+        <cfargument name="sql_type" type="string" default="condensed" hint="Simple, expanded, condensed" />
         <cfargument name="returnAsCFML" type="boolean" required="false" default=false />
         <cfargument name="include_sensitive" type="boolean" required="false" default=false hint="Include fields marked sensitive: true" />
 
