@@ -130,7 +130,7 @@
             stream_ready: stream_ready,
             stream_error: trim(metadata.stream_error ?: ""),
             video_iframe_url: stream_iframe_url,
-            video_thumbnail: (len(stream_thumbnail) ? stream_thumbnail : (arguments.video_record.thumbnail ?: ""))
+            video_thumbnail: (len(stream_thumbnail) AND stream_ready ? stream_thumbnail : (arguments.video_record.thumbnail ?: ""))
         } />
     </cffunction>
 
