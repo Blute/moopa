@@ -50,7 +50,7 @@ Dynamic slugs like `[agency_id]` become `arguments.agency_id` in endpoint functi
 
 | Attribute | Values | Purpose |
 |-----------|--------|---------|
-| `key` | UUID | Unique identifier (generate new UUID for each route) |
+| `key` | UUID | Unique identifier — **must be generated via `uuidgen` command**, never hand-crafted. Keys must be globally unique across the entire codebase. |
 | `open_to` | `public`, `validated`, `security` | Access control (see below) |
 
 ### Access Control: open_to Options
