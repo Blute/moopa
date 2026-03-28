@@ -221,6 +221,31 @@ FROM (
 | Timestamp | `timestamp` |
 | Array (for IN) | `other` with `list="true"` |
 
+## JSONB Columns and db.save()
+
+**"No hstore extension installed" errors** — this happens when you pass a CFML array or struct for a JSONB column to `db.save()`. The Lucee PostgreSQL driver can't map complex CFML types to JSONB and falls back to hstore (which isn't installed).
+
+**Always `serializeJSON()` before passing to db.save():**
+```cfml
+<!--- GOOD: Serialize to JSON string first --->
+<cfset myData.status_history = serializeJSON(historyArray) />
+<cfset application.lib.db.save(table_name="my_table", data=myData) />
+
+<!--- BAD: Passing raw CFML array — causes hstore error --->
+<cfset myData.status_history = historyArray />
+<cfset application.lib.db.save(table_name="my_table", data=myData) />
+```
+
+**db.read() FK expansion gotcha:** `db.read(returnAsCFML=true)` in default `condensed` mode expands FK fields (e.g. `sell_tender_id`) into structs `{id, label}` instead of plain UUID strings. If you then use that value in a `cfqueryparam`, you get "Can't cast Complex Object Type Struct to String". Use `sql_type="simple"` when you need plain ID values:
+
+```cfml
+<!--- GOOD: Plain FK values --->
+<cfset var record = application.lib.db.read(table_name="my_table", id=myId, sql_type="simple", returnAsCFML=true) />
+
+<!--- BAD: FK fields come back as structs --->
+<cfset var record = application.lib.db.read(table_name="my_table", id=myId, returnAsCFML=true) />
+```
+
 ## Security: Always Use cfqueryparam
 
 ```cfml
