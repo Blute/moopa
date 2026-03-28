@@ -1773,32 +1773,56 @@ Delete - delete
         <cfargument name="tablename" type="string" required="true">
         <cfquery name="qColumns" returntype="array">
           SELECT
-            column_name,
-            udt_name as data_type,
-            character_maximum_length,
-            numeric_precision,
-            numeric_scale,
+            a.attname AS column_name,
+            t.typname as data_type,
             CASE
-                WHEN is_nullable = 'YES' THEN true
-                ELSE false
-            END AS is_nullable,
-            regexp_replace(
-                    column_default,
+                WHEN t.typname IN ('varchar','bpchar') AND a.atttypmod > 4 THEN a.atttypmod - 4
+            END AS character_maximum_length,
+            CASE
+                WHEN t.typname = 'numeric' AND a.atttypmod <> -1 THEN ((a.atttypmod - 4) >> 16) & 65535
+                WHEN t.typname = 'int2' THEN 16
+                WHEN t.typname = 'int4' THEN 32
+                WHEN t.typname = 'int8' THEN 64
+                WHEN t.typname = 'float4' THEN 24
+                WHEN t.typname = 'float8' THEN 53
+            END AS numeric_precision,
+            CASE
+                WHEN t.typname = 'numeric' AND a.atttypmod <> -1 THEN (a.atttypmod - 4) & 65535
+                WHEN t.typname IN ('int2','int4','int8') THEN 0
+            END AS numeric_scale,
+            NOT a.attnotnull AS is_nullable,
+            CASE
+                WHEN a.attgenerated = '' AND d.adbin IS NOT NULL THEN regexp_replace(
+                    pg_get_expr(d.adbin, d.adrelid),
                     '#this.normalizeFieldPattern#',
                     '',
                     'g'
-            ) as column_default,
-            is_generated,
+                )
+            END as column_default,
+            CASE
+                WHEN a.attgenerated = 's' THEN 'ALWAYS'
+                ELSE 'NEVER'
+            END AS is_generated,
             regexp_replace(
-                    COALESCE(generation_expression, ''),
+                    CASE
+                        WHEN a.attgenerated = 's' AND d.adbin IS NOT NULL THEN pg_get_expr(d.adbin, d.adrelid)
+                        ELSE ''
+                    END,
                     '#this.normalizeFieldPattern#',
                     '',
                     'g'
                 ) AS generation_expression
-          FROM information_schema.columns
-          WHERE table_schema = current_schema()
-            AND table_name = <cfqueryparam value="#arguments.tablename#" cfsqltype="varchar">
-          ORDER BY ordinal_position;
+          FROM pg_attribute a
+          JOIN pg_class c ON c.oid = a.attrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          JOIN pg_type t ON t.oid = a.atttypid
+          LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+          WHERE c.relkind IN ('r','p')
+            AND n.nspname = current_schema()
+            AND c.relname = <cfqueryparam value="#arguments.tablename#" cfsqltype="varchar">
+            AND a.attnum > 0
+            AND NOT a.attisdropped
+          ORDER BY a.attnum;
         </cfquery>
         <cfreturn qColumns>
       </cffunction>
@@ -1843,24 +1867,40 @@ Delete - delete
 
         <cfquery name="stForeignKeys" returntype="struct" columnkey="name">
           SELECT
-              tc.constraint_name as name,
-              tc.table_name,
-              kcu.column_name as field_name,
-              ccu.table_name AS foreign_key_table,
-              ccu.column_name AS foreign_key_field,
-                rc.update_rule AS onUpdate,
-                rc.delete_rule AS onDelete
+              c.conname as name,
+              src.relname as table_name,
+              src_col.attname as field_name,
+              tgt.relname AS foreign_key_table,
+              tgt_col.attname AS foreign_key_field,
+              CASE c.confupdtype
+                  WHEN 'a' THEN 'NO ACTION'
+                  WHEN 'r' THEN 'RESTRICT'
+                  WHEN 'c' THEN 'CASCADE'
+                  WHEN 'n' THEN 'SET NULL'
+                  WHEN 'd' THEN 'SET DEFAULT'
+              END AS onUpdate,
+              CASE c.confdeltype
+                  WHEN 'a' THEN 'NO ACTION'
+                  WHEN 'r' THEN 'RESTRICT'
+                  WHEN 'c' THEN 'CASCADE'
+                  WHEN 'n' THEN 'SET NULL'
+                  WHEN 'd' THEN 'SET DEFAULT'
+              END AS onDelete
             FROM
-                information_schema.table_constraints AS tc
-                JOIN information_schema.key_column_usage AS kcu
-                ON tc.constraint_name = kcu.constraint_name
-                JOIN information_schema.constraint_column_usage AS ccu
-                ON ccu.constraint_name = tc.constraint_name
-                JOIN information_schema.referential_constraints AS rc
-                ON rc.constraint_name = tc.constraint_name
+              pg_constraint c
+              JOIN pg_class src ON src.oid = c.conrelid
+              JOIN pg_namespace src_ns ON src_ns.oid = src.relnamespace
+              JOIN pg_class tgt ON tgt.oid = c.confrelid
+              JOIN LATERAL unnest(c.conkey, c.confkey) WITH ORDINALITY AS cols(src_attnum, tgt_attnum, ord) ON true
+              JOIN pg_attribute src_col ON src_col.attrelid = src.oid AND src_col.attnum = cols.src_attnum
+              JOIN pg_attribute tgt_col ON tgt_col.attrelid = tgt.oid AND tgt_col.attnum = cols.tgt_attnum
           WHERE
-              tc.constraint_type = 'FOREIGN KEY' AND
-              tc.table_name = <cfqueryparam value="#arguments.tablename#" cfsqltype="cf_sql_varchar">
+              c.contype = 'f'
+              AND src_ns.nspname = current_schema()
+              AND src.relname = <cfqueryparam value="#arguments.tablename#" cfsqltype="cf_sql_varchar">
+          ORDER BY
+              c.conname,
+              cols.ord
         </cfquery>
 
         <cfreturn stForeignKeys>
@@ -1875,23 +1915,28 @@ Delete - delete
 
         <cfquery name="aPrimaryKey" returntype="array">
         SELECT
-            tc.table_schema,
-            tc.table_name,
-            tc.constraint_name as primary_key_name,
-            string_agg(kcu.column_name, ',') as primary_key_columns
+            n.nspname AS table_schema,
+            c.relname AS table_name,
+            con.conname as primary_key_name,
+            string_agg(att.attname, ',' ORDER BY cols.ord) as primary_key_columns
         FROM
-            information_schema.table_constraints AS tc
+            pg_constraint con
         JOIN
-            information_schema.key_column_usage AS kcu
-        ON
-            tc.constraint_name = kcu.constraint_name
+            pg_class c ON c.oid = con.conrelid
+        JOIN
+            pg_namespace n ON n.oid = c.relnamespace
+        JOIN
+            LATERAL unnest(con.conkey) WITH ORDINALITY AS cols(attnum, ord) ON true
+        JOIN
+            pg_attribute att ON att.attrelid = c.oid AND att.attnum = cols.attnum
         WHERE
-            tc.constraint_type = 'PRIMARY KEY'
-            AND tc.table_name = <cfqueryparam value="#arguments.tablename#" cfsqltype="cf_sql_varchar">
+            con.contype = 'p'
+            AND n.nspname = current_schema()
+            AND c.relname = <cfqueryparam value="#arguments.tablename#" cfsqltype="cf_sql_varchar">
         GROUP BY
-            tc.table_schema,
-            tc.table_name,
-            tc.constraint_name;
+            n.nspname,
+            c.relname,
+            con.conname;
         </cfquery>
 
         <cfif arrayLen(aPrimaryKey)>
