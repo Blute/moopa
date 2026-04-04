@@ -1379,24 +1379,30 @@ Delete - delete
 
 
                 <cfif structKeyExists(field, "index")>
+                    <cfset indexName = "idx_#table.table_name#_#field.name#" />
+
                     <cfif isStruct(field.index)>
                         <cfset indexInfo = {
-                            "name": "idx_#table.table_name#_#field.name#",
+                            "name": indexName,
                             "type": field.index.type,
                             "fields": field.name,
                             "unique": field.index.unique?:false
                         } />
 
-                        <cfset table.indexes[indexInfo.name] = indexInfo>
+                        <cfif NOT structKeyExists(table.indexes, indexInfo.name)>
+                            <cfset table.indexes[indexInfo.name] = indexInfo>
+                        </cfif>
                     <cfelseif isBoolean(field.index) AND field.index>
                         <cfset indexInfo = {
-                            "name": "idx_#table.table_name#_#field.name#",
+                            "name": indexName,
                             "type": "btree",
                             "fields": field.name,
                             "unique": false
                         } />
 
-                        <cfset table.indexes[indexInfo.name] = indexInfo>
+                        <cfif NOT structKeyExists(table.indexes, indexInfo.name)>
+                            <cfset table.indexes[indexInfo.name] = indexInfo>
+                        </cfif>
 
                     </cfif>
 
