@@ -168,6 +168,8 @@ BEGIN
         WHEN 'asset' THEN 'a'
         WHEN 'i' THEN 'i'
         WHEN 'image' THEN 'i'
+        WHEN 'm' THEN 'm'
+        WHEN 'markdown' THEN 'm'
         WHEN 'v' THEN 'v'
         WHEN 'video' THEN 'v'
         ELSE 'a'

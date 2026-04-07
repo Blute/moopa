@@ -1,64 +1,74 @@
 export default {
     async fetch(request, env, ctx) {
-      const url = new URL(request.url);
-      const method = request.method.toUpperCase();
-  
-      if (method !== "GET" && method !== "HEAD") {
-        return new Response("Method not allowed", { status: 405 });
+      try {
+        const url = new URL(request.url);
+        const method = request.method.toUpperCase();
+    
+        if (method !== "GET" && method !== "HEAD") {
+          return new Response("Method not allowed", { status: 405 });
+        }
+    
+        const kind = getKind(url.pathname);
+        if (!kind) {
+          return new Response("Not found", { status: 404 });
+        }
+    
+        const sig = url.searchParams.get("sig");
+        const expStr = url.searchParams.get("exp");
+        if (!sig || !expStr) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+    
+        const exp = Number(expStr);
+        if (!Number.isFinite(exp)) {
+          return new Response("Bad exp", { status: 400 });
+        }
+    
+        const now = Math.floor(Date.now() / 1000);
+        if (now > exp) {
+          return new Response("Expired", { status: 403 });
+        }
+    
+      const decodedPathname = decodePathname(url.pathname);
+      if (!decodedPathname) {
+        return new Response("Bad path", { status: 400 });
       }
-  
-      const kind = getKind(url.pathname);
-      if (!kind) {
-        return new Response("Not found", { status: 404 });
-      }
-  
-      const sig = url.searchParams.get("sig");
-      const expStr = url.searchParams.get("exp");
-      if (!sig || !expStr) {
+
+      const canonical = buildCanonical(url, decodedPathname);
+      const expectedSig = await hmacSha256Hex(canonical, env.SIGNING_KEY_B64);
+      if (!constantTimeEqualHex(expectedSig, sig)) {
         return new Response("Unauthorized", { status: 401 });
       }
-  
-      const exp = Number(expStr);
-      if (!Number.isFinite(exp)) {
-        return new Response("Bad exp", { status: 400 });
-      }
-  
-      const now = Math.floor(Date.now() / 1000);
-      if (now > exp) {
-        return new Response("Expired", { status: 403 });
-      }
-  
-    const decodedPathname = decodePathname(url.pathname);
-    if (!decodedPathname) {
-      return new Response("Bad path", { status: 400 });
-    }
 
-    const canonical = buildCanonical(url, decodedPathname);
-    const expectedSig = await hmacSha256Hex(canonical, env.SIGNING_KEY_B64);
-    if (!constantTimeEqualHex(expectedSig, sig)) {
-      return new Response("Unauthorized", { status: 401 });
-    }
+      const objectKey = getObjectKey(decodedPathname, kind);
+        if (!objectKey) {
+          return new Response("Not found", { status: 404 });
+        }
+    
+        if (kind === "a") {
+          return handleAssetProxy({ request, env, objectKey, method, url });
+        }
+    
+        if (kind === "i") {
+          return handleImageTransform({ request, env, objectKey, method, url, ctx });
+        }
 
-    const objectKey = getObjectKey(decodedPathname, kind);
-      if (!objectKey) {
-        return new Response("Not found", { status: 404 });
+        if (kind === "m") {
+          return handleMarkdownTransform({ env, objectKey, method, url, ctx });
+        }
+    
+        return handleVideoStream({ env, objectKey, method, url });
+      } catch (error) {
+        const message = normalizeErrorMessage(error, "Unhandled worker error");
+        return new Response(`Worker error: ${message}`, { status: 500 });
       }
-  
-      if (kind === "a") {
-        return handleAssetProxy({ request, env, objectKey, method, url });
-      }
-  
-      if (kind === "i") {
-        return handleImageTransform({ request, env, objectKey, method, url, ctx });
-      }
-  
-      return handleVideoStream({ env, objectKey, method, url });
     }
   };
   
   function getKind(pathname) {
     if (pathname.startsWith("/a/")) return "a";
     if (pathname.startsWith("/i/")) return "i";
+    if (pathname.startsWith("/m/")) return "m";
     if (pathname.startsWith("/v/")) return "v";
     return "";
   }
@@ -199,6 +209,112 @@ function decodePathname(pathname) {
   
     return response;
   }
+
+  async function handleMarkdownTransform({ env, objectKey, method, url, ctx }) {
+    if (!env.AI || typeof env.AI.toMarkdown !== "function") {
+      return new Response("Missing AI binding", { status: 500 });
+    }
+
+    const responseFormat = normalizeMarkdownFormat(url.searchParams.get("format"));
+    const includePdfMetadata = toBooleanFlag(url.searchParams.get("metadata"), true);
+    const maxPdfBytes = toPositiveInt(env.MAX_MARKDOWN_PDF_BYTES) || 25 * 1024 * 1024;
+    const ttl = getSignedTtlSeconds(url);
+    const canEdgeCache = method === "GET" && ttl > 0;
+    const cacheKey = canEdgeCache ? new Request(url.toString(), { method: "GET" }) : null;
+
+    if (cacheKey) {
+      const cached = await caches.default.match(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    let obj;
+    try {
+      obj = method === "HEAD"
+        ? await env.ASSETS_BUCKET.head(objectKey)
+        : await env.ASSETS_BUCKET.get(objectKey);
+    } catch (_error) {
+      return new Response("Upstream error", { status: 502 });
+    }
+
+    if (!obj) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    const contentType =
+      obj.httpMetadata?.contentType || guessContentType(objectKey) || "application/octet-stream";
+    if (!isPdfSource({ objectKey, contentType })) {
+      return new Response("Unsupported media type", { status: 415 });
+    }
+
+    const filename = getFilenameFromObjectKey(objectKey);
+    const headers = new Headers();
+    setMarkdownResponseHeaders(headers, { responseFormat, filename });
+    applySignedExpiryCaching(headers, url);
+
+    if (method === "HEAD") {
+      return new Response(null, { status: 200, headers });
+    }
+
+    if (typeof obj.size === "number" && obj.size > maxPdfBytes) {
+      return new Response("PDF too large", { status: 413 });
+    }
+
+    const pdfBuffer = await obj.arrayBuffer();
+    if (pdfBuffer.byteLength > maxPdfBytes) {
+      return new Response("PDF too large", { status: 413 });
+    }
+
+    let conversion;
+    try {
+      conversion = await env.AI.toMarkdown(
+        {
+          name: filename,
+          blob: new Blob([pdfBuffer], { type: "application/pdf" })
+        },
+        {
+          conversionOptions: {
+            pdf: {
+              metadata: includePdfMetadata
+            }
+          }
+        }
+      );
+    } catch (error) {
+      const message = normalizeErrorMessage(error, "Markdown conversion failed");
+      return new Response(message, { status: 502 });
+    }
+
+    const result = Array.isArray(conversion) ? conversion[0] : conversion;
+    if (!result) {
+      return new Response("Markdown conversion failed: empty response", { status: 502 });
+    }
+
+    if (result.format === "error") {
+      return new Response(
+        `Markdown conversion failed: ${normalizeErrorMessage(result.data, "conversion service returned an error")}`,
+        { status: 502 }
+      );
+    }
+
+    if (result.format !== "markdown" || typeof result.data !== "string") {
+      return new Response("Markdown conversion failed: invalid response shape", { status: 502 });
+    }
+
+    const response = buildMarkdownResponse({
+      headers,
+      responseFormat,
+      result,
+      sourcePath: url.pathname
+    });
+
+    if (cacheKey && response.status === 200) {
+      ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
+    }
+
+    return response;
+  }
   
   function handleVideoStream({ env, objectKey, method, url }) {
     const streamBase = (env.CF_STREAM_BASE_URL || "").replace(/\/+$/, "");
@@ -274,6 +390,93 @@ function decodePathname(pathname) {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return null;
     return Math.floor(n);
+  }
+
+  function toBooleanFlag(value, defaultValue) {
+    if (value == null) return defaultValue;
+
+    switch (String(value).trim().toLowerCase()) {
+      case "1":
+      case "true":
+      case "yes":
+      case "on":
+        return true;
+      case "0":
+      case "false":
+      case "no":
+      case "off":
+        return false;
+      default:
+        return defaultValue;
+    }
+  }
+
+  function normalizeMarkdownFormat(value) {
+    return (value || "").toLowerCase() === "json" ? "json" : "markdown";
+  }
+
+  function isPdfSource({ objectKey, contentType }) {
+    return contentType === "application/pdf" || objectKey.toLowerCase().endsWith(".pdf");
+  }
+
+  function getFilenameFromObjectKey(objectKey) {
+    const parts = objectKey.split("/").filter(Boolean);
+    return parts[parts.length - 1] || "document.pdf";
+  }
+
+  function setMarkdownResponseHeaders(headers, { responseFormat, filename }) {
+    if (responseFormat === "json") {
+      headers.set("Content-Type", "application/json; charset=utf-8");
+      return;
+    }
+
+    headers.set("Content-Type", "text/markdown; charset=utf-8");
+    headers.set("Content-Disposition", `inline; filename="${toMarkdownFilename(filename)}"`);
+  }
+
+  function buildMarkdownResponse({ headers, responseFormat, result, sourcePath }) {
+    if (responseFormat === "json") {
+      return new Response(JSON.stringify({
+        format: result.format,
+        name: result.name,
+        mime_type: result.mimeType || result.mimetype || "application/pdf",
+        tokens: normalizeTokenCount(result.tokens),
+        markdown: result.data,
+        source_path: sourcePath
+      }), {
+        status: 200,
+        headers
+      });
+    }
+
+    return new Response(result.data, {
+      status: 200,
+      headers
+    });
+  }
+
+  function toMarkdownFilename(filename) {
+    const clean = getFilenameFromObjectKey(filename);
+    return clean.toLowerCase().endsWith(".pdf")
+      ? `${clean.slice(0, -4)}.md`
+      : `${clean}.md`;
+  }
+
+  function normalizeTokenCount(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function normalizeErrorMessage(error, fallback) {
+    if (typeof error === "string" && error.trim()) {
+      return error.trim();
+    }
+
+    if (error && typeof error.message === "string" && error.message.trim()) {
+      return error.message.trim();
+    }
+
+    return fallback;
   }
 
   /**

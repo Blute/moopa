@@ -149,6 +149,7 @@
         <cfswitch expression="#k#">
             <cfcase value="a,asset"><cfreturn "a" /></cfcase>
             <cfcase value="i,image"><cfreturn "i" /></cfcase>
+            <cfcase value="m,markdown"><cfreturn "m" /></cfcase>
             <cfcase value="v,video"><cfreturn "v" /></cfcase>
             <cfdefaultcase><cfreturn "a" /></cfdefaultcase>
         </cfswitch>
