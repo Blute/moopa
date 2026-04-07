@@ -6,6 +6,11 @@
 
     <cfset this.tag.cflocation.addtoken = false />
 
+    <cfset this.sessioncookie = {                                        
+        secure: true,
+        httponly: true,
+        samesite: "Lax"
+    } />  
 
     <!--- S3 --->
     <!--- TODO: REMOVE THIS BLOCK WHEN WE HAVE SWITCHED TO CLOUDFLARE R2 --->
