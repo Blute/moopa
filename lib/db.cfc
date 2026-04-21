@@ -1844,7 +1844,8 @@ Delete - delete
               ) AS fields,
               ix.indisunique AS unique,
               am.amname AS type,
-              pg_get_indexdef(i.oid) AS indexdef
+              pg_get_indexdef(i.oid) AS indexdef,
+              COALESCE(pg_get_expr(ix.indpred, ix.indrelid), '') AS "where"
           FROM
               pg_class t
           JOIN
@@ -1862,9 +1863,19 @@ Delete - delete
               AND t.relname = <cfqueryparam value="#arguments.tablename#" cfsqltype="varchar">
               AND c.conname IS NULL
             GROUP BY
-                t.relname, i.relname, ix.indisunique, am.amname, i.oid
+                t.relname, i.relname, ix.indisunique, am.amname, i.oid, ix.indpred, ix.indrelid
         </cfquery>
         <cfreturn stIndexes>
+      </cffunction>
+
+      <cffunction name="normalizeIndexPredicate" returntype="string" access="public" hint="Normalizes a partial-index WHERE predicate for equality comparison. Postgres canonicalises predicates (adds parens + type casts e.g. ((status)::text = 'open'::text)), so code-declared forms like ""status = 'open'"" need to be reduced to the same shape before diffing.">
+        <cfargument name="expr" type="string" required="true" />
+        <cfset var s = lcase(trim(arguments.expr)) />
+        <!--- Strip PG type casts like ::text, ::varchar(20), ::int4, ::numeric(10,2) --->
+        <cfset s = reReplace(s, "::[a-z0-9_]+(\s*\([0-9, ]+\))?", "", "all") />
+        <!--- Drop all parens and whitespace — partial predicates we support are simple equality/boolean checks where paren nesting is not semantically meaningful. --->
+        <cfset s = reReplace(s, "[()\s]+", "", "all") />
+        <cfreturn s />
       </cffunction>
 
 
@@ -2228,15 +2239,19 @@ Delete - delete
                 <cfset create_index = true>
             <cfelse>
                 <!--- We need to check to make sure everything matches. If it doesnt match, lets drop it and mark to create --->
-                <!--- Only compare keys that exist in DB: fields, type, unique (not name, comment) --->
-                <cfset params_to_compare = "fields,type,unique" />
+                <!--- Only compare keys that exist in DB: fields, type, unique, where (not name, comment) --->
+                <cfset params_to_compare = "fields,type,unique,where" />
 
                 <cfloop list="#params_to_compare#" item="code_index_param" index="i">
 
-
-
-                    <cfset codeIndexFieldList = listSort(lcase(reReplace(code_index[code_index_param], "\s+", "", "ALL")),"textnocase") />
-                    <cfset dbIndexFieldList = listSort(lcase(reReplace((db_indexes[code_index_name][code_index_param]?:''), "\s+", "", "ALL")),"textnocase") />
+                    <cfif code_index_param EQ "where">
+                        <!--- Normalise both sides through the partial-predicate canoniser so ("status = 'open'" vs "((status)::text = 'open'::text)") compares equal. --->
+                        <cfset codeIndexFieldList = normalizeIndexPredicate(code_index.where ?: '') />
+                        <cfset dbIndexFieldList = normalizeIndexPredicate(db_indexes[code_index_name].where ?: '') />
+                    <cfelse>
+                        <cfset codeIndexFieldList = listSort(lcase(reReplace(code_index[code_index_param], "\s+", "", "ALL")),"textnocase") />
+                        <cfset dbIndexFieldList = listSort(lcase(reReplace((db_indexes[code_index_name][code_index_param]?:''), "\s+", "", "ALL")),"textnocase") />
+                    </cfif>
 
                     <cfif codeIndexFieldList NEQ dbIndexFieldList>
                         <cfset arrayAppend(index_mismatches, {
@@ -2272,13 +2287,19 @@ Delete - delete
                     <cfset with_clause = " WITH (#code_index.with_options#)" />
                 </cfif>
 
+                <!--- Build the WHERE clause for partial indexes --->
+                <cfset where_clause = "" />
+                <cfif len(code_index.where?:'')>
+                    <cfset where_clause = " WHERE (#code_index.where#)" />
+                </cfif>
+
                 <cfif drop_index>
                     <cfset sqlStatement = {
                         "table_name": "#table_name#",
                         "priority": 5,
                         "type": "DROP/CREATE INDEX",
                         "title": "DROP/CREATE INDEX #code_index.name#",
-                        "statement": 'DROP INDEX #code_index.name#;CREATE #code_index.unique ? "UNIQUE" : ""# INDEX #code_index.name# ON #table_name# USING #code_index.type# (#index_field_list#)#with_clause#',
+                        "statement": 'DROP INDEX #code_index.name#;CREATE #code_index.unique ? "UNIQUE" : ""# INDEX #code_index.name# ON #table_name# USING #code_index.type# (#index_field_list#)#with_clause##where_clause#',
                         "mismatches": index_mismatches
                     } />
                 <cfelse>
@@ -2288,7 +2309,7 @@ Delete - delete
                         "priority": 14,
                         "type": "CREATE INDEX",
                         "title": "CREATE INDEX #code_index.name#",
-                        "statement": "CREATE #code_index.unique ? "UNIQUE" : ""# INDEX #code_index.name# ON #table_name# USING #code_index.type# (#index_field_list#)#with_clause#"
+                        "statement": "CREATE #code_index.unique ? "UNIQUE" : ""# INDEX #code_index.name# ON #table_name# USING #code_index.type# (#index_field_list#)#with_clause##where_clause#"
                     } />
 
                     <cfcatch>
@@ -2575,12 +2596,16 @@ Delete - delete
             <cfif index.type EQ "gin">
                 <cfset index_field_list = ListMap(index_field_list, function(term) { return term & " gin_trgm_ops"; })>
             </cfif>
+            <cfset where_clause = "" />
+            <cfif len(index.where?:'')>
+                <cfset where_clause = " WHERE (#index.where#)" />
+            </cfif>
             <cfset sqlStatement = {
                 "table_name": "#newTableName#",
                 "priority": 8,
                 "type": "CREATE INDEX (New Table)",
                 "title": "CREATE INDEX (New Table) #index.name#",
-                "statement": "CREATE #index.unique ? "UNIQUE" : ""# INDEX #index.name# ON #newTableName# USING #index.type# (#index_field_list#)"
+                "statement": "CREATE #index.unique ? "UNIQUE" : ""# INDEX #index.name# ON #newTableName# USING #index.type# (#index_field_list#)#where_clause#"
             } />
             <cfset arrayAppend(sql, sqlStatement) />
         </cfloop>
