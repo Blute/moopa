@@ -73,11 +73,6 @@
     </cffunction>
 
 
-    <cffunction name="handleAddressAction.address">
-        <cfreturn application.lib.addressfinder.handleAddressAction(url) />
-    </cffunction>
-
-
     <cffunction name="getAuthTypes">
         <cfquery name="qAuthTypes">
             SELECT COALESCE(array_to_json(array_agg(auth_type ORDER BY auth_type))::text, '[]') AS recordset
