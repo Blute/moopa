@@ -295,9 +295,9 @@
                                                                 </div>
                                                             </div>
                                                         </template>
-                                                        <div class="min-w-0">
-                                                            <p class="font-medium truncate" x-text="item.full_name"></p>
-                                                            <p class="text-xs text-base-content/60 truncate" x-text="item.email"></p>
+                                                        <div class="min-w-0 max-w-[260px]">
+                                                            <p class="font-medium truncate" x-text="item.full_name" :title="item.full_name"></p>
+                                                            <p class="text-xs text-base-content/60 truncate" x-text="item.email" :title="item.email"></p>
                                                         </div>
                                                     </div>
                                                 </td>
