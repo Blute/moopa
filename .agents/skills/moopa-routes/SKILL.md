@@ -13,7 +13,10 @@ Routes are CFC files in `code/project/routes/` that map directly to URLs:
 |-----------|-----|
 | `routes/index.cfc` | `/` |
 | `routes/hub/agencies.cfc` | `/hub/agencies/` |
+| `routes/hub/sell_addresses.cfc` | `/hub/sell_addresses/` |
 | `routes/hub/[agency_id]/agency.cfc` | `/hub/{agency_id}/agency/` |
+
+**URL slug convention:** filenames and directory names map verbatim — underscores stay underscores, they are **not** converted to hyphens. Pick filenames that read well as URL slugs (e.g. `coming_soon.cfc` → `/hub/coming_soon/`).
 
 Dynamic slugs like `[agency_id]` become `arguments.agency_id` in endpoint functions.
 
@@ -50,7 +53,7 @@ Dynamic slugs like `[agency_id]` become `arguments.agency_id` in endpoint functi
 
 | Attribute | Values | Purpose |
 |-----------|--------|---------|
-| `key` | UUID | Unique identifier — **must be generated via `uuidgen` command**, never hand-crafted. Keys must be globally unique across the entire codebase. |
+| `key` | UUID | **Required.** Unique identifier — generate via `uuidgen`, never hand-crafted. Keys must be globally unique across the entire codebase. Missing or empty key throws `No Key Defined for <route>` from `moo_route.cfc` on first request — this is the framework-side check that route identity is wired up before any authorisation logic runs. |
 | `open_to` | `public`, `validated`, `security` | Access control (see below) |
 
 ### Access Control: open_to Options
@@ -395,6 +398,85 @@ For routes with slugs like `[agency_id]`:
 
 </cfcomponent>
 ```
+
+## File Upload Endpoint
+
+Any route that renders a form with an editable file field needs a per-field upload handler. The canonical pattern is a one-line delegation to the moo_file table service — never reinvent the upload pipeline, because the table service is what wires up the signed Cloudflare Worker thumbnail URL.
+
+```cfml
+<!--- Pattern: uploadFileToServerWithProgress.<field_id> --->
+<cffunction name="uploadFileToServerWithProgress.profile_picture_id">
+    <cfreturn application.lib.db.getService(table_name="moo_file").uploadFileToServerWithProgress(data="#request.data#") />
+</cffunction>
+```
+
+The function name suffix (`profile_picture_id`) must match the field id used in the form — Alpine's file control posts to `endpoint: 'uploadFileToServerWithProgress.<field_id>'` so a single route can host several upload fields without colliding.
+
+The implementation lives in `code/moopa/tables/moo_file.cfc` `uploadFileToServerWithProgress`. It runs in two legs (presign + finalise), signs the resulting thumbnail via `application.lib.cloudflare.signed_asset_url(..., kind='i', ...)`, and writes the signed URL into `moo_file.thumbnail`. Don't write your own version of this — see Blute/moopa#6 for the framework-level concern about the asset signer being implicit.
+
+## Self-Edit Profile Recipe
+
+Different shape from the CRUD example: the logged-in user edits their *own* record, not one identified by a URL slug.
+
+```cfml
+<cfcomponent key="<uuidgen>" open_to="logged_in">
+
+    <!--- Upload handler for the user's profile picture --->
+    <cffunction name="uploadFileToServerWithProgress.profile_picture_id">
+        <cfreturn application.lib.db.getService(table_name="moo_file").uploadFileToServerWithProgress(data="#request.data#") />
+    </cffunction>
+
+    <!--- Load — uses session.auth.profile.id, not request.data.id --->
+    <cffunction name="load">
+        <cfset var profileId = session.auth.profile.id />
+        <cfquery name="qProfile">
+            SELECT COALESCE(row_to_json(data)::text, '{}') as recordset
+            FROM (
+                SELECT p.id::text, p.full_name, p.email, p.mobile,
+                       signed_asset_url(mf.path, 'NEVER', 'i', 'width=240&height=240&fit=cover') AS picture_url
+                FROM moo_profile p
+                LEFT JOIN moo_file mf ON mf.id = p.profile_picture_id
+                WHERE p.id = <cfqueryparam cfsqltype="other" value="#profileId#" />
+            ) AS data
+        </cfquery>
+        <cfreturn qProfile.recordset />
+    </cffunction>
+
+    <!--- Save — same. Refresh session.auth.profile so the layout picks up changes --->
+    <cffunction name="save">
+        <cfset var profileId = session.auth.profile.id />
+        <cfset var saveData = { id = profileId } />
+
+        <!--- Allow-list editable fields explicitly; never pass request.data straight through --->
+        <cfif structKeyExists(request.data, "full_name")>
+            <cfset saveData.full_name = trim(request.data.full_name) />
+        </cfif>
+        <cfif structKeyExists(request.data, "mobile")>
+            <cfset saveData.mobile = trim(request.data.mobile) />
+        </cfif>
+
+        <cfset application.lib.db.save(table_name="moo_profile", data=saveData) />
+
+        <!--- Refresh the session profile so the hub layout/avatar picks up the change without re-login --->
+        <cfset session.auth.profile = application.lib.db.read(
+            table_name = "moo_profile",
+            id = profileId,
+            field_list = "id,full_name,email,mobile,auth_type,profile_avatar_id,profile_picture_id,can_login,roles",
+            returnAsCFML = true
+        ) />
+
+        <cfreturn { success: true } />
+    </cffunction>
+
+</cfcomponent>
+```
+
+Two points worth stressing:
+
+1. **Allow-list fields on save.** Don't `data = request.data` — it lets the browser write fields the user shouldn't be editing (`can_login`, `roles`, `external_auth_id`). Copy each editable field explicitly into a fresh `saveData` struct.
+2. **Refresh `session.auth.profile` after save.** The hub layout reads from the session, not from the DB on every render, so without the refresh the avatar/name in the bottom-left menu stays stale until the user logs out and back in.
+
+Existing implementations to crib from: `code/project/routes/easy/profile.cfc` (gday), `code/project/routes/agent/profile.cfc` (agent), `code/project/routes/hub/profile.cfc` (hub).
 
 ## Frontend Patterns with Alpine.js
 
