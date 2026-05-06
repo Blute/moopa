@@ -55,6 +55,7 @@ Dynamic slugs like `[agency_id]` become `arguments.agency_id` in endpoint functi
 |-----------|--------|---------|
 | `key` | UUID | **Required.** Unique identifier — generate via `uuidgen`, never hand-crafted. Keys must be globally unique across the entire codebase. Missing or empty key throws `No Key Defined for <route>` from `moo_route.cfc` on first request — this is the framework-side check that route identity is wired up before any authorisation logic runs. |
 | `open_to` | `public`, `validated`, `security` | Access control (see below) |
+| `auth_type` | `moopa`, `gday`, `agent`, ... | Restricts which auth source's profiles can hit this route. Defaults to `moopa` when omitted (see `moo_route.cfc:127`). In a single-auth-type moopa app this default is fine. **In multi-portal apps, declare `auth_type` explicitly on every route**, even when it would equal the default — readers shouldn't have to know the framework default to understand who can reach the endpoint. |
 
 ### Access Control: open_to Options
 
@@ -89,6 +90,26 @@ For `bearer` routes, clients must include the Authorization header:
 ```
 Authorization: Bearer <token>
 ```
+
+### Multi-Auth Apps: declaring `auth_type` explicitly
+
+The framework defaults missing `auth_type` to `"moopa"` (see `moo_route.cfc:127`), which is sensible because for many moopa apps `moopa` is the only auth source. Real Easy is unusual — three independent auth sources, each with its own portal:
+
+| Portal | Routes prefix | `auth_type` |
+|--------|--------------|-------------|
+| Hub (Microsoft SSO) | `/hub/*`, `/security/*` | `moopa` |
+| gday (consumer / sell flow) | `/easy/*` | `gday` |
+| Agent portal | `/agent/*` | `agent` |
+
+Declare `auth_type` explicitly on every route — even hub routes where it would equal the default. The constraint becomes visible at the top of the file rather than relying on knowing the framework default, and it makes mistakes (a hub-titled route accidentally reachable to gday users) impossible to overlook in code review.
+
+```cfml
+<cfcomponent key="..." open_to="logged_in" auth_type="moopa">  <!--- Hub --->
+<cfcomponent key="..." open_to="logged_in" auth_type="gday">   <!--- gday --->
+<cfcomponent key="..." open_to="logged_in" auth_type="agent">  <!--- Agent --->
+```
+
+The framework rejects requests where `session.auth.profile.auth_type` doesn't match the route's declared `auth_type`, so a gday user calling a hub route is bounced before any code in the route runs.
 
 ## Return Behavior
 
