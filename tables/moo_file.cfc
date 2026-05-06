@@ -7,12 +7,11 @@
             "title": "File",
             "title_plural": "Files",
             "item_label_template": "`${item.path}`",
-            "_condensed_fields": "id,name,size,thumbnail,path",
             "fields": {
-                "name": {},
-                "size": { "type" : "int8" },
-                "path": { "max_length": 2048 },
-                "thumbnail": { "max_length": 2048 },
+                "name": { "condensed": true },
+                "size": { "type" : "int8", "condensed": true },
+                "path": { "max_length": 2048, "condensed": true },
+                "thumbnail": { "max_length": 2048, "condensed": true },
                 "temp_upload_link": {},
                 "metadata": { "type":"jsonb" }
             }
