@@ -139,6 +139,19 @@
     </cffunction>
 
 
+    <cffunction name="getAuthTypes">
+        <cfquery name="qAuthTypes">
+            SELECT COALESCE(array_to_json(array_agg(auth_type ORDER BY auth_type))::text, '[]') AS recordset
+            FROM (
+                SELECT DISTINCT auth_type
+                FROM moo_profile
+                WHERE auth_type IS NOT NULL AND auth_type <> ''
+            ) AS t
+        </cfquery>
+        <cfreturn qAuthTypes.recordset />
+    </cffunction>
+
+
     <cffunction name="search">
 
         <cfset searchTerm = request.data.filter.term?:'' />
@@ -463,6 +476,7 @@
 
                         async init() {
                             this.filters = await loadFilters(default_filters);
+                            this.auth_types = await req({ endpoint: 'getAuthTypes' });
                             await this.load();
                         },
 
@@ -472,9 +486,6 @@
                                 endpoint: 'search',
                                 body: { filter: this.filters }
                             });
-                            if (!this.auth_types.length) {
-                                this.auth_types = [...new Set(this.records.map(r => r.auth_type).filter(Boolean))].sort();
-                            }
                             this.loading = false;
                         },
 
