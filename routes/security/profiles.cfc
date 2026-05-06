@@ -68,74 +68,13 @@
     </cffunction>
 
 
-    <cffunction name="generateAvatar">
-        <cfset profile = application.lib.db.read( table_name : 'moo_profile', id : url.id, returnAsCFML:true ) />
-        <cfset profile_picture = application.lib.db.read( table_name : 'moo_file', id : profile.profile_picture_id.id, returnAsCFML:true ) />
-
-        <cfif !len(profile.profile_picture_id)>
-            <cfreturn {done:false} />
-        </cfif>
-
-
-        <cfset profile_picture_data = s3readBinary(bucketName="#server.system.environment.S3_bucket#", objectName=profile_picture.path)>
-
-
-        <!--- Save the PDF locally for processing --->
-        <cfset tempPath = "#GetTempDirectory()##getFileFromPath(profile_picture.path)#">
-        <cffile action="write" file="#tempPath#" output="#profile_picture_data#">
-
-
-        <cfset tempAvatarPath = "#GetTempDirectory()#avatar.png">
-        <cfscript>
-        // Load the Java libraries
-        javaImageIO = createObject("java", "javax.imageio.ImageIO");
-        javaFile = createObject("java", "java.io.File");
-        javaBufferedImage = createObject("java", "java.awt.image.BufferedImage");
-        javaImage = javaImageIO.read(javaFile.init(tempPath));
-
-
-        // Convert to RGBA format if not already
-        if (javaImage.getType() neq javaBufferedImage.TYPE_INT_ARGB) {
-            convertedImage = createObject("java", "java.awt.image.BufferedImage").init(
-                javaImage.getWidth(),
-                javaImage.getHeight(),
-                javaBufferedImage.TYPE_INT_ARGB
-            );
-            graphics = convertedImage.createGraphics();
-            graphics.drawImage(javaImage, 0, 0, javaCast("null", ""));
-            graphics.dispose();
-        } else {
-            convertedImage = javaImage;
-        }
-
-        // Save the converted image as PNG
-        javaImageIO.write(convertedImage, "png", javaFile.init(tempAvatarPath));
-        </cfscript>
-
-
-<!---
-        <!-- Load the image -->
-        <cfimage action="read" source="#tempPath#" name="imageObj">
-
-        <!-- Convert to PNG -->
-        <cfset tempAvatarPath = "#GetTempDirectory()#avatar.png">
-        <cfimage action="write" source="#imageObj#" destination="#tempAvatarPath#" format="png">
-
- --->
-        <cfset stAnalysis = application.lib.openai.image_edits(
-                prompt = "A pixel art avatar in the style of Leisure Suit Larry, depicting the person in the image uploaded. The background should be simple and unobtrusive to highlight the character.",
-                image_path = tempAvatarPath,
-                size = "1024x1024"
-            ) />
-
-        <cfdump var="#stAnalysis#"><cfabort>
-        <cfreturn stAnalysis />
-
+    <cffunction name="read">
+        <cfreturn application.lib.db.read(table_name='moo_profile', id=id, field_list="*", returnAsCFML=true) />
     </cffunction>
 
 
-    <cffunction name="read">
-        <cfreturn application.lib.db.read(table_name='moo_profile', id=id, field_list="*", returnAsCFML=true) />
+    <cffunction name="handleAddressAction.address">
+        <cfreturn application.lib.addressfinder.handleAddressAction(url) />
     </cffunction>
 
 
@@ -388,18 +327,14 @@
 
                         <div class="space-y-4">
                             <!-- Basic Info -->
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <cf_table_controls table_name="moo_profile" fields="full_name,email,mobile" />
+                            <cf_table_controls table_name="moo_profile" fields="full_name" />
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <cf_table_controls table_name="moo_profile" fields="email,mobile" />
                             </div>
 
                             <!-- Profile Picture -->
                             <div class="divider text-sm text-base-content/50">Profile Picture</div>
                             <cf_table_controls table_name="moo_profile" fields="profile_picture_id" />
-
-                            <button class="btn btn-outline btn-sm" @click="generateAvatar(current_record)">
-                                <i class="fal fa-wand-magic-sparkles"></i>
-                                Generate Avatar
-                            </button>
 
                             <!-- Permissions & Address -->
                             <div class="divider text-sm text-base-content/50">Permissions & Address</div>
@@ -409,7 +344,19 @@
 
                             <!-- External Auth -->
                             <div class="divider text-sm text-base-content/50">External Authentication</div>
-                            <cf_table_controls table_name="moo_profile" fields="external_auth_id" />
+                            <template x-if="current_record.external_auth_id">
+                                <fieldset class="fieldset">
+                                    <legend class="fieldset-legend">External Auth ID</legend>
+                                    <div class="text-xs font-mono text-base-content/70 break-all" x-text="current_record.external_auth_id"></div>
+                                    <p class="fieldset-label text-base-content/50">Issued by the third-party identity provider — not editable here.</p>
+                                </fieldset>
+                            </template>
+                            <template x-if="!current_record.external_auth_id">
+                                <fieldset class="fieldset">
+                                    <legend class="fieldset-legend">External Auth ID</legend>
+                                    <div class="text-sm text-base-content/50 italic">No external identity linked.</div>
+                                </fieldset>
+                            </template>
 
 
                         </div>
@@ -493,11 +440,6 @@
                             this.filters = { ...default_filters };
                             await clearFilters();
                             await this.load();
-                        },
-
-                        async generateAvatar(item) {
-                            const res = await req({ endpoint: 'generateAvatar', id: item.id });
-                            console.log(res);
                         },
 
                         async handleSave() {
