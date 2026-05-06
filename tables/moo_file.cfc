@@ -7,6 +7,7 @@
             "title": "File",
             "title_plural": "Files",
             "item_label_template": "`${item.path}`",
+            "_condensed_fields": "id,name,size,thumbnail,path",
             "fields": {
                 "name": {},
                 "size": { "type" : "int8" },

@@ -2,69 +2,7 @@
 
 
     <cffunction name="uploadFileToServerWithProgress.profile_picture_id">
-
-        <cfparam name="request.data.file_id" default="" />
-        <cfparam name="request.data.file_name" default="" />
-        <cfparam name="request.data.file_size" default="" />
-        <!--- <cfparam name="request.data.file" default="" /> --->
-
-
-        <!--- Calling without the ID will generate the record for then will call again when the file is uploaded --->
-        <cfif !len(request.data.file_id)>
-
-            <cfset res = {} />
-
-            <cfset file_extension = listLast(request.data.file_name,".") />
-
-            <cfset new_path = "/moo_file/#dateFormat(now(),'yyyy-mm')#/#createUUID()#/#request.data.file_name#" />
-            <cfset new_thumbnail = '/icons/square-o/#file_extension#.svg' />
-
-
-            <cfset new_file = application.lib.db.save(
-                table_name : 'moo_file',
-                data : {
-                    name : request.data.file_name,
-                    size : request.data.file_size,
-                    thumbnail: new_thumbnail,
-                    path : new_path
-                },
-                returnAsCFML:true
-            ) />
-            <cfset res.file = application.lib.db.read( table_name : 'moo_file', id : new_file.id, returnAsCFML=true ) />
-
-
-            <cfset res.presignedURL = s3generatePresignedUrl(
-                bucket= '#server.system.environment.S3_bucket#',
-                objectName = new_path,
-                httpMethod = "PUT",
-                expireDate = dateAdd('n', 5, now())
-            ) />
-
-
-            <cfreturn res />
-        </cfif>
-
-
-        <cfset new_file = application.lib.db.read( table_name : 'moo_file', id : request.data.file_id, returnAsCFML:true ) />
-
-        <cfset file_extension = listLast(new_file.name,".") />
-
-        <cfif listFindNoCase("JPG,JPEG,PNG,GIF,WebP,SVG,TIFF,BMP,HEIF", file_extension)>
-            <cfset save_data = application.lib.db.save(
-                    table_name : 'moo_file',
-                    data : {
-                        id : request.data.file_id,
-                        thumbnail: '#new_file.path#'
-                    },
-                    returnAsCFML:true
-                ) />
-
-
-            <cfset new_file = application.lib.db.read( table_name : 'moo_file', id : request.data.file_id ) />
-        </cfif>
-
-
-        <cfreturn new_file>
+        <cfreturn application.lib.db.getService(table_name="moo_file").uploadFileToServerWithProgress(data="#request.data#") />
     </cffunction>
 
 
