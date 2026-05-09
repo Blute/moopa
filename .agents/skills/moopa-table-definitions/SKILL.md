@@ -11,7 +11,7 @@ Table definitions in Moopa serve dual purposes:
 
 ## Table Definition Structure
 
-Table definitions live in `code/project/tables/{table_name}.cfc`:
+Table definitions live in `code/domain/tables/{table_name}.cfc or code/apps/{app}/tables/{table_name}.cfc`:
 
 ```cfml
 <cfcomponent>
@@ -164,18 +164,18 @@ The `html` block configures how fields render in forms:
 ## Foreign Keys
 
 ```cfml
-"agency_id": {
+"category_id": {
     "type": "uuid",
     "nullable": false,
-    "foreign_key_table": "rea_agency",
+    "foreign_key_table": "product_category",
     "html": {
         "control": "combobox",
-        "label": "Agency"
+        "label": "Category"
     }
 }
 ```
 
-The combobox automatically calls `search.agency_id` endpoint for options, which you implement in the route CFC.
+The combobox automatically calls `search.category_id` endpoint for options, which you implement in the route CFC.
 
 ## Many-to-Many Relationships
 
@@ -241,8 +241,8 @@ Renders multiple fields from table definition:
 
 ```cfml
 <cf_table_controls 
-    table_name="rea_agent" 
-    fields="first_name,last_name,email" 
+    table_name="product" 
+    fields="name,sku,status" 
     model_record="current_record" />
 ```
 
@@ -250,11 +250,11 @@ With overrides:
 
 ```cfml
 <cf_table_controls 
-    table_name="rea_agent" 
-    fields="agency_id,status" 
+    table_name="product" 
+    fields="category_id,status" 
     model_record="current_record"
     config={
-        agency_id: {route: "/hub/rea/agents"},
+        category_id: {route: "/admin/product-categories/"},
         status: {placeholder: "Select status..."}
     } />
 ```
@@ -263,8 +263,8 @@ With overrides:
 
 ```cfml
 <cf_table_controls 
-    table_name="rea_agent" 
-    fields="name,email" 
+    table_name="product" 
+    fields="name,sku" 
     model_record="current_record"
     label_position="left"
     class="fieldset mb-4" />
@@ -388,13 +388,13 @@ With overrides:
 
 ## Syncing Schema
 
-Visit `/schema/` to compare code definitions with database and generate ALTER statements. The framework reads all CFC files in `code/project/tables/` and `code/moopa/tables/` and compares with the live database.
+Visit `/schema/` to compare code definitions with database and generate ALTER statements. The framework reads all CFC files in `package table directories such as `code/domain/tables/`, `code/apps/{app}/tables/`, and `code/moopa/tables/` and compares with the live database.
 
 ## Naming Conventions
 
 - Table names: `snake_case`, singular or plural consistent with domain
 - Field names: `snake_case`
-- Foreign keys: `{related_table}_id` (e.g., `agency_id`)
+- Foreign keys: `{related_table}_id` (e.g., `category_id`)
 - Indexes: `idx_{table}_{field}` or `idx_{table}_{purpose}`
 - Bridge tables (many-to-many): `{table}_{relationship}` (auto-generated)
 

@@ -70,21 +70,29 @@
         <!--- ------------------- --->
 
         <cfset stDBRoutes = {} />
+        <cfset routePersistenceAvailable = true />
 
-        <cfquery name="qDBRoutes">
-        SELECT COALESCE(jsonb_agg(data)::text, '[]') as data
-        FROM (
-                SELECT id::text as id, key::text as key, url, mapping,
-                COALESCE((
-                    SELECT json_agg(json_build_object('id', moo_route_endpoint.id::text, 'name', moo_route_endpoint.name))
-                    FROM moo_route_endpoint
-                    WHERE moo_route_endpoint.route_id = moo_route.id
-                ), '[]') AS endpoints
-                FROM moo_route
-        ) as data
-        </cfquery>
+        <cftry>
+            <cfquery name="qDBRoutes">
+            SELECT COALESCE(jsonb_agg(data)::text, '[]') as data
+            FROM (
+                    SELECT id::text as id, key::text as key, url, mapping,
+                    COALESCE((
+                        SELECT json_agg(json_build_object('id', moo_route_endpoint.id::text, 'name', moo_route_endpoint.name))
+                        FROM moo_route_endpoint
+                        WHERE moo_route_endpoint.route_id = moo_route.id
+                    ), '[]') AS endpoints
+                    FROM moo_route
+            ) as data
+            </cfquery>
 
-        <cfset aDBRoutes = deserializeJSON(qDBRoutes.data) />
+            <cfset aDBRoutes = deserializeJSON(qDBRoutes.data) />
+            <cfcatch type="database">
+                <!--- First-run/dev fallback: route tables may not exist until /schema has been applied. --->
+                <cfset routePersistenceAvailable = false />
+                <cfset aDBRoutes = [] />
+            </cfcatch>
+        </cftry>
 
         <cfloop array="#aDBRoutes#" item="route">
             <cfset stDBRoutes[route.key] = route />
@@ -97,11 +105,37 @@
         <!--- PROCESS ALL ROUTES --->
         <!--- ------------------ --->
         <cfset processed_route_urls = '' />
+        <cfset routePackages = [] />
 
-        <cfloop list="/project,/plugins/test,/moopa" index="iPackage">
+        <cfif isDefined("application.moopa_packages") AND isArray(application.moopa_packages)>
+            <cfloop array="#application.moopa_packages#" item="local.package">
+                <cfif isArray(local.package.load ?: "")
+                    AND arrayFindNoCase(local.package.load, "routes")
+                    AND ((local.package.kind ?: "") NEQ "app" OR (local.package.app_name ?: local.package.name) EQ (application.app_name ?: "project"))>
+                    <cfset arrayAppend(routePackages, local.package) />
+                </cfif>
+            </cfloop>
+        <cfelse>
+            <cfset routePackages = [
+                { name: "project", path: "/project", load: ["routes"] },
+                { name: "plugins_test", path: "/plugins/test", load: ["routes"] },
+                { name: "moopa", path: "/moopa", load: ["routes"] }
+            ] />
+        </cfif>
+
+        <cfloop array="#routePackages#" item="routePackage">
+            <cfset iPackage = routePackage.path />
             <cfset packagePath = expandPath(iPackage) />
             <cfset routePath = "#packagePath#/routes" />
             <cfset componentPath = "#iPackage#/routes" />
+            <cfset routeMount = reReplace(routePackage.route_mount ?: "", "^/+|/+$", "", "all") />
+            <cfif len(routeMount)>
+                <cfset routeMount = "/#routeMount#" />
+            </cfif>
+
+            <cfif NOT directoryExists(routePath)>
+                <cfcontinue />
+            </cfif>
 
             <cfdirectory action="list" directory="#routePath#" name="qRoutes" recurse="true" filter="*.cfc">
 
@@ -118,20 +152,22 @@ TODO: need to check if old way works for the following and which has precedence:
                 <cfset stRoute.key = "" /> <!--- set shortly via component metadata --->
                 <cfset stRoute.location = "#qRoutes.directory#/#qRoutes.name#" />
                 <cfset stRoute.path = replaceNoCase(stRoute.location,".cfc",'') />
-                <cfset stRoute.url = replaceNoCase(stRoute.path,"#routePath#",'') />
-                <cfset stRoute.componentPath = "#componentPath##stRoute.url#" />
+                <cfset stRoute.localUrl = replaceNoCase(stRoute.path,"#routePath#",'') />
+                <cfset stRoute.url = reReplace("#routeMount##stRoute.localUrl#", "/+", "/", "all") />
+                <cfset stRoute.componentPath = "#componentPath##stRoute.localUrl#" />
+                <cfset stRoute.package = routePackage.name ?: iPackage />
                 <cfset stRoute.docs = {} />
                 <cfset stRoute.endpoints = {} />
                 <cfset stRoute.md = duplicate(getMetaData(createObject("component", "#stRoute.componentPath#"))) />
-                <cfset stRoute['open_to'] = stRoute.md['open_to']?:'security' /> <!--- public,bearer,logged_in,security --->
-                <cfset stRoute['auth_type'] = stRoute.md['auth_type']?:stRoute.md['auth']?:'moopa' />
+                <cfset stRoute['open_to'] = stRoute.md['open_to']?:routePackage.default_open_to?:'security' /> <!--- public,bearer,logged_in,security --->
+                <cfset stRoute['auth_type'] = stRoute.md['auth_type']?:stRoute.md['auth']?:routePackage.auth_type?:'moopa' />
 
                 <!--- Need to determine if the route is already defined --->
 
                 <cfif !listFindNoCase(processed_route_urls, stRoute.url)>
                     <cfset processed_route_urls = listAppend(processed_route_urls, stRoute.url) />
                 <cfelse>
-                    <cfcontinue />
+                    <cfthrow message="Duplicate route URL '#stRoute.url#' loaded from #stRoute.componentPath#. Package boundaries require unique routes within an app runtime." />
                 </cfif>
 
                 <cfloop array="#stRoute.md.functions#" item="fn">
@@ -158,7 +194,13 @@ TODO: need to check if old way works for the following and which has precedence:
                 <!--- ------------------------------------- --->
                 <!--- SELF REGISTER IF NOT ALREADY EXISTING --->
                 <!--- ------------------------------------- --->
-                <cfif !structKeyExists(stDBRoutes, stRoute.key)>
+                <cfif NOT routePersistenceAvailable>
+                    <!--- First-run/dev fallback: keep routes in memory without writing moo_route rows. --->
+                    <cfset stRoute.id = stRoute.key />
+                    <cfloop collection="#stRoute.endpoints#" item="function_name">
+                        <cfset stRoute.endpoints[function_name]['id'] = "#stRoute.key#:#function_name#" />
+                    </cfloop>
+                <cfelseif !structKeyExists(stDBRoutes, stRoute.key)>
                     <cfset save_moo_route = application.lib.db.save(
                         table_name = "moo_route",
                         data = {

@@ -17,11 +17,28 @@
         <cfset this.normalizeIndexPattern = "::[a-zA-Z0-9_]*|[()']| |\r?\n" />
 
 
-        <!--- Merge the results --->
-        <cfset structAppend(this.codeSchema, processDirectory('/moopa'))>
-        <cfset structAppend(this.codeSchema, processDirectory('/project'))>
+        <!--- Merge table definitions from configured packages. Falls back to the original /moopa + /project layout. --->
+        <cfset local.schemaPackages = [] />
+        <cfif isDefined("application.moopa_packages") AND isArray(application.moopa_packages)>
+            <cfset local.schemaPackages = application.moopa_packages />
+        <cfelse>
+            <cfset local.schemaPackages = [
+                { name: "moopa", path: "/moopa", load: ["tables"] },
+                { name: "project", path: "/project", load: ["tables"] }
+            ] />
+        </cfif>
 
-
+        <cfloop array="#local.schemaPackages#" item="local.package">
+            <cfif isArray(local.package.load ?: "") AND arrayFindNoCase(local.package.load, "tables") AND directoryExists(expandPath("#local.package.path#/tables"))>
+                <cfset local.packageSchema = processDirectory(local.package.path) />
+                <cfloop collection="#local.packageSchema#" item="local.tableName">
+                    <cfif structKeyExists(this.codeSchema, local.tableName)>
+                        <cfthrow message="Duplicate table definition '#local.tableName#' loaded from package '#local.package.name#'. Package boundaries require unique table names." />
+                    </cfif>
+                    <cfset this.codeSchema[local.tableName] = local.packageSchema[local.tableName] />
+                </cfloop>
+            </cfif>
+        </cfloop>
 
 
         <cfset this.codeSchema = sanitizeCodeSchema(this.codeSchema)>

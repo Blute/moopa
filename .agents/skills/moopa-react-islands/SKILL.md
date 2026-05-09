@@ -19,25 +19,25 @@ Use this pattern when a Moopa page is mostly server rendered but a specific sect
 Route-local source lives beside the route:
 
 ```text
-code/project/routes/{route}/react/{component}.jsx
+code/apps/{app}/routes/{route}/react/{component}.jsx
 ```
 
 Served browser bundle mirrors the route path under the webroot:
 
 ```text
-code/project/www/_static/react/{route}/react/{component}.js
+code/www/_static/react/{app}/{route}/react/{component}.js
 ```
 
 Example:
 
 ```text
-code/project/routes/hub/react/welcome_actions.jsx
-code/project/www/_static/react/hub/react/welcome_actions.js
+code/apps/hub/routes/react/welcome_actions.jsx
+code/www/_static/react/hub/react/welcome_actions.js
 ```
 
 ## Custom Tag
 
-Use `code/project/tags/react_mount.cfm` via `<cf_react_mount>`:
+Use the shared/project `react_mount.cfm` custom tag via `<cf_react_mount>`:
 
 ```cfml
 <cf_react_mount
@@ -83,7 +83,7 @@ The tag stores timing metadata on the island element, and the island bundle shou
 
 ## Route Path Rule
 
-The router now sets `request.current_route_path` for the page route from `route_data.stRoute.componentPath`, so dynamic routes keep their source-style path such as `easy/[sell_id]`.
+The router now sets `request.current_route_path` for the page route from `route_data.stRoute.componentPath`, so dynamic routes keep their source-style path such as `orders/[order_id]`.
 
 Pass `route_path` explicitly only when you need to override that default.
 
@@ -100,7 +100,7 @@ React should enhance or replace that block after mount.
 
 ## Build Workflow
 
-React islands are bundled locally from route-local source in both `code/project/routes` and `code/moopa/routes` into served browser files.
+React islands are bundled locally from route-local source in package route folders such as `code/apps/{app}/routes`, `code/shared/routes`, and `code/moopa/routes` into served browser files.
 
 Commands:
 
@@ -111,7 +111,7 @@ npm run watch:react-mounts
 
 Local Docker compose runs React mounts in a dedicated `react_mounts` watcher service, separate from the existing frontend asset watcher.
 
-Source remains canonical in `code/project/routes/**/react/*.jsx` or `code/moopa/routes/**/react/*.jsx`, and the generated browser bundle is written to the mirrored path under `code/project/www/_static/react/**/react/*.js`.
+Source remains canonical in `code/apps/{app}/routes/**/react/*.jsx`, `code/shared/routes/**/react/*.jsx`, or `code/moopa/routes/**/react/*.jsx`, and the generated browser bundle is written to the mirrored path under `code/www/_static/react/**/react/*.js`.
 
 Generated bundles include a small header comment so it is obvious they are build artifacts.
 
@@ -161,8 +161,8 @@ document
 
 ## Checklist
 
-- source JSX added under `code/project/routes/.../react/`
-- served JS added under `code/project/www/.../react/`
+- source JSX added under the relevant package route folder, e.g. `code/apps/{app}/routes/.../react/`
+- served JS added under `code/www/_static/react/.../react/`
 - route uses `<cf_react_mount>`
 - fallback HTML is present and useful
 - script only mounts the intended island key

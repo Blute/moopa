@@ -7,18 +7,18 @@ description: Create Moopa route CFCs with endpoints and frontend API calls. Use 
 
 ## Core Concept: File-Based Routing
 
-Routes are CFC files in `code/project/routes/` that map directly to URLs:
+Routes are CFC files in `code/apps/{app}/routes/` that map directly to URLs:
 
 | File Path | URL |
 |-----------|-----|
 | `routes/index.cfc` | `/` |
-| `routes/hub/agencies.cfc` | `/hub/agencies/` |
-| `routes/hub/sell_addresses.cfc` | `/hub/sell_addresses/` |
-| `routes/hub/[agency_id]/agency.cfc` | `/hub/{agency_id}/agency/` |
+| `routes/admin/users.cfc` | `/admin/users/` |
+| `routes/admin/products.cfc` | `/admin/products/` |
+| `routes/admin/[customer_id]/profile.cfc` | `/admin/{customer_id}/profile/` |
 
 **URL slug convention:** filenames and directory names map verbatim — underscores stay underscores, they are **not** converted to hyphens. Pick filenames that read well as URL slugs (e.g. `coming_soon.cfc` → `/hub/coming_soon/`).
 
-Dynamic slugs like `[agency_id]` become `arguments.agency_id` in endpoint functions.
+Dynamic slugs like `[customer_id]` become `arguments.customer_id` in endpoint functions.
 
 ## Route CFC Structure
 
@@ -55,7 +55,7 @@ Dynamic slugs like `[agency_id]` become `arguments.agency_id` in endpoint functi
 |-----------|--------|---------|
 | `key` | UUID | **Required.** Unique identifier — generate via `uuidgen`, never hand-crafted. Keys must be globally unique across the entire codebase. Missing or empty key throws `No Key Defined for <route>` from `moo_route.cfc` on first request — this is the framework-side check that route identity is wired up before any authorisation logic runs. |
 | `open_to` | `public`, `validated`, `security` | Access control (see below) |
-| `auth_type` | `moopa`, `gday`, `agent`, ... | Restricts which auth source's profiles can hit this route. Defaults to `moopa` when omitted (see `moo_route.cfc:127`). In a single-auth-type moopa app this default is fine. **In multi-portal apps, declare `auth_type` explicitly on every route**, even when it would equal the default — readers shouldn't have to know the framework default to understand who can reach the endpoint. |
+| `auth_type` | app auth realm, e.g. `hub`, `www`, `shop`, ... | Restricts which auth source's profiles can hit this route. Normally inherited from the active app package. Declare it on a route only for unusual cross-realm cases. |
 
 ### Access Control: open_to Options
 
@@ -91,25 +91,11 @@ For `bearer` routes, clients must include the Authorization header:
 Authorization: Bearer <token>
 ```
 
-### Multi-Auth Apps: declaring `auth_type` explicitly
+### App-level auth type
 
-The framework defaults missing `auth_type` to `"moopa"` (see `moo_route.cfc:127`), which is sensible because for many moopa apps `moopa` is the only auth source. Real Easy is unusual — three independent auth sources, each with its own portal:
+In package-based Moopa apps, the active app package normally defines the default `auth_type`. Most route CFCs should omit `auth_type` and inherit the app realm.
 
-| Portal | Routes prefix | `auth_type` |
-|--------|--------------|-------------|
-| Hub (Microsoft SSO) | `/hub/*`, `/security/*` | `moopa` |
-| gday (consumer / sell flow) | `/easy/*` | `gday` |
-| Agent portal | `/agent/*` | `agent` |
-
-Declare `auth_type` explicitly on every route — even hub routes where it would equal the default. The constraint becomes visible at the top of the file rather than relying on knowing the framework default, and it makes mistakes (a hub-titled route accidentally reachable to gday users) impossible to overlook in code review.
-
-```cfml
-<cfcomponent key="..." open_to="logged_in" auth_type="moopa">  <!--- Hub --->
-<cfcomponent key="..." open_to="logged_in" auth_type="gday">   <!--- gday --->
-<cfcomponent key="..." open_to="logged_in" auth_type="agent">  <!--- Agent --->
-```
-
-The framework rejects requests where `session.auth.profile.auth_type` doesn't match the route's declared `auth_type`, so a gday user calling a hub route is bounced before any code in the route runs.
+Use route-level `auth_type` only when a route intentionally belongs to a different identity realm than its app package. The framework rejects requests where `session.auth.profile.auth_type` does not match the effective route `auth_type`.
 
 ## Return Behavior
 
@@ -203,8 +189,8 @@ For frontend-driven routes, use descriptive function names. The `req()` function
 Use dots to organize related endpoints:
 
 ```cfml
-<cffunction name="load.agents">
-    <!--- Called via endpoint: 'load.agents' --->
+<cffunction name="load.users">
+    <!--- Called via endpoint: 'load.users' --->
 </cffunction>
 
 <cffunction name="search.filters.status">
@@ -293,29 +279,29 @@ Alpine.data('edit_form', () => ({
 
 ## Dynamic URL Slugs → arguments
 
-For routes with slugs like `[agency_id]`:
+For routes with slugs like `[customer_id]`:
 
-**Route file:** `routes/hub/rea/[agency_id]/agency.cfc`
-**URL:** `/hub/rea/abc-123/agency/`
+**Route file:** `routes/admin/[customer_id]/profile.cfc`
+**URL:** `/admin/abc-123/profile/`
 
 ```cfml
 <cffunction name="load">
-    <!--- arguments.agency_id = "abc-123" --->
+    <!--- arguments.customer_id = "abc-123" --->
     <cfquery name="qData">
     SELECT COALESCE(row_to_json(data)::text, '{}') as recordset
     FROM (
-        SELECT * FROM rea_agency 
-        WHERE id = <cfqueryparam cfsqltype="other" value="#arguments.agency_id#" />
+        SELECT * FROM customer 
+        WHERE id = <cfqueryparam cfsqltype="other" value="#arguments.customer_id#" />
     ) AS data
     </cfquery>
     <cfreturn qData.recordset />
 </cffunction>
 
 <cffunction name="delete">
-    <!--- Same: arguments.agency_id available --->
+    <!--- Same: arguments.customer_id available --->
     <cfreturn application.lib.db.delete(
-        table_name = "rea_agency", 
-        id = "#arguments.agency_id#"
+        table_name = "customer", 
+        id = "#arguments.customer_id#"
     ) />
 </cffunction>
 ```
@@ -433,7 +419,7 @@ Any route that renders a form with an editable file field needs a per-field uplo
 
 The function name suffix (`profile_picture_id`) must match the field id used in the form — Alpine's file control posts to `endpoint: 'uploadFileToServerWithProgress.<field_id>'` so a single route can host several upload fields without colliding.
 
-The implementation lives in `code/moopa/tables/moo_file.cfc` `uploadFileToServerWithProgress`. It runs in two legs (presign + finalise), signs the resulting thumbnail via `application.lib.cloudflare.signed_asset_url(..., kind='i', ...)`, and writes the signed URL into `moo_file.thumbnail`. Don't write your own version of this — see Blute/moopa#6 for the framework-level concern about the asset signer being implicit.
+The implementation lives in `code/moopa/tables/moo_file.cfc` `uploadFileToServerWithProgress`. It runs in two legs (presign + finalise), signs the resulting thumbnail via `application.lib.cloudflare.signed_asset_url(..., kind='i', ...)`, and writes the signed URL into `moo_file.thumbnail`. Don't write your own version of this; keep upload/signing behaviour centralised in the framework service.
 
 ## Self-Edit Profile Recipe
 
@@ -478,7 +464,7 @@ Different shape from the CRUD example: the logged-in user edits their *own* reco
 
         <cfset application.lib.db.save(table_name="moo_profile", data=saveData) />
 
-        <!--- Refresh the session profile so the hub layout/avatar picks up the change without re-login --->
+        <!--- Refresh the session profile so the app layout/avatar picks up the change without re-login --->
         <cfset session.auth.profile = application.lib.db.read(
             table_name = "moo_profile",
             id = profileId,
@@ -495,9 +481,9 @@ Different shape from the CRUD example: the logged-in user edits their *own* reco
 Two points worth stressing:
 
 1. **Allow-list fields on save.** Don't `data = request.data` — it lets the browser write fields the user shouldn't be editing (`can_login`, `roles`, `external_auth_id`). Copy each editable field explicitly into a fresh `saveData` struct.
-2. **Refresh `session.auth.profile` after save.** The hub layout reads from the session, not from the DB on every render, so without the refresh the avatar/name in the bottom-left menu stays stale until the user logs out and back in.
+2. **Refresh `session.auth.profile` after save.** The app layout reads from the session, not from the DB on every render, so without the refresh the avatar/name in the bottom-left menu stays stale until the user logs out and back in.
 
-Existing implementations to crib from: `code/project/routes/easy/profile.cfc` (gday), `code/project/routes/agent/profile.cfc` (agent), `code/project/routes/hub/profile.cfc` (hub).
+Use this pattern for app-owned profile routes such as `code/apps/{app}/routes/profile.cfc`.
 
 ## Frontend Patterns with Alpine.js
 

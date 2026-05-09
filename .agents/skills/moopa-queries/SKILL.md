@@ -152,16 +152,16 @@ Add extra SELECT expressions alongside `db.select()`:
 <cfquery name="qData">
 SELECT COALESCE(array_to_json(array_agg(row_to_json(data)))::text, '[]') AS recordset
 FROM (
-    SELECT #application.lib.db.select(table_name="sell_address", field_list="id,property_pid,formatted_address")#,
+    SELECT #application.lib.db.select(table_name="customer_order", field_list="id,order_number,status")#,
            
            <!--- Add computed columns --->
-           (SELECT email FROM moo_profile WHERE moo_profile.id = sell_address.profile_id) as profile_email,
+           (SELECT email FROM moo_profile WHERE moo_profile.id = customer_order.profile_id) as profile_email,
            
            <!--- Date formatting --->
-           to_char(selected_at, 'YYYY-MM-DD HH24:MI') as formatted_date
+           to_char(created_at, 'YYYY-MM-DD HH24:MI') as formatted_date
            
-    FROM sell_address
-    ORDER BY selected_at DESC
+    FROM customer_order
+    ORDER BY created_at DESC
 ) AS data
 </cfquery>
 ```

@@ -225,9 +225,10 @@
                 returnAsCFML=true
             ) />
 
-        <!--- Only send email in production environment --->
-        <cfif (server.system.environment.APP_ENVIRONMENT?:'production') EQ 'production'>
-            <cfset email_subject = "JOIN 500 ERROR [#dateFormat(now(),'ddd dd-mmm-yyyy')#]"/>
+        <!--- Only send email in production when an error recipient is configured. --->
+        <cfset local.errorEmailTo = server.system.environment.SYSADMIN_EMAIL ?: "" />
+        <cfif (server.system.environment.APP_ENVIRONMENT?:'production') EQ 'production' AND len(trim(local.errorEmailTo))>
+            <cfset email_subject = "MOOPA 500 ERROR [#dateFormat(now(),'ddd dd-mmm-yyyy')#]"/>
 
             <cfsavecontent variable="email_body">
                 <cfoutput>
@@ -238,7 +239,7 @@
             </cfsavecontent>
 
             <cfset result = application.lib.postmark.sendEmail(
-                to="matthew@blute.com.au",
+                to="#local.errorEmailTo#",
                 subject="#email_subject#",
                 htmlBody="#email_body#",
                 tag="500 Error"

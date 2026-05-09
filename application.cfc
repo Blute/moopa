@@ -31,9 +31,14 @@
         <!--- LET THE TEMPLATE KNOW WE HAVE INITIALIZE IN CASE WE WANT TO ALERT THE USER --->
         <cfset request.application_initialized = true />
 
-        <cfset application.lib = {} />
+        <cfset application.app_name = server.system.environment.APP_NAME ?: "project" />
+        <cfset application.moopa_packages = _getMoopaPackages() />
         <cfset application.path = {} />
-        <cfset application.path.project =  expandPath('/project') />
+        <cfloop array="#application.moopa_packages#" item="local.package">
+            <cfset application.path[local.package.name] = expandPath(local.package.path) />
+        </cfloop>
+
+        <cfset application.lib = {} />
 
 
         <cfset _setupLibs() />
@@ -68,17 +73,6 @@
 
 
 		<cfset var bReturn = true />
-
-
-        <cfif !structKeyExists(cookie, "s3p_token")>
-            <!--- Calculate explicit expiration date --->
-            <cfset expire_date = dateAdd("d", 30, now()) />
-            <cfset token_value = createUUID() />
-
-            <!--- Set cookie manually with cfheader to bypass setdomaincookies=false restriction --->
-            <cfset cookie_expires = dateFormat(expire_date, "ddd, dd-mmm-yyyy") & " " & timeFormat(expire_date, "HH:mm:ss") & " GMT" />
-            <cfheader name="Set-Cookie" value="s3p_token=#token_value#; Domain=.blute.com.au; Expires=#cookie_expires#; Path=/; SameSite=None; Secure" />
-        </cfif>
 
 
 
@@ -417,15 +411,90 @@
 
 
 
+    <cffunction name="_getMoopaPackages" access="private" returntype="array" output="false">
+        <cfif isArray(this.moopa_packages ?: "")>
+            <cfreturn duplicate(this.moopa_packages) />
+        </cfif>
+
+        <!--- Backwards-compatible default for existing single-project apps. --->
+        <cfreturn [
+            { name: "moopa", path: "/moopa", kind: "core", load: ["routes", "tables", "lib", "controls", "navs"] },
+            { name: "project", path: "/project", kind: "app", app_name: application.app_name, load: ["routes", "tables", "lib", "controls", "navs"] }
+        ] />
+    </cffunction>
+
+
+    <cffunction name="_packageLoads" access="private" returntype="boolean" output="false">
+        <cfargument name="package" type="struct" required="true" />
+        <cfargument name="capability" type="string" required="true" />
+
+        <cfif NOT isArray(arguments.package.load ?: "")>
+            <cfreturn false />
+        </cfif>
+
+        <cfreturn arrayFindNoCase(arguments.package.load, arguments.capability) GT 0 />
+    </cffunction>
+
+
+    <cffunction name="_getPackagesFor" access="private" returntype="array" output="false">
+        <cfargument name="capability" type="string" required="true" />
+
+        <cfset var packages = [] />
+
+        <cfloop array="#application.moopa_packages#" item="local.package">
+            <cfif _packageLoads(local.package, arguments.capability)>
+                <!--- App packages are mutually exclusive at runtime: APP_NAME chooses the active app. --->
+                <cfif (local.package.kind ?: "") NEQ "app" OR (local.package.app_name ?: local.package.name) EQ application.app_name>
+                    <cfset arrayAppend(packages, local.package) />
+                </cfif>
+            </cfif>
+        </cfloop>
+
+        <cfreturn packages />
+    </cffunction>
+
+
+    <cffunction name="_loadCfcDirectory" access="private" returntype="void" output="true">
+        <cfargument name="target" type="struct" required="true" />
+        <cfargument name="capability" type="string" required="true" />
+        <cfargument name="label" type="string" required="true" />
+        <cfargument name="skip" type="string" required="false" default="" />
+
+        <cfloop array="#_getPackagesFor(arguments.capability)#" item="local.package">
+            <cfset local.virtualDirectory = "#local.package.path#/#arguments.capability#" />
+            <cfset local.physicalDirectory = expandPath(local.virtualDirectory) />
+
+            <cfif NOT directoryExists(local.physicalDirectory)>
+                <cfcontinue />
+            </cfif>
+
+            <cfdirectory action="list" directory="#local.physicalDirectory#" recurse="true" name="local.qComponents" filter="*.cfc" />
+            <cfloop query="local.qComponents">
+                <cfset local.componentName = listFirst(local.qComponents.name, ".") />
+                <cfset local.relativeDirectory = replaceNoCase(local.qComponents.directory, local.physicalDirectory, "") />
+                <cfset local.relativeDirectory = replace(local.relativeDirectory, "\", "/", "all") />
+                <cfset local.componentPath = local.virtualDirectory & local.relativeDirectory & "/" & local.componentName />
+
+                <cfif listFindNoCase(arguments.skip, local.componentName)>
+                    <cfcontinue />
+                </cfif>
+
+                <cfif structKeyExists(arguments.target, local.componentName)>
+                    <cfthrow message="Duplicate #arguments.label# '#local.componentName#' loaded from #local.componentPath#. Package boundaries require unique component names." />
+                </cfif>
+
+                <cfset arguments.target[local.componentName] = CreateObject("component", local.componentPath).init() />
+            </cfloop>
+        </cfloop>
+    </cffunction>
+
+
     <cffunction name="_setupLibs" access="private" returntype="void" output="true">
 
+        <!--- lib.db first because schema/deploy and later services depend on it. --->
+        <cfset application.lib["db"] = CreateObject("component", "/moopa/lib/db").init() />
 
-        <!--- lib.db first --->
-        <cfset application.lib['db'] = CreateObject('component', "/moopa/lib/db").init() />
-
-
-
-        <cfif len(server.system.environment.deploy_key?:'') AND len(url.deploy?:'') AND url.deploy EQ server.system.environment.deploy_key>
+        <cfif len(server.system.environment.deploy_key?:"") AND len(url.deploy?:"") AND url.deploy EQ server.system.environment.deploy_key>
             <cfset local.statements = application.lib.db.compareDatabaseSchema(application.lib.db.codeSchema) />
             <cfif arrayLen(local.statements)>
                 <cfloop array="#local.statements#" item="local.statement">
@@ -438,22 +507,7 @@
             </cfif>
         </cfif>
 
-
-
-
-        <!--- MOOPA LIBS --->
-        <cfdirectory action="list" directory="/moopa/lib" recurse="true" name="qLibs" filter="*.cfc" />
-        <cfloop query="qLibs">
-            <cfset iName = listFirst(qLibs.name,'.') />
-            <cfset application.lib['#iName#'] = CreateObject('component', "/moopa/lib/#iName#").init() />
-        </cfloop>
-
-        <!--- PROJECT LIBS --->
-        <cfdirectory action="list" directory="/project/lib" recurse="true" name="qLibs" filter="*.cfc" />
-        <cfloop query="qLibs">
-            <cfset iName = listFirst(qLibs.name,'.') />
-            <cfset application.lib['#iName#'] = CreateObject('component', "/project/lib/#iName#").init() />
-        </cfloop>
+        <cfset _loadCfcDirectory(application.lib, "lib", "library", "db") />
 
     </cffunction>
 
@@ -462,20 +516,7 @@
     <cffunction name="_setupControls" access="private" returntype="void" output="true">
 
         <cfset application.control = {} />
-
-        <!--- CORE TABLES --->
-        <cfdirectory action="list" directory="/moopa/controls" recurse="true" name="qControls" filter="*.cfc" />
-        <cfloop query="qControls">
-            <cfset iName = listFirst(qControls.name,'.') />
-            <cfset application.control['#iName#'] = CreateObject('component', "/moopa/controls/#iName#").init() />
-        </cfloop>
-
-        <!--- PROJECT TABLES --->
-        <cfdirectory action="list" directory="/project/controls" recurse="true" name="qControls" filter="*.cfc" />
-        <cfloop query="qControls">
-            <cfset iName = listFirst(qControls.name,'.') />
-            <cfset application.control['#iName#'] = CreateObject('component', "/project/controls/#iName#").init() />
-        </cfloop>
+        <cfset _loadCfcDirectory(application.control, "controls", "control") />
 
     </cffunction>
 
@@ -484,69 +525,42 @@
     <cffunction name="_setupServices" access="private" returntype="void" output="true">
 
         <cfset application.service = {} />
-
-        <!--- CORE TABLES --->
-        <cfdirectory action="list" directory="/moopa/tables" recurse="true" name="qTables" filter="*.cfc" />
-        <cfloop query="qTables">
-            <cfset iName = listFirst(qTables.name,'.') />
-            <cfset application.service['#iName#'] = CreateObject('component', "/moopa/tables/#iName#").init() />
-        </cfloop>
-
-        <!--- PROJECT TABLES --->
-        <cfdirectory action="list" directory="/project/tables" recurse="true" name="qTables" filter="*.cfc" />
-        <cfloop query="qTables">
-            <cfset iName = listFirst(qTables.name,'.') />
-            <cfset application.service['#iName#'] = CreateObject('component', "/project/tables/#iName#").init() />
-        </cfloop>
+        <cfset _loadCfcDirectory(application.service, "tables", "table service") />
 
     </cffunction>
 
 
     <cffunction name="_setupNavs" access="private" returntype="void" output="true">
 
-        <!--- Initialize the application.navs structure --->
         <cfset application.navs = {} />
         <cfset application.nav_id = createUUID() />
 
+        <cfloop array="#_getPackagesFor('navs')#" item="local.package">
+            <cfset local.virtualDirectory = "#local.package.path#/navs" />
+            <cfset local.physicalDirectory = expandPath(local.virtualDirectory) />
 
-        <!--- Get all JSON files in the navs directory --->
-        <cfdirectory action="list" directory="/moopa/navs" filter="*.json" name="qNavFiles" />
-
-        <!--- Loop through each JSON file and add it to application.navs --->
-        <cfloop query="qNavFiles">
-            <cfset var fileName = listFirst(qNavFiles.name, ".") />
-            <cfset var filePath = "/moopa/navs/#qNavFiles.name#" />
-
-            <cffile action="read" file="#filePath#" variable="jsonContent" />
-
-            <cfif !isJSON(jsonContent)>
-                <cfthrow message="Error parsing JSON file #qNavFiles.name#" />
+            <cfif NOT directoryExists(local.physicalDirectory)>
+                <cfcontinue />
             </cfif>
 
-            <cfset application.navs[fileName] = deserializeJSON(jsonContent) />
+            <cfdirectory action="list" directory="#local.physicalDirectory#" filter="*.json" name="local.qNavFiles" />
+            <cfloop query="local.qNavFiles">
+                <cfset local.fileName = listFirst(local.qNavFiles.name, ".") />
+                <cfset local.filePath = "#local.physicalDirectory#/#local.qNavFiles.name#" />
 
+                <cffile action="read" file="#local.filePath#" variable="local.jsonContent" />
+
+                <cfif NOT isJSON(local.jsonContent)>
+                    <cfthrow message="Error parsing JSON file #local.qNavFiles.name#" />
+                </cfif>
+
+                <cfif structKeyExists(application.navs, local.fileName)>
+                    <cfthrow message="Duplicate nav '#local.fileName#' loaded from #local.filePath#. Package boundaries require unique nav names." />
+                </cfif>
+
+                <cfset application.navs[local.fileName] = deserializeJSON(local.jsonContent) />
+            </cfloop>
         </cfloop>
-
-
-
-        <!--- Get all JSON files in the navs directory --->
-        <cfdirectory action="list" directory="/project/navs" filter="*.json" name="qNavFiles" />
-
-        <!--- Loop through each JSON file and add it to application.navs --->
-        <cfloop query="qNavFiles">
-            <cfset var fileName = listFirst(qNavFiles.name, ".") />
-            <cfset var filePath = "/project/navs/#qNavFiles.name#" />
-
-            <cffile action="read" file="#filePath#" variable="jsonContent" />
-
-            <cfif !isJSON(jsonContent)>
-                <cfthrow message="Error parsing JSON file #qNavFiles.name#" />
-            </cfif>
-
-            <cfset application.navs[fileName] = deserializeJSON(jsonContent) />
-
-        </cfloop>
-
 
     </cffunction>
 
