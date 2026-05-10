@@ -201,7 +201,7 @@
                     returnAsCFML=true
                 ) />
 
-                <cfcookie name="deviceid" value="#new_device_id#" expires="#expireTime#" httponly="true" secure="#(server.system.environment.APP_ENVIRONMENT ?: 'production') EQ 'production'#" samesite="Lax">
+                <cfcookie name="deviceid" value="#new_device_id#" expires="#expireTime#" httponly="true" secure="true" samesite="Lax">
 
 
                 <cfset session.auth.stay_logged_in = true />

@@ -7,7 +7,7 @@
     <cfset this.tag.cflocation.addtoken = false />
 
     <cfset this.sessioncookie = {
-        secure: (server.system.environment.APP_ENVIRONMENT ?: "production") EQ "production",
+        secure: true,
         httponly: true,
         samesite: "Lax"
     } />  
@@ -204,7 +204,7 @@
                     DELETE FROM moo_profile_extended_session
                     WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#cookie.deviceid#" />
                     </cfquery>
-                    <cfcookie name="deviceid" value="" expires="0" httponly="true" secure="#(server.system.environment.APP_ENVIRONMENT ?: 'production') EQ 'production'#" samesite="Lax">
+                    <cfcookie name="deviceid" value="" expires="0" httponly="true" secure="true" samesite="Lax">
 
                 </cfif>
             </cfif>
