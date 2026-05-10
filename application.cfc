@@ -176,6 +176,7 @@
         </cfif>
 
 
+        <cfset _redirectToHubSetupIfNeeded() />
 
 
         <!--- --------------------------------- --->
@@ -486,6 +487,68 @@
                 <cfset arguments.target[local.componentName] = CreateObject("component", local.componentPath).init() />
             </cfloop>
         </cfloop>
+    </cffunction>
+
+
+    <cffunction name="_redirectToHubSetupIfNeeded" access="private" returntype="void" output="false">
+        <cfset var currentRoute = url.route ?: "/" />
+        <cfset var currentApp = application.app_name ?: "" />
+        <cfset var isHubSetupRoute = (currentApp EQ "hub" AND reFindNoCase("^/setup/?$", currentRoute)) />
+        <cfset var needsSetup = false />
+        <cfset var hubSetupUrl = "" />
+        <cfset var hubBaseUrl = "" />
+        <cfset var currentHost = "" />
+        <cfset var hostWithoutPort = "" />
+        <cfset var hostPort = "" />
+        <cfset var hubHost = "" />
+
+        <cfif isHubSetupRoute OR NOT structKeyExists(application, "lib") OR NOT structKeyExists(application.lib, "auth_local_password")>
+            <cfreturn />
+        </cfif>
+
+        <cftry>
+            <cfif NOT application.lib.auth_local_password.hasProfileTable() OR application.lib.auth_local_password.requiresSetup("hub")>
+                <cfset needsSetup = true />
+            </cfif>
+            <cfcatch type="database">
+                <cfset needsSetup = true />
+            </cfcatch>
+        </cftry>
+
+        <cfif NOT needsSetup>
+            <cfreturn />
+        </cfif>
+
+        <cfset hubBaseUrl = server.system.environment.HUB_BASE_URL ?: "" />
+
+        <cfif NOT len(hubBaseUrl)>
+            <cfif currentApp EQ "hub">
+                <cfset hubBaseUrl = "" />
+            <cfelse>
+                <cfset currentHost = cgi.HTTP_HOST ?: "" />
+                <cfset hostWithoutPort = listFirst(currentHost, ":") />
+                <cfif listLen(currentHost, ":") GT 1>
+                    <cfset hostPort = ":" & listLast(currentHost, ":") />
+                </cfif>
+                <cfif listLen(hostWithoutPort, ".") GT 1>
+                    <cfset hubHost = "hub." & listRest(hostWithoutPort, ".") />
+                    <cfset hubBaseUrl = "http://#hubHost##hostPort#" />
+                <cfelse>
+                    <cfset hubBaseUrl = "" />
+                </cfif>
+            </cfif>
+        </cfif>
+
+        <cfset hubSetupUrl = reReplace(hubBaseUrl, "/+$", "", "one") & "/setup/" />
+
+        <cfif structKeyExists(getHttpRequestData().headers, "X-Fetch-Request") AND getHttpRequestData().headers["X-Fetch-Request"] EQ "true">
+            <cfheader statuscode="409" statustext="Setup Required">
+            <cfcontent type="application/json" reset="true">
+            <cfoutput>#serializeJSON({error: "Setup required", setup_url: hubSetupUrl})#</cfoutput>
+            <cfabort>
+        </cfif>
+
+        <cflocation url="#hubSetupUrl#" addtoken="false" />
     </cffunction>
 
 
