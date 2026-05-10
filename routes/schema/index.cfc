@@ -1,260 +1,302 @@
 <cfcomponent key="6220e84e-4e5e-4893-90cf-51d33ec6640e">
+
     <cffunction name="get" output="true">
 
-<!---
-<cfset dbSchema = application.lib.db.getSchemaFromDb("item_option,item_choice,item_group")>
+        <cfset statements = application.lib.db.compareDatabaseSchema(application.lib.db.codeSchema) />
+        <cfset reinitUrl = (url.route ?: "/schema/") & "?init=" & randRange(1, 1000) />
 
-<cfset sanitizedDbSchema = application.lib.db.sanitizeCodeSchema(dbSchema)>
-<cfoutput><h1>Database Schema</h1><textarea>#serializeJSON(sanitizedDbSchema['item_option'])#</textarea></cfoutput>
+        <cf_layout_default title="Schema">
+            <div x-data="coapi" x-cloak class="flex flex-col gap-5">
 
- --->
+                <!-- Header -->
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <div class="flex h-11 w-11 items-center justify-center rounded-box bg-primary/10 text-primary">
+                                <i class="fa-regular fa-database text-xl"></i>
+                            </div>
+                            <div>
+                                <h1 class="text-2xl font-semibold tracking-tight">Schema</h1>
+                                <p class="text-sm text-base-content/60">Review database changes generated from Moopa table definitions.</p>
+                            </div>
+                        </div>
+                    </div>
 
-<!---
-<cfloop list="item_group,item_option,item_choice" item="table_name" index="i">
-    <cfset dbSchema = application.lib.db.getSchemaFromDb(table_name)>
+                    <cfoutput>
+                        <a href="#encodeForHTMLAttribute(reinitUrl)#" class="btn btn-primary btn-sm gap-2">
+                            <i class="fa-regular fa-rotate-right"></i>
+                            Re-init
+                        </a>
+                    </cfoutput>
+                </div>
 
-    <cfset jsonSchema[table_name] = dbSchema />
+                <!-- Filters -->
+                <div class="card card-border bg-base-100 shadow-sm w-full max-w-5xl">
+                    <div class="card-body gap-4">
+                        <div class="flex flex-col gap-4 xl:flex-row xl:items-end">
+                            <fieldset class="fieldset w-full xl:max-w-xs">
+                                <legend class="fieldset-legend">Table</legend>
+                                <select class="select select-sm w-full" x-model="filter.table">
+                                    <option value="">All tables</option>
+                                    <template x-for="table in getUniqueTables()" :key="table">
+                                        <option :value="table" x-text="table"></option>
+                                    </template>
+                                </select>
+                            </fieldset>
 
-</cfloop>
-<cfoutput><pre>#serializeJSON(jsonSchema)#</pre></cfoutput><cfabort> --->
-<!---
-<cfquery name="q">
-<cfloop from="1" to="10000" index="i">
-    INSERT INTO _test (title) VALUES ('/coapi/index.cfc?#i#');
-</cfloop>
-</cfquery> --->
+                            <fieldset class="fieldset w-full xl:max-w-2xl xl:flex-1">
+                                <legend class="fieldset-legend">Statement</legend>
+                                <label class="input input-sm w-full">
+                                    <i class="fa-regular fa-magnifying-glass text-base-content/40"></i>
+                                    <input type="search" x-model.debounce.250ms="filter.statement" placeholder="Filter statements..." />
+                                </label>
+                            </fieldset>
 
-<cf_layout_default container="container-fluid">
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters">
+                                    Reset filters
+                                </button>
 
-    <h1 class="text-xl font-semibold">
-        Schema
-        <a href="#url.route#?init=#randRange(1,1000)#" class="link link-primary text-sm ml-2">RE-INIT</a>
-    </h1>
-
-    <div class="divider"></div>
-
-    <!--- <cfdump var="#sanitizedCodeSchema#" label="sanitizedCodeSchema" expand="false"> --->
-
-    <cfset statements = application.lib.db.compareDatabaseSchema(application.lib.db.codeSchema) />
-    <!--- <cfdump var="#statements#" label="statements" expand="false"> --->
-
-        <div class="flex gap-4" x-data="coapi">
-            <div class="w-64 shrink-0">
-                <div class="card card-border bg-base-100">
-                    <div class="card-body">
-                        <label class="label">
-                            <span class="label-text font-medium">Table</span>
-                        </label>
-                        <select class="select select-bordered select-sm w-full" x-model="filter.table">
-                            <option value="">All Tables</option>
-                            <template x-for="table in getUniqueTables()" :key="table">
-                                <option :value="table" x-text="table"></option>
-                            </template>
-                        </select>
-
-                        <label class="label mt-2">
-                            <span class="label-text font-medium">Statement</span>
-                        </label>
-                        <input type="text" class="input input-bordered input-sm w-full" x-model.debounce="filter.statement" placeholder="Filter statements...">
-
-                        <button type="button" class="btn btn-outline btn-info btn-sm mt-4" @click="filter.table = '';filter.statement = '';">Reset Filters</button>
-
-                        <div class="text-xs text-base-content/60 mt-2">
-                            Showing <span x-text="getFilteredStatements().length" class="font-semibold"></span> of <span x-text="statements.length" class="font-semibold"></span> statements
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="flex-1">
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <div class="card card-border bg-base-100">
-                        <div class="card-body">
-                            <div class="flex gap-2 mb-4">
-                                <button type="button" class="btn btn-outline btn-primary btn-sm" @click="selectAll">Select All</button>
-                                <button type="button" class="btn btn-outline btn-secondary btn-sm" @click="deselectAll">Deselect All</button>
+                <div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
+
+                    <!-- Statements -->
+                    <div class="card card-border bg-base-100 shadow-sm min-w-0">
+                        <div class="card-body gap-4">
+                            <div>
+                                <h2 class="card-title text-lg">Pending statements</h2>
+                                <p class="text-sm text-base-content/60">
+                                    Showing <span class="font-medium text-base-content" x-text="filteredCount"></span>
+                                    of <span class="font-medium text-base-content" x-text="statements.length"></span> statements.
+                                </p>
                             </div>
                         </div>
-                        <div class="overflow-x-auto min-w-0">
-                            <table class="table table-sm table-fixed w-full">
-                                <colgroup>
-                                    <col class="w-8">
-                                    <col class="w-14">
-                                    <col class="w-48">
-                                    <col>
-                                </colgroup>
+
+                        <div class="overflow-x-auto">
+                            <table class="table table-sm">
                                 <thead>
-                                <tr>
-                                    <th>##</th>
-                                    <th>Priority</th>
-                                    <th>Title</th>
-                                    <th>Statement</th>
-                                </tr>
+                                    <tr>
+                                        <th class="w-10">
+                                            <input
+                                                type="checkbox"
+                                                class="checkbox checkbox-sm checkbox-primary"
+                                                aria-label="Toggle filtered statements"
+                                                :checked="filteredCount > 0 && filteredSelectedCount === filteredCount"
+                                                :disabled="filteredCount === 0"
+                                                x-effect="$el.indeterminate = filteredSelectedCount > 0 && filteredSelectedCount < filteredCount"
+                                                @change="toggleFilteredSelection()"
+                                            >
+                                        </th>
+                                        <th class="w-20">Priority</th>
+                                        <th>Statement</th>
+                                    </tr>
                                 </thead>
                                 <tbody>
-                                    <template x-for="(statement, i) in getFilteredStatements">
-                                        <tr x-id="['checkbox']" class="hover">
+                                    <template x-for="(statement, i) in getFilteredStatements()" :key="statement.statement + '-' + i">
+                                        <tr
+                                            class="hover:bg-base-200/60 align-top cursor-pointer select-none"
+                                            @click="statement.selected = !statement.selected"
+                                        >
                                             <td>
-                                                <input type="checkbox" class="checkbox checkbox-sm checkbox-primary" x-model="statement.selected" @click="toggleStatement(statement)">
+                                                <input type="checkbox" class="checkbox checkbox-sm checkbox-primary pointer-events-none" x-model="statement.selected" tabindex="-1">
                                             </td>
-                                            <td x-text="statement.priority"></td>
                                             <td>
-                                                <div class="flex items-center gap-2">
-                                                    <span x-text="statement.title"></span>
-                                                    <template x-if="statement.mismatches && statement.mismatches.length > 0">
-                                                        <button type="button" class="badge badge-warning badge-xs cursor-pointer gap-1" @click="openMismatch = statement">
-                                                            <span x-text="statement.mismatches.length"></span> diff
-                                                        </button>
-                                                    </template>
+                                                <span class="badge badge-ghost badge-sm" x-text="statement.priority"></span>
+                                            </td>
+                                            <td>
+                                                <div class="flex flex-col gap-2">
+                                                    <div class="flex flex-wrap items-center gap-2">
+                                                        <span class="font-medium" x-text="statement.title"></span>
+                                                        <span class="badge badge-ghost badge-sm" x-text="statement.table_name || 'unknown table'"></span>
+                                                        <template x-if="statement.mismatches && statement.mismatches.length > 0">
+                                                            <button type="button" class="badge badge-warning badge-sm gap-1" @click="openMismatch = statement">
+                                                                <span x-text="statement.mismatches.length"></span>
+                                                                diff
+                                                            </button>
+                                                        </template>
+                                                    </div>
+                                                    <code class="block whitespace-pre-wrap break-words rounded-box bg-base-200/70 px-3 py-2 text-xs leading-relaxed" x-text="statement.statement"></code>
                                                 </div>
                                             </td>
-                                            <td class="break-all font-mono text-xs align-top" x-text="statement.statement"></td>
                                         </tr>
                                     </template>
-        <!---
-                                    <cfloop array="#statements#" item="statement" index="i">
-                                        <tr>
-                                            <td><input type="checkbox" class="checkbox checkbox-sm" id="checkbox-#i#" @click="toggleStatement(#i#)" x-model="selectedStatements[#i - 1#]">
-
-                                            </td>
-                                            <td>#statements[i].title#</td>
-                                            <td>#statements[i].statement#</td>
-                                        </tr>
-                                    </cfloop> --->
                                 </tbody>
                             </table>
+
+                            <template x-if="filteredCount === 0">
+                                <div class="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+                                    <div class="flex h-12 w-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">
+                                        <i class="fa-regular fa-filter-circle-xmark text-xl"></i>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-semibold">No statements match your filters</h3>
+                                        <p class="text-sm text-base-content/60">Clear the filters to see all generated schema statements.</p>
+                                    </div>
+                                    <button type="button" class="btn btn-sm" @click="resetFilters">Reset filters</button>
+                                </div>
+                            </template>
                         </div>
                     </div>
 
-                    <!--- Mismatch modal (outside overflow, fixed positioning) --->
-                    <template x-teleport="body">
-                        <div x-show="openMismatch" x-cloak
-                            class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50"
-                            @click.self="openMismatch = null"
-                            x-transition:enter="transition ease-out duration-200"
-                            x-transition:enter-start="opacity-0"
-                            x-transition:enter-end="opacity-100"
-                            x-transition:leave="transition ease-in duration-150"
-                            x-transition:leave-start="opacity-100"
-                            x-transition:leave-end="opacity-0">
-                            <div class="bg-base-100 rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-4"
-                                @click.stop>
-                                <div class="flex justify-between items-center mb-4">
-                                    <h3 class="font-semibold text-lg" x-text="openMismatch ? openMismatch.title : ''"></h3>
-                                    <button type="button" class="btn btn-ghost btn-sm btn-circle" @click="openMismatch = null">
-                                        <i class="fal fa-times"></i>
+                    <!-- Selected statements -->
+                    <div class="card card-border bg-base-100 shadow-sm xl:sticky xl:top-6 xl:self-start">
+                        <div class="card-body gap-4">
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <h2 class="card-title text-lg">Selected SQL</h2>
+                                    <p class="text-sm text-base-content/60">
+                                        <span x-text="selectedCount"></span> statement<span x-show="selectedCount !== 1">s</span> selected.
+                                    </p>
+                                </div>
+                                <button type="button" class="btn btn-success btn-sm gap-2" @click="copyToClipboard" :disabled="selectedCount === 0">
+                                    <i class="fa-regular fa-copy"></i>
+                                    Copy
+                                </button>
+                            </div>
+
+                            <template x-if="selectedCount === 0">
+                                <div class="rounded-box border border-dashed border-base-300 bg-base-200/40 p-8 text-center text-sm text-base-content/60">
+                                    Select statements from the table to build an executable SQL script.
+                                </div>
+                            </template>
+
+                            <template x-if="selectedCount > 0">
+                                <pre class="max-h-[60vh] overflow-auto rounded-box bg-neutral p-4 text-xs leading-relaxed text-neutral-content"><code x-text="selectedSql"></code></pre>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mismatch modal -->
+                <template x-teleport="body">
+                    <div x-show="openMismatch" x-cloak
+                        class="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
+                        @click.self="openMismatch = null"
+                        x-transition.opacity>
+                        <div class="card w-full max-w-3xl bg-base-100 shadow-xl" @click.stop>
+                            <div class="card-body gap-4">
+                                <div class="flex items-start justify-between gap-4">
+                                    <div>
+                                        <h3 class="card-title" x-text="openMismatch ? openMismatch.title : ''"></h3>
+                                        <p class="text-sm text-base-content/60" x-text="openMismatch ? openMismatch.table_name : ''"></p>
+                                    </div>
+                                    <button type="button" class="btn btn-ghost btn-sm btn-circle" @click="openMismatch = null" aria-label="Close">
+                                        <i class="fa-regular fa-xmark"></i>
                                     </button>
                                 </div>
-                                <div class="font-semibold text-warning mb-2">Current vs Expected:</div>
-                                <template x-for="mismatch in (openMismatch?.mismatches || [])">
-                                    <div class="mb-4">
-                                        <div class="font-semibold mb-1 text-sm" x-text="mismatch.param"></div>
-                                        <div class="bg-error/10 border border-error/20 rounded p-2 mb-1 font-mono text-xs break-all whitespace-pre-wrap">
-                                            <span class="text-error font-semibold text-[10px] uppercase">db (current):</span>
-                                            <span class="text-error block mt-1" x-text="mismatch.db || '(empty)'"></span>
-                                        </div>
-                                        <div class="bg-success/10 border border-success/20 rounded p-2 font-mono text-xs break-all whitespace-pre-wrap">
-                                            <span class="text-success font-semibold text-[10px] uppercase">code (expected):</span>
-                                            <span class="text-success block mt-1" x-text="mismatch.code || '(empty)'"></span>
+
+                                <template x-for="mismatch in (openMismatch?.mismatches || [])" :key="mismatch.param">
+                                    <div class="rounded-box border border-base-300 p-4">
+                                        <div class="mb-3 font-semibold text-sm" x-text="mismatch.param"></div>
+                                        <div class="grid gap-3 md:grid-cols-2">
+                                            <div class="rounded-box border border-error/20 bg-error/10 p-3">
+                                                <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-error">DB current</div>
+                                                <pre class="whitespace-pre-wrap break-words font-mono text-xs text-error" x-text="mismatch.db || '(empty)'"></pre>
+                                            </div>
+                                            <div class="rounded-box border border-success/20 bg-success/10 p-3">
+                                                <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-success">Code expected</div>
+                                                <pre class="whitespace-pre-wrap break-words font-mono text-xs text-success" x-text="mismatch.code || '(empty)'"></pre>
+                                            </div>
                                         </div>
                                     </div>
                                 </template>
                             </div>
                         </div>
-                    </template>
-
-                    <div class="card card-border bg-base-100">
-                        <div class="card-body">
-                            <h2 class="card-title text-lg">Selected Statements</h2>
-
-                            <div x-show="getSelectedStatements().length" class="my-3">
-                                <button type="button" class="btn btn-success btn-sm" @click="copyToClipboard">Copy to Clipboard</button>
-                            </div>
-
-                            <template x-for="(statement, index) in getSelectedStatements">
-                                <div class="text-sm font-mono">
-                                    <span x-text="statement.statement"></span>;
-                                </div>
-                            </template>
-                        </div>
                     </div>
-                </div>
+                </template>
             </div>
-        </div>
 
+            <cfoutput>
+            <script>
+                document.addEventListener("alpine:init", () => {
+                    Alpine.data("coapi", () => ({
+                        statements: #serializeJson(statements)#,
+                        openMismatch: null,
+                        filter: {
+                            table: "",
+                            statement: ""
+                        },
 
+                        get filteredCount() {
+                            return this.getFilteredStatements().length;
+                        },
 
-    <script>
-        document.addEventListener("alpine:init", () => {
+                        get selectedCount() {
+                            return this.getSelectedStatements().length;
+                        },
 
+                        get filteredSelectedCount() {
+                            return this.getFilteredStatements().filter((statement) => statement.selected === true).length;
+                        },
 
-            Alpine.data("coapi", () => ({
-                statements : #serializeJson(statements)#,
-                openMismatch: null,
-                filter:{
-                    table:'',
-                    statement:''
-                },
+                        get selectedSql() {
+                            const selectedStatements = this.getSelectedStatements();
+                            if (!selectedStatements.length) {
+                                return "";
+                            }
+                            return selectedStatements.map((statement) => statement.statement).join(";\n") + ";";
+                        },
 
-                getUniqueTables() {
-                    const tables = [...new Set(this.statements.map(s => s.table_name))];
-                    return tables.sort();
-                },
+                        getUniqueTables() {
+                            const tables = [...new Set(this.statements.map((statement) => statement.table_name).filter(Boolean))];
+                            return tables.sort();
+                        },
 
-                getFilteredStatements() {
-                    return this.statements.filter((statement) => {
-                        const tableMatch = this.filter.table === '' || statement.table_name === this.filter.table;
-                        const statementMatch = statement.statement.toLowerCase().includes(this.filter.statement.toLowerCase());
+                        getFilteredStatements() {
+                            const statementFilter = this.filter.statement.toLowerCase().trim();
 
-                        return tableMatch && statementMatch;
-                    });
-                },
+                            return this.statements.filter((statement) => {
+                                const tableMatch = this.filter.table === "" || statement.table_name === this.filter.table;
+                                const haystack = [statement.title, statement.table_name, statement.statement].join(" ").toLowerCase();
+                                const statementMatch = statementFilter === "" || haystack.includes(statementFilter);
 
+                                return tableMatch && statementMatch;
+                            });
+                        },
 
+                        getSelectedStatements() {
+                            return this.statements.filter((statement) => statement.selected === true);
+                        },
 
-                getSelectedStatements() {
-                    return this.statements.filter((statement) => statement.selected === true || false);
-                },
+                        resetFilters() {
+                            this.filter.table = "";
+                            this.filter.statement = "";
+                        },
 
-                toggleStatement(statement) {
-                    statement.selected = !statement.selected ?? true;
-                },
+                        toggleFilteredSelection() {
+                            const filteredStatements = this.getFilteredStatements();
+                            const shouldSelect = this.filteredSelectedCount !== filteredStatements.length;
 
+                            filteredStatements.forEach((statement) => {
+                                statement.selected = shouldSelect;
+                            });
+                        },
 
-                selectAll() {
-                    this.statements.forEach((statement) => {
-                        statement.selected = false;
-                    });
-                    this.getFilteredStatements().forEach((statement) => {
-                        statement.selected = true;
-                    });
-                },
+                        async copyToClipboard() {
+                            if (!this.selectedSql.length) {
+                                return;
+                            }
 
-                deselectAll() {
-                    this.statements.forEach((statement) => {
-                        statement.selected = false;
-                    });
-                },
+                            await navigator.clipboard.writeText(this.selectedSql);
 
-                copyToClipboard: function() {
-                    const selectedStatements = this.getSelectedStatements();
-                    const textToCopy = selectedStatements.map((statement) => statement.statement).join(';\n');
+                            if (window.sonner) {
+                                window.sonner.success("Selected SQL copied", {
+                                    description: `${this.selectedCount} statement${this.selectedCount === 1 ? "" : "s"} copied to clipboard.`,
+                                    icon: "fa-check"
+                                });
+                            }
+                        }
+                    }));
+                });
+            </script>
+            </cfoutput>
 
-                    navigator.clipboard.writeText(`${textToCopy};`)
-                    .then(() => {
-                        // console.log('Text copied to clipboard:', textToCopy);
-                        // You can optionally show a success message or perform additional actions
-                    })
-                    .catch((error) => {
-                        console.error('Failed to copy text to clipboard:', error);
-                        // You can handle errors here or show an error message
-                    });
-                }
-            }))
-        })
-    </script>
+        </cf_layout_default>
 
- </cf_layout_default>
+    </cffunction>
 
-</cffunction>
 </cfcomponent>

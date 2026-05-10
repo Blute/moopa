@@ -1270,7 +1270,7 @@ Delete - delete
 
                     <cfcase value="timestamptz">
                         <cfset field.cfsqltype = "timestamp" />
-                        <cfset field.html.control = (field.html.control?:'control_datetime_local') />
+                        <cfset field.html.control = (field.html.control?:'control_datetime') />
                     </cfcase>
 
                     <cfcase value="text">
@@ -1285,7 +1285,7 @@ Delete - delete
 
                     <cfcase value="bool,boolean">
                         <cfset field.cfsqltype = "boolean" />
-                        <cfset field.html.control = (field.html.control?:'control_text') />
+                        <cfset field.html.control = (field.html.control?:'control_switch') />
                     </cfcase>
 
                     <cfcase value="geometry">
