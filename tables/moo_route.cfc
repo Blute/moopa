@@ -160,7 +160,6 @@ TODO: need to check if old way works for the following and which has precedence:
                 <cfset stRoute.endpoints = {} />
                 <cfset stRoute.md = duplicate(getMetaData(createObject("component", "#stRoute.componentPath#"))) />
                 <cfset stRoute['open_to'] = stRoute.md['open_to']?:routePackage.default_open_to?:'security' /> <!--- public,bearer,logged_in,security --->
-                <cfset stRoute['auth_type'] = stRoute.md['auth_type']?:stRoute.md['auth']?:routePackage.auth_type?:'moopa' />
 
                 <!--- Need to determine if the route is already defined --->
 
@@ -173,7 +172,6 @@ TODO: need to check if old way works for the following and which has precedence:
                 <cfloop array="#stRoute.md.functions#" item="fn">
                     <cfset stRoute.endpoints[fn.name] = fn />
                     <cfset stRoute.endpoints[fn.name]['open_to'] = stRoute.endpoints[fn.name]['open_to']?:stRoute['open_to'] /> <!--- public,bearer,logged_in,security --->
-                    <cfset stRoute.endpoints[fn.name]['auth_type'] = stRoute.endpoints[fn.name]['auth_type']?:stRoute.endpoints[fn.name]['auth']?:stRoute['auth_type'] />
                 </cfloop>
 
 
@@ -492,26 +490,6 @@ TODO: need to check if old way works for the following and which has precedence:
         <cfreturn response>
     </cffunction>
 
-    <cffunction name="isAuthTypeAllowed" access="private" returntype="boolean" output="false">
-        <cfargument name="required_auth_types" required="true" />
-        <cfargument name="profile_auth_type" required="false" default="" />
-
-        <cfset var normalizedRequiredAuthTypes = trim(arguments.required_auth_types ?: "") />
-        <cfset var normalizedProfileAuthType = lCase(trim(arguments.profile_auth_type ?: "")) />
-
-        <cfif !len(normalizedRequiredAuthTypes)>
-            <cfreturn true />
-        </cfif>
-
-        <cfif !len(normalizedProfileAuthType)>
-            <cfreturn false />
-        </cfif>
-
-        <cfreturn listFindNoCase(normalizedRequiredAuthTypes, normalizedProfileAuthType) GT 0 />
-    </cffunction>
-
-
-
     <cffunction name="checkAccess">
 
         <cfargument name="route_data" />
@@ -536,11 +514,6 @@ TODO: need to check if old way works for the following and which has precedence:
         <cfset open_to  =   arguments.route_data.stRoute.endpoints[arguments.endpoint]['open_to'] ?:
                             arguments.route_data.stRoute.md.open_to ?:
                             'security' />
-
-        <cfset required_auth_types = arguments.route_data.stRoute.endpoints[arguments.endpoint]['auth_type'] ?:
-                                    arguments.route_data.stRoute.md.auth_type ?:
-                                    '' />
-
 
         <!--- Public routes are always accessible --->
         <cfif open_to EQ "public">
@@ -571,11 +544,10 @@ TODO: need to check if old way works for the following and which has precedence:
         </cfif>
 
 
-        <!--- auth_type restriction --->
-        <cfif !isAuthTypeAllowed(required_auth_types, session.auth.profile.auth_type ?: '')>
+        <!--- Profiles are app-scoped. A profile from one app cannot access another app runtime. --->
+        <cfif (session.auth.profile.app_name ?: '') NEQ (application.app_name ?: '')>
             <cfreturn false />
         </cfif>
-
 
 
         <!--- Logged in only check --->

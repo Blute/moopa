@@ -206,7 +206,7 @@
 
 
     <cffunction name="hasSystemProfile" access="public" output="false" returntype="boolean">
-        <cfargument name="auth_type" type="string" required="false" default="hub" />
+        <cfargument name="app_name" type="string" required="false" default="hub" />
 
         <cfif NOT hasMoopaProfileTable()>
             <cfreturn false />
@@ -215,7 +215,7 @@
         <cfquery name="local.qProfiles">
             SELECT count(*) AS profile_count
             FROM moo_profile
-            WHERE auth_type = <cfqueryparam cfsqltype="varchar" value="#arguments.auth_type#" />
+            WHERE app_name = <cfqueryparam cfsqltype="varchar" value="#arguments.app_name#" />
             AND can_login = true
         </cfquery>
 

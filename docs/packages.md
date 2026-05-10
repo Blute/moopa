@@ -53,7 +53,6 @@ Projects define packages in the application component that extends `moopa.applic
             kind: "app",
             app_name: "hub",
             route_mount: "",
-            auth_type: "hub",
             default_open_to: "security",
             load: ["routes", "navs"]
         },
@@ -75,7 +74,6 @@ Projects define packages in the application component that extends `moopa.applic
             kind: "app",
             app_name: "hub",
             route_mount: "",
-            auth_type: "hub",
             default_open_to: "security",
             load: ["routes", "tables", "lib", "controls", "navs"]
         },
@@ -85,7 +83,6 @@ Projects define packages in the application component that extends `moopa.applic
             kind: "app",
             app_name: "generic",
             route_mount: "",
-            auth_type: "generic",
             default_open_to: "security",
             load: ["routes", "tables", "lib", "controls", "navs"]
         }
@@ -111,7 +108,6 @@ If `this.moopa_packages` is not defined, Moopa falls back to the legacy package 
 | `app_name` | for app packages | Runtime `APP_NAME` value that activates this package. Defaults to `name` if omitted. |
 | `load` | yes | Array of capabilities to load from this package. |
 | `route_mount` | no | URL prefix applied to this package's routes. Empty string means mount at `/`. |
-| `auth_type` | no | Default app-level identity realm for routes in this package. |
 | `default_open_to` | no | Default `open_to` value for routes in this package. Defaults to `security`. |
 
 ## Load capabilities
@@ -174,7 +170,6 @@ Use two logical packages pointing at the same physical `/moopa` directory:
     kind: "app",
     app_name: "hub",
     route_mount: "",
-    auth_type: "hub",
     default_open_to: "security",
     load: ["routes", "navs"]
 }
@@ -238,25 +233,11 @@ Then:
 
 Most app packages mount at `/` because the domain/subdomain identifies the app.
 
-## App-level auth type
+## App-scoped profiles
 
-Packages can define `auth_type`.
+Profiles are app-scoped through `moo_profile.app_name`.
 
-```cfml
-{
-    name: "generic",
-    app_name: "generic",
-    auth_type: "generic"
-}
-```
-
-Routes in that package inherit the package auth type unless the route or endpoint declares its own `auth_type`/`auth` metadata.
-
-In the multi-app model, most route CFCs do not need an `auth_type` attribute. The app package is the normal source of truth.
-
-Use route-level `auth_type` only for unusual cross-realm cases.
-
-Two apps can intentionally share a user/session identity realm by using the same app-level `auth_type`. If those apps live on sibling subdomains and should share login, cookie domain and session storage must also be configured to allow that.
+The active runtime app is selected by `APP_NAME`, and authenticated profiles must belong to that app. Auth provider choice is separate from app ownership and is stored in linked auth identity records.
 
 ## Login/provider model
 
@@ -283,7 +264,7 @@ or later:
 
 Unauthenticated users should be redirected to the current app's `/login/` route. A shared `/logout/` route may redirect to `/login/logout/` so provider-specific logout remains app-owned.
 
-`auth_type` identifies the app's identity realm. The auth provider identifies how users sign in.
+`moo_profile.app_name` identifies the app that owns the profile. `moo_profile_auth.provider` identifies how the profile signs in.
 
 ## Custom tags
 

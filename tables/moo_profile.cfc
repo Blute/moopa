@@ -54,6 +54,13 @@
                         "type": "switch"
                     }
                 },
+                "app_name": {
+                    "type": "varchar",
+                    "searchable": true,
+                    "html": {
+                        "type": "text"
+                    }
+                },
                 "dob":
                 {
                     "label": "Date Of Birth",
@@ -112,30 +119,7 @@
                     "type": "many_to_many",
                     "foreign_key_table": "moo_role"
                 },
-                "auth_type":
-                {
-                    "type": "varchar",
-                    "default": "'moopa'",
-                    "html": {
-                        "type": "text"
-                    }
-                },
-                "external_auth_id": {
-                    "label": "External Auth ID",
-                    "type": "varchar",
-                    "unique": true,
-                    "searchable": true,
-                    "html": {
-                        "placeholder": "user_2abc123..."
-                    }
-                },
-                "external_auth_payload": {
-                    "label": "External Auth Payload",
-                    "type": "jsonb",
-                    "html": {
-                        "hidden": true
-                    }
-                },
+
                 "last_login_at": {
                     "type": "timestamptz",
                     "nullable": true,
@@ -147,10 +131,9 @@
 
             ],
             indexes: [
-                "idx_moo_profile_external_auth_id": {
+                "idx_moo_profile_app_name": {
                     "type": "btree",
-                    "fields": "external_auth_id",
-                    "unique": true
+                    "fields": "app_name"
                 }
             ]
         ]
@@ -181,7 +164,7 @@
             <cfset profile_to_login = application.lib.db.read(
                 table_name = "moo_profile",
                 id = arguments.profile_id,
-                field_list = "id,full_name,email,mobile,auth_type,profile_avatar_id,profile_picture_id,can_login,roles",
+                field_list = "id,full_name,email,mobile,app_name,profile_avatar_id,profile_picture_id,can_login,roles",
                 returnAsCFML=true
             ) />
 

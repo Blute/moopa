@@ -11,41 +11,46 @@
     </cffunction>
 
 
-    <cffunction name="getAuthTypes">
-        <cfquery name="qAuthTypes">
-            SELECT COALESCE(array_to_json(array_agg(auth_type ORDER BY auth_type))::text, '[]') AS recordset
+    <cffunction name="getAppNames">
+        <cfquery name="qAppNames">
+            SELECT COALESCE(array_to_json(array_agg(app_name ORDER BY app_name))::text, '[]') AS recordset
             FROM (
-                SELECT DISTINCT auth_type
+                SELECT DISTINCT app_name
                 FROM moo_profile
-                WHERE auth_type IS NOT NULL AND auth_type <> ''
+                WHERE app_name IS NOT NULL AND app_name <> ''
             ) AS t
         </cfquery>
-        <cfreturn qAuthTypes.recordset />
+        <cfreturn qAppNames.recordset />
     </cffunction>
 
 
     <cffunction name="search">
 
         <cfset searchTerm = request.data.filter.term?:'' />
-        <cfset authTypeFilter = request.data.filter.auth_type?:'' />
+        <cfset appNameFilter = request.data.filter.app_name?:'' />
 
         <cfquery name="qData">
         SELECT COALESCE(array_to_json(array_agg(row_to_json(data)))::text, '[]') AS recordset
         FROM (
-            SELECT #application.lib.db.select(table_name="moo_profile", field_list="id,full_name,email,mobile,address,roles,is_employee,employee_type,can_login,profile_picture_id,profile_avatar_id,auth_type,external_auth_id,last_login_at")#,
+            SELECT #application.lib.db.select(table_name="moo_profile", field_list="id,app_name,full_name,email,mobile,address,roles,is_employee,employee_type,can_login,profile_picture_id,profile_avatar_id,last_login_at")#,
                 COALESCE((
                     SELECT json_agg(moo_role.name ORDER BY moo_role.name)
                     FROM moo_profile_roles
                     INNER JOIN moo_role ON moo_role.id = moo_profile_roles.foreign_id
                     WHERE moo_profile_roles.primary_id = moo_profile.id
-                ), '[]') AS role_labels
+                ), '[]') AS role_labels,
+                COALESCE((
+                    SELECT json_agg(json_build_object('provider', provider, 'provider_subject', provider_subject) ORDER BY provider, provider_subject)
+                    FROM moo_profile_auth
+                    WHERE moo_profile_auth.profile_id = moo_profile.id
+                ), '[]') AS auth_identities
             FROM moo_profile
             WHERE 1=1
             <cfif len(searchTerm)>
                 AND <cfqueryparam cfsqltype="varchar" value="#searchTerm#" /> <% search_text
             </cfif>
-            <cfif len(authTypeFilter)>
-                AND moo_profile.auth_type = <cfqueryparam cfsqltype="varchar" value="#authTypeFilter#" />
+            <cfif len(appNameFilter)>
+                AND moo_profile.app_name = <cfqueryparam cfsqltype="varchar" value="#appNameFilter#" />
             </cfif>
             <cfif len(searchTerm)>
                 ORDER BY word_similarity(<cfqueryparam cfsqltype="varchar" value="#searchTerm#" />, search_text) DESC
@@ -65,10 +70,15 @@
 
 
     <cffunction name="new">
-        <cfreturn application.lib.db.getNewObject( "moo_profile"  ) />
+        <cfset var profile = application.lib.db.getNewObject( "moo_profile" ) />
+        <cfset profile.app_name = application.app_name ?: "hub" />
+        <cfreturn profile />
     </cffunction>
 
     <cffunction name="save">
+        <cfif NOT len(request.data.app_name ?: "")>
+            <cfset request.data.app_name = application.app_name ?: "hub" />
+        </cfif>
         <cfreturn application.lib.db.save(
             table_name = "moo_profile",
             data = request.data
@@ -106,10 +116,10 @@
                                     <i class="fal fa-search text-base-content/80"></i>
                                     <input type="text" class="w-48" placeholder="Search profiles..." x-model="filters.term">
                                 </label>
-                                <select class="select select-sm" x-model="filters.auth_type" @change="load()">
-                                    <option value="">All Auth Types</option>
-                                    <template x-for="type in auth_types" :key="type">
-                                        <option :value="type" x-text="type"></option>
+                                <select class="select select-sm" x-model="filters.app_name" @change="load()">
+                                    <option value="">All Apps</option>
+                                    <template x-for="app in app_names" :key="app">
+                                        <option :value="app" x-text="app"></option>
                                     </template>
                                 </select>
                                 <button class="btn btn-ghost btn-sm" @click="resetFilters()" title="Clear filters">
@@ -141,8 +151,8 @@
                                             <th>Mobile</th>
                                             <th>Roles</th>
                                             <th>Status</th>
-                                            <th>Auth Type</th>
-                                            <th>External Auth ID</th>
+                                            <th>App</th>
+                                            <th>Auth Identities</th>
                                             <th>Last Login</th>
                                             <th class="text-end">Actions</th>
                                         </tr>
@@ -202,13 +212,22 @@
                                                         </template>
                                                     </div>
                                                 </td>
-                                                <!-- Auth Type -->
+                                                <!-- App -->
                                                 <td>
-                                                    <span class="text-xs font-mono text-base-content/70" x-text="item.auth_type || '—'"></span>
+                                                    <span class="text-xs font-mono text-base-content/70" x-text="item.app_name || '—'"></span>
                                                 </td>
-                                                <!-- External Auth ID -->
+                                                <!-- Auth Identities -->
                                                 <td>
-                                                    <span class="text-xs font-mono text-base-content/70" x-text="item.external_auth_id || '—'"></span>
+                                                    <template x-if="item.auth_identities?.length">
+                                                        <div class="flex flex-col gap-1">
+                                                            <template x-for="identity in item.auth_identities" :key="identity.provider + ':' + identity.provider_subject">
+                                                                <span class="text-xs font-mono text-base-content/70" x-text="identity.provider + ': ' + identity.provider_subject"></span>
+                                                            </template>
+                                                        </div>
+                                                    </template>
+                                                    <template x-if="!item.auth_identities?.length">
+                                                        <span class="text-xs text-base-content/40">—</span>
+                                                    </template>
                                                 </td>
                                                 <!-- Last Login -->
                                                 <td>
@@ -217,9 +236,7 @@
                                                 <!-- Actions -->
                                                 <td>
                                                     <div class="flex items-center justify-end gap-1">
-                                                        <template x-if="['gday','agent'].includes(item.auth_type)">
-                                                            <cf_impersonate_button click="impersonate(item.id)" />
-                                                        </template>
+
                                                         <button class="btn btn-ghost btn-sm btn-square" @click.stop="select(item)" title="Edit">
                                                             <i class="fal fa-pencil text-base-content/70"></i>
                                                         </button>
@@ -275,20 +292,17 @@
                             <cf_table_controls table_name="moo_profile" fields="address" />
                             <cf_table_controls table_name="moo_profile" fields="can_login" />
 
-                            <!-- External Auth -->
-                            <div class="divider text-sm text-base-content/50">External Authentication</div>
-                            <template x-if="current_record.external_auth_id">
-                                <fieldset class="fieldset">
-                                    <legend class="fieldset-legend">External Auth ID</legend>
-                                    <div class="text-xs font-mono text-base-content/70 break-all" x-text="current_record.external_auth_id"></div>
-                                    <p class="fieldset-label text-base-content/50">Issued by the third-party identity provider — not editable here.</p>
-                                </fieldset>
+                            <!-- Auth Identities -->
+                            <div class="divider text-sm text-base-content/50">Authentication</div>
+                            <template x-if="current_record.auth_identities?.length">
+                                <div class="space-y-2">
+                                    <template x-for="identity in current_record.auth_identities" :key="identity.provider + ':' + identity.provider_subject">
+                                        <div class="text-xs font-mono text-base-content/70 break-all" x-text="identity.provider + ': ' + identity.provider_subject"></div>
+                                    </template>
+                                </div>
                             </template>
-                            <template x-if="!current_record.external_auth_id">
-                                <fieldset class="fieldset">
-                                    <legend class="fieldset-legend">External Auth ID</legend>
-                                    <div class="text-sm text-base-content/50 italic">No external identity linked.</div>
-                                </fieldset>
+                            <template x-if="!current_record.auth_identities?.length">
+                                <div class="text-sm text-base-content/50 italic">No auth identities linked.</div>
                             </template>
 
 
@@ -337,14 +351,14 @@
 
                 <script>
                 document.addEventListener('alpine:init', () => {
-                    const default_filters = { term: '', auth_type: '' };
+                    const default_filters = { term: '', app_name: '' };
 
                     Alpine.data('profiles_admin', () => ({
                         loading: false,
                         records: [],
                         current_record: {},
                         filters: { ...default_filters },
-                        auth_types: [],
+                        app_names: [],
 
                         getInitials(name) {
                             const cleaned = (name || '').trim();
@@ -356,7 +370,7 @@
 
                         async init() {
                             this.filters = await loadFilters(default_filters);
-                            this.auth_types = await req({ endpoint: 'getAuthTypes' });
+                            this.app_names = await req({ endpoint: 'getAppNames' });
                             await this.load();
                         },
 
