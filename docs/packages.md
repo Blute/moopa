@@ -15,8 +15,7 @@ That works for a single app, but becomes awkward when one codebase contains mult
 
 ```txt
 hub
-www
-shop
+generic
 ```
 
 Packages let a project split code by responsibility while still sharing framework, domain, and project-level code.
@@ -28,8 +27,7 @@ code/
   moopa/              # Moopa framework
   apps/
     hub/              # control-plane/admin app
-    www/              # public website app
-    shop/             # example secondary app
+    generic/          # generic app scaffold
   domain/             # shared table definitions and domain services
   shared/             # shared project routes/tags/controls/libs
   www/                # common web root / Application.cfc
@@ -82,13 +80,13 @@ Projects define packages in the application component that extends `moopa.applic
             load: ["routes", "tables", "lib", "controls", "navs"]
         },
         {
-            name: "www",
-            path: "/apps/www",
+            name: "generic",
+            path: "/apps/generic",
             kind: "app",
-            app_name: "www",
+            app_name: "generic",
             route_mount: "",
-            auth_type: "www",
-            default_open_to: "public",
+            auth_type: "generic",
+            default_open_to: "security",
             load: ["routes", "tables", "lib", "controls", "navs"]
         }
     ] />
@@ -136,8 +134,7 @@ Each container/runtime sets:
 
 ```txt
 APP_NAME=hub
-APP_NAME=www
-APP_NAME=shop
+APP_NAME=generic
 ```
 
 Packages with `kind="app"` only load when:
@@ -198,7 +195,7 @@ Routes are loaded from active packages with `load` containing `routes`.
 A file like:
 
 ```txt
-code/apps/www/routes/about.cfc
+code/apps/generic/routes/about.cfc
 ```
 
 maps to:
@@ -207,13 +204,13 @@ maps to:
 /about/
 ```
 
-for the `www` runtime.
+for the `generic` runtime.
 
 The same route path can exist in different apps because each app has its own runtime route registry:
 
 ```txt
 code/apps/hub/routes/profile.cfc  -> /profile/ in Hub
-code/apps/www/routes/profile.cfc  -> /profile/ in WWW
+code/apps/generic/routes/profile.cfc  -> /profile/ in Generic
 ```
 
 Within one runtime, duplicate route URLs throw an error.
@@ -247,9 +244,9 @@ Packages can define `auth_type`.
 
 ```cfml
 {
-    name: "shop",
-    app_name: "shop",
-    auth_type: "shop"
+    name: "generic",
+    app_name: "generic",
+    auth_type: "generic"
 }
 ```
 
