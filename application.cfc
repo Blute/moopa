@@ -502,14 +502,12 @@
         <cfset var hostPort = "" />
         <cfset var hubHost = "" />
 
-        <cfif isHubSetupRoute OR NOT structKeyExists(application, "lib") OR NOT structKeyExists(application.lib, "auth_local_password")>
+        <cfif isHubSetupRoute OR NOT structKeyExists(application, "lib") OR NOT structKeyExists(application.lib, "core")>
             <cfreturn />
         </cfif>
 
         <cftry>
-            <cfif NOT application.lib.auth_local_password.hasProfileTable() OR application.lib.auth_local_password.requiresSetup("hub")>
-                <cfset needsSetup = true />
-            </cfif>
+            <cfset needsSetup = application.lib.core.requiresHubSetup() />
             <cfcatch type="database">
                 <cfset needsSetup = true />
             </cfcatch>

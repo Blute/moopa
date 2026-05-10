@@ -192,6 +192,40 @@
     </cffunction>
 
 
+    <cffunction name="hasMoopaProfileTable" access="public" output="false" returntype="boolean">
+        <cftry>
+            <cfquery name="local.qCheck">
+                SELECT 1 FROM moo_profile LIMIT 1
+            </cfquery>
+            <cfreturn true />
+            <cfcatch type="database">
+                <cfreturn false />
+            </cfcatch>
+        </cftry>
+    </cffunction>
+
+
+    <cffunction name="hasSystemProfile" access="public" output="false" returntype="boolean">
+        <cfargument name="auth_type" type="string" required="false" default="hub" />
+
+        <cfif NOT hasMoopaProfileTable()>
+            <cfreturn false />
+        </cfif>
+
+        <cfquery name="local.qProfiles">
+            SELECT count(*) AS profile_count
+            FROM moo_profile
+            WHERE auth_type = <cfqueryparam cfsqltype="varchar" value="#arguments.auth_type#" />
+            AND can_login = true
+        </cfquery>
+
+        <cfreturn val(local.qProfiles.profile_count) GT 0 />
+    </cffunction>
+
+
+    <cffunction name="requiresHubSetup" access="public" output="false" returntype="boolean">
+        <cfreturn NOT hasSystemProfile("hub") />
+    </cffunction>
 
 
 
