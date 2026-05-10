@@ -13,7 +13,7 @@
                     <div>
                         <div class="flex items-center gap-3">
                             <div class="flex h-11 w-11 items-center justify-center rounded-box bg-primary/10 text-primary">
-                                <i class="fa-regular fa-database text-xl"></i>
+                                <i class="hgi-stroke hgi-database text-xl"></i>
                             </div>
                             <div>
                                 <h1 class="text-2xl font-semibold tracking-tight">Schema</h1>
@@ -24,7 +24,7 @@
 
                     <cfoutput>
                         <a href="#encodeForHTMLAttribute(reinitUrl)#" class="btn btn-primary btn-sm gap-2">
-                            <i class="fa-regular fa-rotate-right"></i>
+                            <i class="hgi-stroke hgi-refresh-01"></i>
                             Re-init
                         </a>
                     </cfoutput>
@@ -47,7 +47,7 @@
                             <fieldset class="fieldset w-full xl:max-w-2xl xl:flex-1">
                                 <legend class="fieldset-legend">Statement</legend>
                                 <label class="input input-sm w-full">
-                                    <i class="fa-regular fa-magnifying-glass text-base-content/40"></i>
+                                    <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
                                     <input type="search" x-model.debounce.250ms="filter.statement" placeholder="Filter statements..." />
                                 </label>
                             </fieldset>
@@ -130,7 +130,7 @@
                             <template x-if="filteredCount === 0">
                                 <div class="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
                                     <div class="flex h-12 w-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">
-                                        <i class="fa-regular fa-filter-circle-xmark text-xl"></i>
+                                        <i class="hgi-stroke hgi-filter-remove text-xl"></i>
                                     </div>
                                     <div>
                                         <h3 class="font-semibold">No statements match your filters</h3>
@@ -153,7 +153,7 @@
                                     </p>
                                 </div>
                                 <button type="button" class="btn btn-success btn-sm gap-2" @click="copyToClipboard" :disabled="selectedCount === 0">
-                                    <i class="fa-regular fa-copy"></i>
+                                    <i class="hgi-stroke hgi-copy-01"></i>
                                     Copy
                                 </button>
                             </div>
@@ -185,7 +185,7 @@
                                         <p class="text-sm text-base-content/60" x-text="openMismatch ? openMismatch.table_name : ''"></p>
                                     </div>
                                     <button type="button" class="btn btn-ghost btn-sm btn-circle" @click="openMismatch = null" aria-label="Close">
-                                        <i class="fa-regular fa-xmark"></i>
+                                        <i class="hgi-stroke hgi-cancel-01"></i>
                                     </button>
                                 </div>
 
@@ -286,7 +286,7 @@
                             if (window.sonner) {
                                 window.sonner.success("Selected SQL copied", {
                                     description: `${this.selectedCount} statement${this.selectedCount === 1 ? "" : "s"} copied to clipboard.`,
-                                    icon: "fa-check"
+                                    icon: "hgi-tick-02"
                                 });
                             }
                         }

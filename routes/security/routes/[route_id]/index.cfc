@@ -240,7 +240,7 @@
                 </div>
                 <cfif session.auth.is_sysadmin?:false>
                     <button type="button" class="btn btn-sm btn-primary gap-2" @click="edit_route" x-show="!showEditRoute">
-                        <i class="fal fa-pencil"></i>
+                        <i class="hgi-stroke hgi-pencil-edit-02"></i>
                         Edit Access
                     </button>
                 </cfif>
@@ -271,7 +271,7 @@
                         <div class="card-body p-0">
                             <div class="px-5 pt-5 pb-3 border-b border-base-200">
                                 <h3 class="font-semibold flex items-center gap-2">
-                                    <i class="fal fa-shield-check text-primary"></i>
+                                    <i class="hgi-stroke hgi-security-check text-primary"></i>
                                     Endpoint Permissions
                                 </h3>
                                 <p class="text-sm text-base-content/60 mt-1">Click to toggle access for profiles and roles</p>
@@ -304,12 +304,12 @@
                                                 <th class="font-semibold text-sm">ALL ACCESS</th>
                                                 <template x-for="profile in current_route.profiles" :key="profile.id">
                                                     <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleProfileAccess(profile.id)">
-                                                        <i class="fas fa-xl" :class="isProfileAccessSet(profile.id) ? 'fa-shield-check text-success' : 'fa-shield-check opacity-20'"></i>
+                                                        <i class="hgi-stroke text-xl" :class="isProfileAccessSet(profile.id) ? 'hgi-security-check text-success' : 'hgi-security-check opacity-20'"></i>
                                                     </td>
                                                 </template>
                                                 <template x-for="role in current_route.roles" :key="role.id">
                                                     <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleRoleAccess(role.id)">
-                                                        <i class="fas fa-xl" :class="isRoleAccessSet(role.id) ? 'fa-shield-check text-success' : 'fa-shield-check opacity-20'"></i>
+                                                        <i class="hgi-stroke text-xl" :class="isRoleAccessSet(role.id) ? 'hgi-security-check text-success' : 'hgi-security-check opacity-20'"></i>
                                                     </td>
                                                 </template>
                                             </tr>
@@ -320,20 +320,20 @@
                                                     <template x-for="profile in current_route.profiles" :key="profile.id">
                                                         <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleProfileAccess(profile.id, endpoint.id)">
                                                             <div x-show="isProfileAccessSet(profile.id)">
-                                                                <i class="fat fa-xl fa-shield-check text-success/50"></i>
+                                                                <i class="hgi-stroke text-xl hgi-security-check text-success/50"></i>
                                                             </div>
                                                             <div x-show="!isProfileAccessSet(profile.id)">
-                                                                <i class="far fa-xl" :class="isProfileAccessSet(profile.id, endpoint.id) ? 'fa-shield-check text-success' : 'fa-shield-check text-error/60'"></i>
+                                                                <i class="hgi-stroke text-xl" :class="isProfileAccessSet(profile.id, endpoint.id) ? 'hgi-security-check text-success' : 'hgi-security-check text-error/60'"></i>
                                                             </div>
                                                         </td>
                                                     </template>
                                                     <template x-for="role in current_route.roles" :key="role.id">
                                                         <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleRoleAccess(role.id, endpoint.id)">
                                                             <div x-show="isRoleAccessSet(role.id)">
-                                                                <i class="fat fa-xl fa-shield-check text-success/50"></i>
+                                                                <i class="hgi-stroke text-xl hgi-security-check text-success/50"></i>
                                                             </div>
                                                             <div x-show="!isRoleAccessSet(role.id)">
-                                                                <i class="far fa-xl" :class="isRoleAccessSet(role.id, endpoint.id) ? 'fa-shield-check text-success' : 'fa-shield-check text-error/60'"></i>
+                                                                <i class="hgi-stroke text-xl" :class="isRoleAccessSet(role.id, endpoint.id) ? 'hgi-security-check text-success' : 'hgi-security-check text-error/60'"></i>
                                                             </div>
                                                         </td>
                                                     </template>
@@ -346,7 +346,7 @@
 
                             <template x-if="!current_route.profiles?.length && !current_route.roles?.length">
                                 <div class="p-8 text-center text-base-content/50">
-                                    <i class="fal fa-user-shield fa-2x mb-3 block"></i>
+                                    <i class="hgi-stroke hgi-user-shield-01 text-2xl mb-3 block"></i>
                                     <p>No profiles or roles assigned to this route</p>
                                     <p class="text-sm mt-1">Click "Edit Roles & Profiles" to add access</p>
                                 </div>
@@ -360,7 +360,7 @@
                     <div class="card card-border bg-base-100 sticky top-4">
                         <div class="card-body">
                             <h3 class="font-semibold flex items-center gap-2 mb-3">
-                                <i class="fal fa-users text-secondary"></i>
+                                <i class="hgi-stroke hgi-user-group text-secondary"></i>
                                 Who Has Access
                             </h3>
 
@@ -384,7 +384,7 @@
 
                             <template x-if="who_has_access.length === 0">
                                 <div class="text-center py-4 text-base-content/50">
-                                    <i class="fal fa-user-slash fa-lg mb-2 block"></i>
+                                    <i class="hgi-stroke hgi-user-block-01 text-lg mb-2 block"></i>
                                     <p class="text-sm">No users have access via roles</p>
                                 </div>
                             </template>

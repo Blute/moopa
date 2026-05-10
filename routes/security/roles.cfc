@@ -102,7 +102,7 @@
                         <div class="flex items-center justify-between px-5 pt-5">
                             <div class="inline-flex items-center gap-3">
                                 <label class="input input-sm">
-                                    <i class="fal fa-search text-base-content/80 text-sm"></i>
+                                    <i class="hgi-stroke hgi-search-01 text-base-content/80 text-sm"></i>
                                     <input
                                         class="w-24 sm:w-36"
                                         placeholder="Search roles..."
@@ -115,7 +115,7 @@
 
                             </div>
                             <button class="btn btn-sm btn-primary" @click="addNew">
-                                <i class="fal fa-plus"></i>
+                                <i class="hgi-stroke hgi-plus-sign"></i>
                                 <span class="hidden sm:inline">New Role</span>
                             </button>
                         </div>
@@ -143,7 +143,7 @@
                                                     class="badge badge-ghost hover:badge-primary cursor-pointer gap-1.5 transition-colors"
                                                     :class="{ 'badge-outline': item.user_count === 0 }"
                                                 >
-                                                    <i class="fal fa-users text-xs"></i>
+                                                    <i class="hgi-stroke hgi-user-group text-xs"></i>
                                                     <span x-text="item.user_count"></span>
                                                 </button>
                                             </td>
@@ -153,16 +153,16 @@
                                                     class="badge badge-ghost hover:badge-secondary cursor-pointer gap-1.5 transition-colors"
                                                     :class="{ 'badge-outline': item.route_count === 0 }"
                                                 >
-                                                    <i class="fal fa-route text-xs"></i>
+                                                    <i class="hgi-stroke hgi-route-01 text-xs"></i>
                                                     <span x-text="item.route_count"></span>
                                                 </button>
                                             </td>
                                             <td>
                                                 <button @click="select(item)" class="btn btn-square btn-ghost btn-sm" aria-label="Edit">
-                                                    <i class="fal fa-pencil text-base-content/80"></i>
+                                                    <i class="hgi-stroke hgi-pencil-edit-02 text-base-content/80"></i>
                                                 </button>
                                                 <button @click="confirmDelete(item)" class="btn btn-square btn-ghost btn-sm" aria-label="Delete">
-                                                    <i class="fal fa-trash text-error/80"></i>
+                                                    <i class="hgi-stroke hgi-delete-02 text-error/80"></i>
                                                 </button>
                                             </td>
                                         </tr>
@@ -173,12 +173,12 @@
 
                         <!-- Empty State -->
                         <div x-show="records.length === 0" class="text-center py-16">
-                            <i class="fal fa-users text-base-content/30 text-5xl"></i>
+                            <i class="hgi-stroke hgi-user-group text-base-content/30 text-5xl"></i>
                             <h3 class="mt-2 text-sm font-medium">No roles found</h3>
                             <p class="mt-1 text-sm text-base-content/60">Try adjusting your search or create a new role</p>
                             <div class="mt-6">
                                 <button @click="addNew" class="btn btn-primary">
-                                    <i class="fal fa-plus"></i>
+                                    <i class="hgi-stroke hgi-plus-sign"></i>
                                     New Role
                                 </button>
                             </div>
@@ -220,7 +220,7 @@
                                 Cancel
                             </button>
                             <button type="button" @click="handleSave" class="btn btn-primary">
-                                <i class="fal fa-save"></i>
+                                <i class="hgi-stroke hgi-save"></i>
                                 Save
                             </button>
                         </div>
@@ -235,7 +235,7 @@
                     <div class="modal-box">
                         <div class="flex items-start gap-4">
                             <div class="flex-shrink-0 w-10 h-10 rounded-full bg-error/10 flex items-center justify-center">
-                                <i class="fal fa-exclamation-triangle text-error"></i>
+                                <i class="hgi-stroke hgi-alert-02 text-error"></i>
                             </div>
                             <div>
                                 <h3 class="text-lg font-semibold">Delete Role</h3>
@@ -248,7 +248,7 @@
                                 Cancel
                             </button>
                             <button type="button" @click="handleDelete" class="btn btn-error">
-                                <i class="fal fa-trash"></i>
+                                <i class="hgi-stroke hgi-delete-02"></i>
                                 Delete
                             </button>
                         </div>
@@ -266,7 +266,7 @@
                                 Users with role: <span class="text-primary" x-text="usersModalRole?.name"></span>
                             </h3>
                             <button @click="showUsersModal = false" class="btn btn-sm btn-circle btn-ghost">
-                                <i class="fal fa-times"></i>
+                                <i class="hgi-stroke hgi-cancel-01"></i>
                             </button>
                         </div>
 
@@ -298,7 +298,7 @@
                             <!-- Empty state -->
                             <template x-if="roleUsers.length === 0">
                                 <div class="text-center py-8">
-                                    <i class="fal fa-user-slash text-base-content/30 text-4xl"></i>
+                                    <i class="hgi-stroke hgi-user-block-01 text-base-content/30 text-4xl"></i>
                                     <p class="mt-2 text-sm text-base-content/60">No users have this role</p>
                                 </div>
                             </template>
@@ -323,7 +323,7 @@
                                 Routes for role: <span class="text-secondary" x-text="routesModalRole?.name"></span>
                             </h3>
                             <button @click="showRoutesModal = false" class="btn btn-sm btn-circle btn-ghost">
-                                <i class="fal fa-times"></i>
+                                <i class="hgi-stroke hgi-cancel-01"></i>
                             </button>
                         </div>
 
@@ -339,7 +339,7 @@
                                     <template x-for="route in roleRoutes" :key="route.id">
                                         <div class="flex items-center gap-3 py-3">
                                             <div class="flex-shrink-0 w-8 h-8 rounded bg-secondary/10 flex items-center justify-center">
-                                                <i class="fal fa-route text-secondary text-sm"></i>
+                                                <i class="hgi-stroke hgi-route-01 text-secondary text-sm"></i>
                                             </div>
                                             <div class="flex-1 min-w-0">
                                                 <p class="font-mono text-sm font-medium truncate" x-text="route.url"></p>
@@ -353,7 +353,7 @@
                             <!-- Empty state -->
                             <template x-if="roleRoutes.length === 0">
                                 <div class="text-center py-8">
-                                    <i class="fal fa-map-signs text-base-content/30 text-4xl"></i>
+                                    <i class="hgi-stroke hgi-route-03 text-base-content/30 text-4xl"></i>
                                     <p class="mt-2 text-sm text-base-content/60">No routes assigned to this role</p>
                                 </div>
                             </template>

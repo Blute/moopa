@@ -71,7 +71,7 @@
                     <!--- Compact single-line style --->
                     <div class="flex items-center gap-3 pointer-events-none">
                         <div class="w-8 h-8 flex items-center justify-center bg-primary rounded-full text-primary-content text-sm shrink-0">
-                            <i class="fal fa-cloud-arrow-up"></i>
+                            <i class="hgi-stroke hgi-cloud-upload"></i>
                         </div>
                         <span class="flex-1 text-sm text-base-content/70">#attributes.help_text#</span>
                         <span class="badge badge-primary badge-soft">Browse</span>
@@ -80,7 +80,7 @@
                     <!--- Full dropzone style --->
                     <div class="flex flex-col items-center gap-3 pointer-events-none">
                         <div class="w-14 h-14 flex items-center justify-center bg-gradient-to-br from-primary to-primary/80 rounded-full text-primary-content text-2xl shadow-lg shadow-primary/30 transition-transform group-hover:-translate-y-0.5">
-                            <i class="fal fa-cloud-arrow-up fa-lg"></i>
+                            <i class="hgi-stroke hgi-cloud-upload text-lg"></i>
                         </div>
                         <div class="text-center">
                             <span class="block font-medium text-base-content text-sm mb-1">#attributes.help_text#</span>
@@ -148,7 +148,7 @@
                                     x-transition:enter-start="opacity-0 scale-0"
                                     x-transition:enter-end="opacity-100 scale-100"
                                 >
-                                    <i class="fas fa-check"></i>
+                                    <i class="hgi-stroke hgi-tick-02"></i>
                                 </div>
                             </div>
 
@@ -183,7 +183,7 @@
                                     :class="{ '!opacity-100': activeIndex === index }"
                                     title="Remove file"
                                 >
-                                    <i class="fal fa-trash"></i>
+                                    <i class="hgi-stroke hgi-delete-02"></i>
                                 </button>
 
                                 <button
@@ -193,7 +193,7 @@
                                     x-show="file.is_trashed"
                                     title="Restore file"
                                 >
-                                    <i class="fal fa-undo"></i>
+                                    <i class="hgi-stroke hgi-undo-03"></i>
                                 </button>
                             </div>
                         </div>

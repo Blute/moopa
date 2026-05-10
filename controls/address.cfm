@@ -68,7 +68,7 @@ The address object stored in the model will contain (from GET /v1/predictive/add
                     type="button"
                     title="Clear address"
                 >
-                    <i class="fa-regular fa-xmark"></i>
+                    <i class="hgi-stroke hgi-cancel-01"></i>
                 </button>
             </div>
         </template>
@@ -82,7 +82,7 @@ The address object stored in the model will contain (from GET /v1/predictive/add
                     :style="`anchor-name: --${$id('addr-anchor')}`"
                 >
                     <template x-if="!loading">
-                        <i class="fa-regular fa-magnifying-glass text-base-content/50"></i>
+                        <i class="hgi-stroke hgi-search-01 text-base-content/50"></i>
                     </template>
                     <template x-if="loading">
                         <span class="loading loading-spinner loading-sm"></span>
@@ -108,7 +108,7 @@ The address object stored in the model will contain (from GET /v1/predictive/add
                         @click="searchQuery = ''; suggestions = []; closePopover();"
                         tabindex="-1"
                     >
-                        <i class="fa-regular fa-xmark"></i>
+                        <i class="hgi-stroke hgi-cancel-01"></i>
                     </button>
                 </label>
 
@@ -128,7 +128,7 @@ The address object stored in the model will contain (from GET /v1/predictive/add
 
                     <!--- Error state --->
                     <div x-show="error" class="px-4 py-3 text-error text-sm">
-                        <i class="fa-regular fa-circle-exclamation mr-1"></i>
+                        <i class="hgi-stroke hgi-alert-circle mr-1"></i>
                         <span x-text="error"></span>
                     </div>
 
@@ -147,7 +147,7 @@ The address object stored in the model will contain (from GET /v1/predictive/add
                                     :class="{'active': highlightedIndex === index}"
                                     class="flex items-center gap-2 py-2"
                                 >
-                                    <i class="fa-regular fa-location-dot text-base-content/50 flex-shrink-0"></i>
+                                    <i class="hgi-stroke hgi-location-04 text-base-content/50 flex-shrink-0"></i>
                                     <span x-text="suggestion.full"></span>
                                 </a>
                             </li>

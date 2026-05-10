@@ -70,7 +70,7 @@
                   <div>
                     <label class="block text-sm font-medium mb-2">Search</label>
                     <label class="input input-bordered w-full">
-                      <i class="fal fa-search text-base-content/50"></i>
+                      <i class="hgi-stroke hgi-search-01 text-base-content/50"></i>
                       <input type="text" class="grow" placeholder="Search routes..." x-model.debounce="filters.q">
                       <button
                         x-show="filters.q"
@@ -78,7 +78,7 @@
                         @click="filters.q = ''"
                         class="text-base-content/40 hover:text-base-content/70"
                       >
-                        <i class="fal fa-times"></i>
+                        <i class="hgi-stroke hgi-cancel-01"></i>
                       </button>
                     </label>
                   </div>
@@ -87,7 +87,7 @@
                 <!-- Filter Footer -->
                 <div class="px-5 py-4 border-t border-base-200 bg-base-200/30 rounded-b-2xl">
                   <button class="btn btn-outline btn-block" @click="reset_filters()" title="Reset filters">
-                    <i class="fal fa-refresh"></i>
+                    <i class="hgi-stroke hgi-refresh"></i>
                     Reset Filters
                   </button>
                 </div>
@@ -103,7 +103,7 @@
                     <div class="flex items-center gap-2">
                       <span>Route</span>
                       <button class="btn btn-ghost btn-xs" @click="toggle_all()">
-                        <i class="fal" :class="is_all_expanded() ? 'fa-compress-alt' : 'fa-expand-alt'"></i>
+                        <i class="hgi-stroke" :class="is_all_expanded() ? 'hgi-arrow-shrink' : 'hgi-arrow-expand'"></i>
                         <span x-text="is_all_expanded() ? 'Collapse' : 'Expand'"></span>
                       </button>
                     </div>
@@ -130,14 +130,14 @@
                         <div class="flex items-center min-w-0" :style="`padding-left: ${row.depth * 24}px`">
                           <template x-if="row.node.children.length">
                             <button class="btn btn-ghost btn-xs btn-square" @click="toggle(row.node.id)">
-                              <i class="fal" :class="is_expanded(row.node.id) ? 'fa-angle-down' : 'fa-angle-right'"></i>
+                              <i class="hgi-stroke" :class="is_expanded(row.node.id) ? 'hgi-arrow-down-01' : 'hgi-arrow-right-01'"></i>
                             </button>
                           </template>
                           <template x-if="!row.node.children.length">
-                            <span class="w-6 text-center text-base-content/40"><i class="fal fa-file"></i></span>
+                            <span class="w-6 text-center text-base-content/40"><i class="hgi-stroke hgi-file-01"></i></span>
                           </template>
                           <template x-if="row.node.children.length">
-                            <span class="ms-1 text-base-content/60"><i class="fal" :class="is_expanded(row.node.id) ? 'fa-folder-open' : 'fa-folder'"></i></span></span>
+                            <span class="ms-1 text-base-content/60"><i class="hgi-stroke" :class="is_expanded(row.node.id) ? 'hgi-folder-open' : 'hgi-folder-01'"></i></span></span>
                           </template>
                           <span class="ms-2 font-medium truncate" x-text="row.node.name"></span>
                           <span class="ms-2 text-xs text-base-content/50 font-mono truncate cursor-pointer hover:text-primary"
@@ -161,7 +161,7 @@
                         <div class="flex items-center justify-end">
                           <template x-if="row.node.route">
                             <button class="btn btn-primary btn-soft btn-sm" @click="open_secure(row.node.route)">
-                              <i class="fal fa-shield"></i>
+                              <i class="hgi-stroke hgi-shield-01"></i>
                               Manage
                             </button>
                           </template>
@@ -179,12 +179,12 @@
             <div class="modal-box max-w-6xl w-11/12 h-[85vh] p-0 flex flex-col">
               <div class="flex items-center justify-between px-5 py-3 border-b border-base-200 bg-base-200/30">
                 <h3 class="font-semibold text-lg flex items-center gap-2">
-                  <i class="fal fa-shield-check text-primary"></i>
+                  <i class="hgi-stroke hgi-security-check text-primary"></i>
                   Route Security
                 </h3>
                 <form method="dialog">
                   <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close">
-                    <i class="fal fa-times"></i>
+                    <i class="hgi-stroke hgi-cancel-01"></i>
                   </button>
                 </form>
               </div>

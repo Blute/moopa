@@ -1,36 +1,36 @@
 [
 
     {
-        "icon": "fal fa-cog",
+        "icon": "hgi-stroke hgi-settings-02",
         "title": "System",
         "items": [
             {
-                "icon": "fal fa-shield-alt",
+                "icon": "hgi-stroke hgi-shield-01",
                 "title": "Roles",
                 "route": "/security/roles"
             },
             {
-                "icon": "fal fa-route",
+                "icon": "hgi-stroke hgi-route-01",
                 "title": "Routes",
                 "route": "/security/routes"
             },
             {
-                "icon": "fal fa-user",
+                "icon": "hgi-stroke hgi-user",
                 "title": "Profiles",
                 "route": "/security/profiles"
             },
             {
-                "icon": "fal fa-search",
+                "icon": "hgi-stroke hgi-search-01",
                 "title": "Search Indexing",
                 "route": "/sysadmin/ms"
             },
             {
-                "icon": "fal fa-exclamation-triangle",
+                "icon": "hgi-stroke hgi-alert-02",
                 "title": "Error Log",
                 "route": "/moo_error_log"
             },
             {
-                "icon": "fal fa-database",
+                "icon": "hgi-stroke hgi-database",
                 "title": "Schema",
                 "route": "/schema"
             }

@@ -101,7 +101,7 @@
                             </div>
                             <div class="inline-flex items-center gap-2">
                                 <button class="btn btn-primary btn-sm" @click="index_content" :disabled="!selectedTables.length">
-                                    <i class="fal fa-database"></i>
+                                    <i class="hgi-stroke hgi-database"></i>
                                     Index Selected Tables
                                 </button>
                             </div>
@@ -155,10 +155,10 @@
                                             <td>
                                                 <div class="flex items-center justify-end gap-1">
                                                     <button type="button" class="btn btn-ghost btn-sm btn-square" @click="reset_index(table.table_name)" title="Reset Index">
-                                                        <i class="fal fa-sync text-base-content/70"></i>
+                                                        <i class="hgi-stroke hgi-refresh-01 text-base-content/70"></i>
                                                     </button>
                                                     <button type="button" class="btn btn-ghost btn-sm btn-square" @click="delete_index(table.table_name)" title="Delete Index">
-                                                        <i class="fal fa-trash text-error"></i>
+                                                        <i class="hgi-stroke hgi-delete-02 text-error"></i>
                                                     </button>
                                                 </div>
                                             </td>
@@ -168,7 +168,7 @@
                                     <template x-if="!enhancedTables.length">
                                         <tr>
                                             <td colspan="5" class="text-center py-8 text-base-content/60">
-                                                <i class="fal fa-database fa-2x mb-2 block"></i>
+                                                <i class="hgi-stroke hgi-database text-2xl mb-2 block"></i>
                                                 No searchable tables found
                                             </td>
                                         </tr>

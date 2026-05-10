@@ -113,7 +113,7 @@
                         <div class="flex items-center justify-between px-5 pt-5">
                             <div class="inline-flex items-center gap-3">
                                 <label class="input input-sm" @input.debounce.500ms="load()" @change.stop>
-                                    <i class="fal fa-search text-base-content/80"></i>
+                                    <i class="hgi-stroke hgi-search-01 text-base-content/80"></i>
                                     <input type="text" class="w-48" placeholder="Search profiles..." x-model="filters.term">
                                 </label>
                                 <select class="select select-sm" x-model="filters.app_name" @change="load()">
@@ -123,12 +123,12 @@
                                     </template>
                                 </select>
                                 <button class="btn btn-ghost btn-sm" @click="resetFilters()" title="Clear filters">
-                                    <i class="fal fa-times"></i>
+                                    <i class="hgi-stroke hgi-cancel-01"></i>
                                 </button>
                             </div>
                             <div class="inline-flex items-center gap-3">
                                 <button class="btn btn-primary btn-sm" @click="addNew">
-                                    <i class="fal fa-plus"></i>
+                                    <i class="hgi-stroke hgi-plus-sign"></i>
                                     New Profile
                                 </button>
                             </div>
@@ -202,7 +202,7 @@
                                                 <td>
                                                     <div class="flex items-center gap-2 flex-wrap">
                                                         <!-- Login Status -->
-                                                        <i class="fal fa-right-to-bracket" :class="item.can_login ? 'text-success' : 'text-base-content/30'" x-bind:title="item.can_login ? 'Can Login' : 'Cannot Login'"></i>
+                                                        <i class="hgi-stroke hgi-login-03" :class="item.can_login ? 'text-success' : 'text-base-content/30'" x-bind:title="item.can_login ? 'Can Login' : 'Cannot Login'"></i>
                                                         <!-- Employee Badge -->
                                                         <template x-if="item.is_employee">
                                                             <span class="badge badge-sm badge-soft badge-info capitalize" x-text="item.employee_type || 'employee'"></span>
@@ -238,11 +238,11 @@
                                                     <div class="flex items-center justify-end gap-1">
 
                                                         <button class="btn btn-ghost btn-sm btn-square" @click.stop="select(item)" title="Edit">
-                                                            <i class="fal fa-pencil text-base-content/70"></i>
+                                                            <i class="hgi-stroke hgi-pencil-edit-02 text-base-content/70"></i>
                                                         </button>
 
                                                         <button class="btn btn-ghost btn-sm btn-square text-error" @click.stop="openDeleteModal(item)" title="Delete">
-                                                            <i class="fal fa-trash"></i>
+                                                            <i class="hgi-stroke hgi-delete-02"></i>
                                                         </button>
                                                     </div>
                                                 </td>
@@ -252,7 +252,7 @@
                                         <template x-if="!loading && records.length === 0">
                                             <tr>
                                                 <td colspan="6" class="text-center py-8 text-base-content/60">
-                                                    <i class="fal fa-users fa-2x mb-2 block"></i>
+                                                    <i class="hgi-stroke hgi-user-group text-2xl mb-2 block"></i>
                                                     No profiles found
                                                 </td>
                                             </tr>
@@ -270,7 +270,7 @@
                             <h3 class="text-lg font-semibold" x-text="current_record.id ? 'Edit Profile' : 'New Profile'"></h3>
                             <form method="dialog">
                                 <button class="btn btn-sm btn-ghost btn-circle" aria-label="Close">
-                                    <i class="fal fa-times"></i>
+                                    <i class="hgi-stroke hgi-cancel-01"></i>
                                 </button>
                             </form>
                         </div>
@@ -313,7 +313,7 @@
                                 <button class="btn btn-ghost">Cancel</button>
                             </form>
                             <button class="btn btn-primary" @click="handleSave">
-                                <i class="fal fa-check"></i>
+                                <i class="hgi-stroke hgi-tick-02"></i>
                                 Save
                             </button>
                         </div>
@@ -327,7 +327,7 @@
                 <dialog id="delete_modal" class="modal" x-ref="deleteModal">
                     <div class="modal-box max-w-sm text-center">
                         <div class="py-4">
-                            <i class="fal fa-triangle-exclamation fa-3x text-error mb-4 block"></i>
+                            <i class="hgi-stroke hgi-alert-02 text-3xl text-error mb-4 block"></i>
                             <h3 class="text-lg font-semibold">Delete Profile</h3>
                             <p class="text-base-content/70 mt-2">
                                 Are you sure you want to delete <span class="font-medium" x-text="current_record.full_name"></span>?
@@ -339,7 +339,7 @@
                                 <button class="btn btn-ghost">Cancel</button>
                             </form>
                             <button class="btn btn-error" @click="deleteRecord">
-                                <i class="fal fa-trash"></i>
+                                <i class="hgi-stroke hgi-delete-02"></i>
                                 Delete
                             </button>
                         </div>

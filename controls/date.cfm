@@ -24,7 +24,7 @@
             >
             <cfif attributes.show_quick_options>
                 <div class="dropdown dropdown-end">
-                    <button class="btn join-item" type="button" tabindex="0"><i class="fal fa-chevron-down"></i></button>
+                    <button class="btn join-item" type="button" tabindex="0"><i class="hgi-stroke hgi-arrow-down-01"></i></button>
                     <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-10 w-40 p-2 shadow">
                         <li><button type="button" @click="setDate(0, 'day')">Today</button></li>
                         <li><button type="button" @click="setDate(1, 'day')">Tomorrow</button></li>

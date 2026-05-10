@@ -45,7 +45,7 @@
                             @click.stop="removeSelectedItem(index)"
                             aria-label="Remove"
                         >
-                            <i class="fa-regular fa-xmark text-xs"></i>
+                            <i class="hgi-stroke hgi-cancel-01 text-xs"></i>
                         </button>
                     </span>
                 </template>
@@ -82,7 +82,7 @@
                     @click.stop.prevent="clearSelection()"
                     tabindex="-1"
                 >
-                    <i class="fa-regular fa-xmark"></i>
+                    <i class="hgi-stroke hgi-cancel-01"></i>
                 </button>
             </template>
             <template x-if="!loading && !hasSelection()">
@@ -92,7 +92,7 @@
                     @click.stop.prevent="togglePopover()"
                     tabindex="-1"
                 >
-                    <i class="fa-regular fa-chevron-down"></i>
+                    <i class="hgi-stroke hgi-arrow-down-01"></i>
                 </button>
             </template>
         </label>
@@ -127,7 +127,7 @@
                             class="flex items-center gap-2 py-2"
                         >
                             <i
-                                class="fa-solid fa-check text-xs w-4"
+                                class="hgi-stroke hgi-tick-02 text-xs w-4"
                                 :class="{'invisible': !isOptionSelected(option)}"
                             ></i>
                             <span class="truncate" x-text="option.label"></span>
