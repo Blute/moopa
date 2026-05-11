@@ -70,17 +70,6 @@
 		<cfset var bReturn = true />
 
 
-        <cfif !structKeyExists(cookie, "s3p_token")>
-            <!--- Calculate explicit expiration date --->
-            <cfset expire_date = dateAdd("d", 30, now()) />
-            <cfset token_value = createUUID() />
-
-            <!--- Set cookie manually with cfheader to bypass setdomaincookies=false restriction --->
-            <cfset cookie_expires = dateFormat(expire_date, "ddd, dd-mmm-yyyy") & " " & timeFormat(expire_date, "HH:mm:ss") & " GMT" />
-            <cfheader name="Set-Cookie" value="s3p_token=#token_value#; Domain=.blute.com.au; Expires=#cookie_expires#; Path=/; SameSite=None; Secure" />
-        </cfif>
-
-
 
         <cfif (application.about_to_initialize?:false)>
             <cflocation url="/restarting/index.html?redirect=#url.route?:'/'#" />
