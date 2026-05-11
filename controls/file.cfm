@@ -92,10 +92,10 @@
 
             <!--- File List using Tailwind/daisyUI --->
             <template x-if="combined_files?.length && (show_file_list || hasUploadingFiles())">
-                <div class="flex flex-col gap-2">
+                <div class="flex flex-col gap-2 min-w-0">
                     <template x-for="(file, index) in combined_files" :key="file.id">
                         <div
-                            class="flex items-center gap-3 p-2.5 bg-base-100 border border-base-300 rounded-lg transition-all duration-200 hover:border-primary hover:shadow-sm animate-in slide-in-from-top-2"
+                            class="flex items-center gap-3 p-2.5 min-w-0 bg-base-100 border border-base-300 rounded-lg transition-all duration-200 hover:border-primary hover:shadow-sm animate-in slide-in-from-top-2"
                             :class="{
                                 'opacity-50 !bg-error/5 !border-error': file.is_trashed,
                                 'border-l-4 !border-l-success': uploadProgress[file.id] === 100 && !processingFiles[file.id] && !file.is_trashed
