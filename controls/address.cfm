@@ -1,32 +1,26 @@
 <!---
-GEOSCAPE ADDRESS CONTROL
+ADDRESS SEARCH CONTROL
 
-Uses Geoscape Predictive Address API for Australian address autocomplete.
-Uses daisyUI popover dropdown to avoid modal overflow issues.
+Uses the shared `/address_search` route, which proxies Photon by Komoot.
+Uses daisyUI popover dropdown to support search-as-you-type address autocomplete.
 
 USAGE:
 <cf_control_address
     model="record.address"
-    route="/api/geoscape"
     class="w-full"
     input_class="input w-full"
     placeholder="Search for address"
 />
 
-The address object stored in the model will contain (from GET /v1/predictive/address/{id}):
+The address object stored in the model contains Photon-derived data:
 {
-    id: "GAACT717940975",           // Geoscape address identifier
-    formatted_address: "...",       // Full formatted address string
-    street_number: "113",           // Street number
-    street_name: "CANBERRA",        // Street name
-    street_type: "AVENUE",          // Street type
-    locality_name: "GRIFFITH",      // Suburb/locality
-    state_territory: "ACT",         // State/territory code
-    postcode: "2603",               // Postcode
-    latitude: -35.123,              // Latitude (if available)
-    longitude: 149.123,             // Longitude (if available)
-    cadastral_identifier: "...",    // Cadastral reference
-    ... and more properties from Geoscape
+    id: "way:123456789",
+    formatted_address: "...",
+    full: "...",
+    latitude: "-35.123",
+    longitude: "149.123",
+    address: {...},
+    source: "photon"
 }
 --->
 
@@ -36,21 +30,17 @@ The address object stored in the model will contain (from GET /v1/predictive/add
     <cfparam name="attributes.class" default="w-full" />
     <cfparam name="attributes.input_class" default="input w-full" />
     <cfparam name="attributes.placeholder" default="Search for address" />
-    <cfparam name="attributes.route" default="/api/geoscape" />
-    <cfparam name="attributes.endpoint" default="search.address" />
-    <cfparam name="attributes.detail_endpoint" default="detail.address" />
+    <cfparam name="attributes.route" default="/address_search" />
+    <cfparam name="attributes.endpoint" default="search" />
 
     <!--- Handle route signing --->
     <cfset signed_search = application.lib.auth.signedEndpoint(route=attributes.route, endpoint=attributes.endpoint) />
-    <cfset signed_detail = application.lib.auth.signedEndpoint(route=attributes.route, endpoint=attributes.detail_endpoint) />
-    <cfset search_endpoint = "{#signed_search#}" />
-    <cfset detail_endpoint = "{#signed_detail#}" />
+    <cfset search_endpoint = serializeJSON(signed_search) />
 
     <cfoutput>
     <div
-        x-data="geoscapeAddress({
-            search_endpoint: #search_endpoint#,
-            detail_endpoint: #detail_endpoint#
+        x-data="moopaAddressSearch({
+            search_endpoint: #search_endpoint#
         })"
         x-modelable="address"
         x-model="#attributes.model#"
@@ -133,7 +123,7 @@ The address object stored in the model will contain (from GET /v1/predictive/add
                     </div>
 
                     <!--- No results --->
-                    <div x-show="!loading && !error && suggestions.length === 0 && searchQuery.length >= 3" class="px-4 py-3 text-base-content/60 text-sm">
+                    <div x-show="!loading && !error && suggestions.length === 0 && searchQuery.length >= 2" class="px-4 py-3 text-base-content/60 text-sm">
                         No addresses found
                     </div>
 
@@ -159,11 +149,6 @@ The address object stored in the model will contain (from GET /v1/predictive/add
             </div>
         </template>
 
-        <!--- Loading details indicator --->
-        <div x-show="loadingDetails" x-cloak class="mt-2 flex items-center gap-2 text-sm text-base-content/60">
-            <span class="loading loading-spinner loading-sm"></span>
-            Fetching address details...
-        </div>
     </div>
     </cfoutput>
 

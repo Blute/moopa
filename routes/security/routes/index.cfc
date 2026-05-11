@@ -39,63 +39,55 @@
     </cffunction>
 
     <cffunction name="get">
-      <cf_layout_default content_class="w-full max-w-7xl mx-auto">
+      <cf_layout_default>
 
-        <div x-data="routes_tree" x-cloak class="flex flex-col gap-4">
+        <div x-data="routes_tree" x-cloak class="flex flex-col gap-5">
           <!-- Header -->
-          <div class="flex flex-col lg:flex-row lg:items-center gap-2">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h1 class="m-0 text-2xl font-semibold">Routes</h1>
-              <p class="text-base-content/60 text-sm">Manage security across all application routes with a clear, navigable tree.</p>
+              <div class="flex items-center gap-3">
+                <div class="flex h-11 w-11 items-center justify-center rounded-box bg-primary/10 text-primary">
+                  <i class="hgi-stroke hgi-route-01 text-xl"></i>
+                </div>
+                <div>
+                  <h1 class="text-2xl font-semibold tracking-tight">Routes</h1>
+                  <p class="text-sm text-base-content/60">Manage security across all application routes with a clear, navigable tree.</p>
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- Main Content -->
-          <div class="flex flex-col md:flex-row md:items-start gap-4">
-            <!-- Filters Card -->
-            <div class="w-full md:w-80 shrink-0">
-              <div class="card card-border bg-base-100">
-                <!-- Filter Header -->
-                <div class="px-5 py-4 border-b border-base-200">
-                  <h3 class="text-lg font-semibold">Filters</h3>
-                  <p class="text-sm text-base-content/60 mt-1">
+          <div class="grid grid-cols-1 gap-5 xl:grid-cols-[20rem_minmax(0,1fr)] xl:items-start">
+            <!-- Filters -->
+            <aside class="card card-border bg-base-100 shadow-sm xl:sticky xl:top-6">
+              <div class="card-body gap-4">
+                <div>
+                  <h2 class="card-title text-lg">Filters</h2>
+                  <p class="text-sm text-base-content/60">
                     <span class="font-semibold text-base-content" x-text="stats.total"></span>
                     <span x-text="stats.total === 1 ? 'route found' : 'routes found'"></span>
                   </p>
                 </div>
 
-                <!-- Filter Content -->
-                <div class="px-5 py-4 space-y-4">
-                  <!-- Search -->
-                  <div>
-                    <label class="block text-sm font-medium mb-2">Search</label>
-                    <label class="input input-bordered w-full">
-                      <i class="hgi-stroke hgi-search-01 text-base-content/50"></i>
-                      <input type="text" class="grow" placeholder="Search routes..." x-model.debounce="filters.q">
-                      <button
-                        x-show="filters.q"
-                        x-transition
-                        @click="filters.q = ''"
-                        class="text-base-content/40 hover:text-base-content/70"
-                      >
-                        <i class="hgi-stroke hgi-cancel-01"></i>
-                      </button>
-                    </label>
-                  </div>
-                </div>
+                <fieldset class="fieldset">
+                  <legend class="fieldset-legend">Search</legend>
+                  <label class="input input-sm w-full">
+                    <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
+                    <input type="search" placeholder="Search routes..." x-model.debounce="filters.q">
+                  </label>
+                </fieldset>
 
-                <!-- Filter Footer -->
-                <div class="px-5 py-4 border-t border-base-200 bg-base-200/30 rounded-b-2xl">
-                  <button class="btn btn-outline btn-block" @click="reset_filters()" title="Reset filters">
-                    <i class="hgi-stroke hgi-refresh"></i>
-                    Reset Filters
+                <div class="card-actions">
+                  <button type="button" class="btn btn-ghost btn-sm" @click="reset_filters()">
+                    Reset filters
                   </button>
                 </div>
               </div>
-            </div>
+            </aside>
 
             <!-- Routes Tree Card -->
-            <div class="flex-1 min-w-0">
+            <div class="min-w-0">
               <div class="card card-border bg-base-100">
                 <!-- Header Row -->
                 <div class="border-b border-base-200 px-3 py-2.5">

@@ -31,7 +31,48 @@
         <cf_layout_default>
 
 
-            <div x-data="error_log">
+            <div x-data="error_log" x-cloak class="flex flex-col gap-5">
+
+                <!-- Header -->
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <div class="flex h-11 w-11 items-center justify-center rounded-box bg-primary/10 text-primary">
+                                <i class="hgi-stroke hgi-alert-02 text-xl"></i>
+                            </div>
+                            <div>
+                                <h1 class="text-2xl font-semibold tracking-tight">Error Log</h1>
+                                <p class="text-sm text-base-content/60">Review captured application errors and inspect request context.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Filters -->
+                <div class="card card-border bg-base-100 shadow-sm w-full max-w-5xl">
+                    <div class="card-body gap-4">
+                        <div class="flex flex-col gap-4 xl:flex-row xl:items-end">
+                            <fieldset class="fieldset w-full xl:max-w-2xl xl:flex-1">
+                                <legend class="fieldset-legend">Search</legend>
+                                <label class="input input-sm w-full">
+                                    <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
+                                    <input
+                                        type="search"
+                                        placeholder="Search messages or lines..."
+                                        x-model="filters.term"
+                                        @input.debounce.300ms="search()"
+                                    />
+                                </label>
+                            </fieldset>
+
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" class="btn btn-ghost btn-sm" @click="resetFilter(); search();">
+                                    Reset filters
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
                     <div class="overflow-x-auto">
@@ -158,15 +199,12 @@
                         init()  {
                             this.resetFilter();
                             this.search();
-                            this.$watch('filters', () => this.search());
                         },
 
                         async search() {
-                            this.records = await fetchData({
+                            this.records = await req({
                                 endpoint: 'search',
-                                body: {
-                                    filter:this.filters
-                                }
+                                q: this.filters.term
                             });
                         },
 
@@ -179,9 +217,9 @@
 
                         async select(item) {
                             // Load the record and show modal
-                            this.current_record = await fetchData({
+                            this.current_record = await req({
                                 endpoint: 'read',
-                                data: {id:item.id},
+                                body: {id:item.id},
                             });
                             // Use Elements UI command to show modal
                             document.getElementById('error-log-dialog').showModal();

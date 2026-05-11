@@ -20,11 +20,6 @@
                 "route": "/security/profiles"
             },
             {
-                "icon": "hgi-stroke hgi-search-01",
-                "title": "Search Indexing",
-                "route": "/sysadmin/ms"
-            },
-            {
                 "icon": "hgi-stroke hgi-alert-02",
                 "title": "Error Log",
                 "route": "/moo_error_log"

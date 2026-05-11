@@ -84,27 +84,38 @@
 
 
     <cffunction name="get" output="true">
-        <cf_layout_default content_class="w-full max-w-7xl mx-auto">
+        <cf_layout_default>
 
-            <div x-data="roles" x-cloak class="flex flex-col gap-4">
+            <div x-data="roles" x-cloak class="flex flex-col gap-5">
                 <!-- Header -->
-                <div class="flex items-center justify-between">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                        <h1 class="m-0 text-lg font-medium">Roles</h1>
+                        <div class="flex items-center gap-3">
+                            <div class="flex h-11 w-11 items-center justify-center rounded-box bg-primary/10 text-primary">
+                                <i class="hgi-stroke hgi-shield-01 text-xl"></i>
+                            </div>
+                            <div>
+                                <h1 class="text-2xl font-semibold tracking-tight">Roles</h1>
+                                <p class="text-sm text-base-content/60">Create security roles and review their assigned users and routes.</p>
+                            </div>
+                        </div>
                     </div>
 
+                    <button class="btn btn-sm btn-primary gap-2" @click="addNew">
+                        <i class="hgi-stroke hgi-plus-sign"></i>
+                        New Role
+                    </button>
                 </div>
 
-                <!-- Content Card -->
-                <div class="card bg-base-100 shadow">
-                    <div class="card-body p-0">
-                        <!-- Slim Filter Bar -->
-                        <div class="flex items-center justify-between px-5 pt-5">
-                            <div class="inline-flex items-center gap-3">
-                                <label class="input input-sm">
-                                    <i class="hgi-stroke hgi-search-01 text-base-content/80 text-sm"></i>
+                <!-- Filters -->
+                <div class="card card-border bg-base-100 shadow-sm w-full max-w-5xl">
+                    <div class="card-body gap-4">
+                        <div class="flex flex-col gap-4 xl:flex-row xl:items-end">
+                            <fieldset class="fieldset w-full xl:max-w-2xl xl:flex-1">
+                                <legend class="fieldset-legend">Search</legend>
+                                <label class="input input-sm w-full">
+                                    <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
                                     <input
-                                        class="w-24 sm:w-36"
                                         placeholder="Search roles..."
                                         aria-label="Search roles"
                                         type="search"
@@ -112,16 +123,22 @@
                                         @input.debounce.300ms="search()"
                                     />
                                 </label>
+                            </fieldset>
 
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters()">
+                                    Reset filters
+                                </button>
                             </div>
-                            <button class="btn btn-sm btn-primary" @click="addNew">
-                                <i class="hgi-stroke hgi-plus-sign"></i>
-                                <span class="hidden sm:inline">New Role</span>
-                            </button>
                         </div>
+                    </div>
+                </div>
 
+                <!-- Content Card -->
+                <div class="card card-border bg-base-100 shadow-sm">
+                    <div class="card-body p-0">
                         <!-- Table -->
-                        <div class="mt-4 overflow-auto">
+                        <div class="overflow-auto">
                             <table class="table">
                                 <thead>
                                     <tr>
@@ -411,6 +428,14 @@
                                 console.error('Search error:', error);
                                 this.showNotification('Error searching records', 'error');
                             }
+                        },
+
+                        async resetFilters() {
+                            this.filters = {
+                                search: '',
+                                sortBy: 'name'
+                            };
+                            await this.search();
                         },
 
                         async select(item) {

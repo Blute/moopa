@@ -1457,17 +1457,40 @@ Delete - delete
 
 
             <!--- Collect searchable fields for pg_trgm trigram search --->
-            <!--- searchable can be: true, or any truthy value --->
-            <!--- JSONB fields are tracked but skipped when building the search_text column --->
-            <!--- Clear any pre-existing searchable_fields to rebuild from field definitions --->
+            <!--- Table-level searchable_fields is the preferred API; field.searchable remains supported. --->
+            <!--- JSONB fields are tracked but skipped when building the search_text column. --->
+            <cfset declared_searchable_fields = table.searchable_fields ?: "" />
             <cfset table.searchable_fields = "" />
             <cfset searchable_field_configs = {} />
+
+            <cfloop list="#declared_searchable_fields#" item="searchable_field_name">
+                <cfset searchable_field_name = trim(searchable_field_name) />
+                <cfif len(searchable_field_name)>
+                    <cfif NOT structKeyExists(table.fields, searchable_field_name)>
+                        <cfthrow message="Table #table.table_name# searchable_fields references unknown field: #searchable_field_name#" />
+                    </cfif>
+                    <cfif NOT listFindNoCase(table.searchable_fields, searchable_field_name)>
+                        <cfset table.searchable_fields = listAppend(table.searchable_fields, searchable_field_name) />
+                        <cfset searchable_field_configs[searchable_field_name] = { "field_type": table.fields[searchable_field_name].type } />
+                    </cfif>
+                </cfif>
+            </cfloop>
+
             <cfloop collection="#table.fields#" item="field" index="field_name">
-                <cfif structKeyExists(field, "searchable") AND field.searchable NEQ false>
-                    <cfif isSimpleValue(field.searchable) AND len(field.searchable)>
-                        <cfset table.searchable_fields = listAppend(table.searchable_fields, field_name) />
-                        <cfset searchable_field_configs[field_name] = { "field_type": field.type } />
+                <cfif structKeyExists(field, "searchable")>
+                    <cfset include_searchable_field = false />
+
+                    <cfif isBoolean(field.searchable)>
+                        <cfset include_searchable_field = field.searchable />
+                    <cfelseif isSimpleValue(field.searchable)>
+                        <cfset include_searchable_field = len(trim(field.searchable)) GT 0 />
                     <cfelseif isStruct(field.searchable)>
+                        <cfset include_searchable_field = true />
+                    <cfelse>
+                        <cfthrow message="Table #table.table_name# field #field_name# has unsupported searchable metadata." />
+                    </cfif>
+
+                    <cfif include_searchable_field AND NOT listFindNoCase(table.searchable_fields, field_name)>
                         <cfset table.searchable_fields = listAppend(table.searchable_fields, field_name) />
                         <cfset searchable_field_configs[field_name] = { "field_type": field.type } />
                     </cfif>

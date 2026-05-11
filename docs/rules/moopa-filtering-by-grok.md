@@ -42,7 +42,7 @@ Filtering is handled in endpoints that load data lists. Common pattern:
 
 3. **Integration with Search**:
    - Often combined with `q` for text search.
-   - Uses Meilisearch for efficient ID retrieval: `search_ids = application.lib.meilisearch.search_index(...)`
+   - Use PostgreSQL-backed search helpers for efficient ID retrieval.
    - Then: `AND id IN (<cfqueryparam list="true" value="#search_ids#" />)`
 
 4. **db.cfc Usage**:

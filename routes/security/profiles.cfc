@@ -100,40 +100,63 @@
 
 
     <cffunction name="get" output="true">
-        <cf_layout_default content_class="w-full">
+        <cf_layout_default>
 
-            <div x-data="profiles_admin" x-cloak class="flex flex-col gap-6">
-                <!-- Page Title -->
-                <p class="text-lg font-medium">Profiles</p>
+            <div x-data="profiles_admin" x-cloak class="flex flex-col gap-5">
+                <!-- Header -->
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <div class="flex h-11 w-11 items-center justify-center rounded-box bg-primary/10 text-primary">
+                                <i class="hgi-stroke hgi-user text-xl"></i>
+                            </div>
+                            <div>
+                                <h1 class="text-2xl font-semibold tracking-tight">Profiles</h1>
+                                <p class="text-sm text-base-content/60">Manage hub identities, login access, roles, and authentication links.</p>
+                            </div>
+                        </div>
+                    </div>
 
-                <!-- Profiles Card -->
-                <div class="card card-border bg-base-100">
-                    <div class="card-body p-0">
-                        <!-- Filters Bar -->
-                        <div class="flex items-center justify-between px-5 pt-5">
-                            <div class="inline-flex items-center gap-3">
-                                <label class="input input-sm" @input.debounce.500ms="load()" @change.stop>
-                                    <i class="hgi-stroke hgi-search-01 text-base-content/80"></i>
-                                    <input type="text" class="w-48" placeholder="Search profiles..." x-model="filters.term">
+                    <button class="btn btn-primary btn-sm gap-2" @click="addNew">
+                        <i class="hgi-stroke hgi-plus-sign"></i>
+                        New Profile
+                    </button>
+                </div>
+
+                <!-- Filters -->
+                <div class="card card-border bg-base-100 shadow-sm w-full max-w-5xl">
+                    <div class="card-body gap-4">
+                        <div class="flex flex-col gap-4 xl:flex-row xl:items-end">
+                            <fieldset class="fieldset w-full xl:max-w-2xl xl:flex-1">
+                                <legend class="fieldset-legend">Search</legend>
+                                <label class="input input-sm w-full" @input.debounce.500ms="load()" @change.stop>
+                                    <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
+                                    <input type="search" placeholder="Search profiles..." x-model="filters.term">
                                 </label>
-                                <select class="select select-sm" x-model="filters.app_name" @change="load()">
-                                    <option value="">All Apps</option>
+                            </fieldset>
+
+                            <fieldset class="fieldset w-full xl:max-w-xs">
+                                <legend class="fieldset-legend">App</legend>
+                                <select class="select select-sm w-full" x-model="filters.app_name" @change="load()">
+                                    <option value="">All apps</option>
                                     <template x-for="app in app_names" :key="app">
                                         <option :value="app" x-text="app"></option>
                                     </template>
                                 </select>
-                                <button class="btn btn-ghost btn-sm" @click="resetFilters()" title="Clear filters">
-                                    <i class="hgi-stroke hgi-cancel-01"></i>
-                                </button>
-                            </div>
-                            <div class="inline-flex items-center gap-3">
-                                <button class="btn btn-primary btn-sm" @click="addNew">
-                                    <i class="hgi-stroke hgi-plus-sign"></i>
-                                    New Profile
+                            </fieldset>
+
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters()">
+                                    Reset filters
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
 
+                <!-- Profiles Card -->
+                <div class="card card-border bg-base-100 shadow-sm">
+                    <div class="card-body p-0">
                         <!-- Loading State -->
                         <template x-if="loading">
                             <div class="p-6 text-center text-base-content/60">
@@ -143,7 +166,7 @@
                         </template>
 
                         <!-- Table -->
-                        <div class="mt-4 overflow-auto" x-show="!loading">
+                        <div class="overflow-auto" x-show="!loading">
                                 <table class="table">
                                     <thead>
                                         <tr>
@@ -286,10 +309,9 @@
                             <div class="divider text-sm text-base-content/50">Profile Picture</div>
                             <cf_table_controls table_name="moo_profile" fields="profile_picture_id" />
 
-                            <!-- Permissions & Address -->
-                            <div class="divider text-sm text-base-content/50">Permissions & Address</div>
+                            <!-- Permissions -->
+                            <div class="divider text-sm text-base-content/50">Permissions</div>
                             <cf_table_controls table_name="moo_profile" fields="roles" />
-                            <cf_table_controls table_name="moo_profile" fields="address" />
                             <cf_table_controls table_name="moo_profile" fields="can_login" />
 
                             <!-- Auth Identities -->

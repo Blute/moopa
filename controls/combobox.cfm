@@ -16,9 +16,9 @@
     <!--- Handle route signing if route is provided --->
     <cfif len(attributes.route?:'')>
         <cfset signed_endpoint = application.lib.auth.signedEndpoint(route=attributes.route, endpoint=attributes.endpoint) />
-        <cfset request_endpoint = "{#signed_endpoint#}" />
+        <cfset request_endpoint = serializeJSON(signed_endpoint) />
     <cfelse>
-        <cfset request_endpoint = "{endpoint:'#attributes.endpoint#'}" />
+        <cfset request_endpoint = serializeJSON({endpoint: attributes.endpoint}) />
     </cfif>
 
     <cfoutput>

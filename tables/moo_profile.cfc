@@ -150,6 +150,7 @@
         <cfargument name="stay_logged_in" default=true /> <!--- If true, the user will be logged in for 30 days. Default is true. --->
         <cfargument name="user_directory" default="" />
         <cfargument name="authentication_service_user" default="" />
+        <cfargument name="is_sysadmin" type="boolean" default=false />
 
 
         <cfif !len(arguments.profile_id)>
@@ -222,7 +223,16 @@
             <!--- Convert the array of role IDs to a comma-separated list --->
             <cfset session.auth.role_id_list = ArrayToList(session.auth.role_id_array)>
 
-            <cfif len(session.auth.profile.email?:'') AND listFindNoCase(server.system.environment.SYSADMIN_email?:'', session.auth.profile.email)>
+            <cfset var sysadmin_email_list = "" />
+            <cfset var sysadmin_email = "" />
+            <cfloop list="#server.system.environment.SYSADMIN_EMAIL ?: ''#" item="sysadmin_email">
+                <cfset sysadmin_email = lCase(trim(sysadmin_email)) />
+                <cfif len(sysadmin_email)>
+                    <cfset sysadmin_email_list = listAppend(sysadmin_email_list, sysadmin_email) />
+                </cfif>
+            </cfloop>
+
+            <cfif arguments.is_sysadmin OR (len(session.auth.profile.email?:'') AND listFindNoCase(sysadmin_email_list, session.auth.profile.email))>
                 <cfset session.auth.is_sysadmin = true />
             </cfif>
 
