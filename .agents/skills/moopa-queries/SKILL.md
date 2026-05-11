@@ -246,6 +246,55 @@ FROM (
 <cfset var record = application.lib.db.read(table_name="my_table", id=myId, returnAsCFML=true) />
 ```
 
+## Reading JSONB Columns Back via cfquery
+
+**Symptom:** an `endpoint` reads a `jsonb` column (e.g. `property_summary`, `history`) and returns it via a plain `<cfreturn { ... }>` struct, but the client receives garbage — `null`, an opaque object, or an empty value — even though `SELECT history FROM ...` in psql shows the data is there.
+
+**Cause:** the Lucee PostgreSQL JDBC driver returns `jsonb` columns as `org.postgresql.util.PGobject` instances, not as parsed CFML structs and not as JSON strings. When that PGobject hits `serializeJSON` (called by Moopa's framework when the endpoint returns a struct), the result is unpredictable — typically a stringified `{}` or the object's `.toString()` representation, neither of which the client can usefully parse.
+
+**Fix:** cast to text in SQL so the driver hands back a plain string. The client-side getter then `JSON.parse`s it.
+
+```cfml
+<!--- GOOD: explicit text cast so Lucee gets a real string --->
+<cfquery name="qSub">
+    SELECT id,
+           COALESCE(history::text, '[]') AS history,
+           property_summary::text AS property_summary
+    FROM sell_tender_submission
+    WHERE id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
+</cfquery>
+<cfreturn {
+    id: qSub.id,
+    history: qSub.history,                  <!--- now a JSON string --->
+    property_summary: qSub.property_summary
+} />
+
+<!--- BAD: jsonb returned as PGobject, doesn't serialize cleanly --->
+<cfquery name="qSub">
+    SELECT id, history, property_summary
+    FROM sell_tender_submission
+    WHERE id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
+</cfquery>
+<cfreturn {
+    id: qSub.id,
+    history: qSub.history,                  <!--- PGobject — empty on client --->
+    property_summary: qSub.property_summary
+} />
+```
+
+```js
+// Client-side: parse on first access, accept either string or already-parsed.
+get historyEntries() {
+    let h = this.record.history;
+    if (typeof h === 'string') { try { h = JSON.parse(h); } catch (e) { return []; } }
+    return Array.isArray(h) ? h : [];
+}
+```
+
+**You don't need the cast** when the entire result is wrapped in `array_to_json(array_agg(row_to_json(data)))::text` (the standard JSON-aggregation pattern earlier in this skill). That outer `::text` cast forces every nested jsonb to be embedded as proper JSON in the output string, so the client receives a nested array/object directly.
+
+**Use the explicit `::text` cast** when an endpoint returns a struct via `<cfreturn { ... }>` rather than a JSON aggregate — i.e. single-record loads and the `load` endpoint pattern that builds a CFML struct from a row.
+
 ## Security: Always Use cfqueryparam
 
 ```cfml
