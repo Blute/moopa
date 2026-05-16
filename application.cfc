@@ -494,6 +494,7 @@
         <cfset var currentRoute = url.route ?: "/" />
         <cfset var currentApp = application.app_name ?: "" />
         <cfset var isHubSetupRoute = (currentApp EQ "hub" AND reFindNoCase("^/setup/?$", currentRoute)) />
+        <cfset var isHubInstallRoute = (currentApp EQ "hub" AND reFindNoCase("^/install/?$", currentRoute)) />
         <cfset var needsSetup = false />
         <cfset var hubSetupUrl = "" />
         <cfset var hubBaseUrl = "" />
@@ -502,7 +503,7 @@
         <cfset var hostPort = "" />
         <cfset var hubHost = "" />
 
-        <cfif isHubSetupRoute OR NOT structKeyExists(application, "lib") OR NOT structKeyExists(application.lib, "core")>
+        <cfif isHubSetupRoute OR isHubInstallRoute OR NOT structKeyExists(application, "lib") OR NOT structKeyExists(application.lib, "core")>
             <cfreturn />
         </cfif>
 
