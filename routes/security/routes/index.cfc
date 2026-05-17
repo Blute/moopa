@@ -41,97 +41,86 @@
     <cffunction name="get">
       <cf_layout_default>
 
-        <div x-data="routes_tree" x-cloak class="flex flex-col gap-5">
+        <div x-data="routes_tree" x-cloak class="flex flex-col gap-4 lg:gap-5">
           <!-- Header -->
           <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
+            <div class="min-w-0">
               <div class="flex items-center gap-3">
-                <div class="flex h-11 w-11 items-center justify-center rounded-box bg-primary/10 text-primary">
-                  <i class="hgi-stroke hgi-route-01 text-xl"></i>
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
+                  <i class="hgi-stroke hgi-route-01 text-base"></i>
                 </div>
-                <div>
-                  <h1 class="text-2xl font-semibold tracking-tight">Routes</h1>
-                  <p class="text-sm text-base-content/60">Manage security across all application routes with a clear, navigable tree.</p>
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                    <h1 class="text-[1.625rem] font-semibold leading-none tracking-[-0.03em]">Routes</h1>
+                    <span class="text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-base-content/42" x-text="routeSummary()"></span>
+                  </div>
+                  <p class="mt-1 max-w-[58ch] text-sm leading-5 text-base-content/62">Manage security across all application routes with a clear, navigable tree.</p>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Main Content -->
-          <div class="grid grid-cols-1 gap-5 xl:grid-cols-[20rem_minmax(0,1fr)] xl:items-start">
-            <!-- Filters -->
-            <aside class="card card-border bg-base-100 shadow-sm xl:sticky xl:top-6">
-              <div class="card-body gap-4">
-                <div>
-                  <h2 class="card-title text-lg">Filters</h2>
-                  <p class="text-sm text-base-content/60">
-                    <span class="font-semibold text-base-content" x-text="stats.total"></span>
-                    <span x-text="stats.total === 1 ? 'route found' : 'routes found'"></span>
-                  </p>
-                </div>
-
-                <fieldset class="fieldset">
-                  <legend class="fieldset-legend">Search</legend>
-                  <label class="input input-sm w-full">
+          <!-- Routes Tree Card -->
+          <div class="min-w-0 overflow-hidden rounded-lg border border-base-300 bg-base-100">
+            <!-- Toolbar -->
+            <div class="border-b border-base-300 px-4 py-3">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                  <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80">
                     <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
-                    <input type="search" placeholder="Search routes..." x-model.debounce="filters.q">
+                    <input type="search" aria-label="Search routes" placeholder="Search routes" x-model.debounce="filters.q">
                   </label>
-                </fieldset>
-
-                <div class="card-actions">
-                  <button type="button" class="btn btn-ghost btn-sm" @click="reset_filters()">
-                    Reset filters
+                  <button type="button" class="btn btn-ghost btn-sm justify-start" @click="reset_filters()" :disabled="!hasActiveFilters()">
+                    Reset
                   </button>
                 </div>
+                <button class="btn btn-ghost btn-sm gap-2" @click="toggle_all()" :disabled="stats.total === 0">
+                  <i class="hgi-stroke" :class="is_all_expanded() ? 'hgi-arrow-shrink' : 'hgi-arrow-expand'"></i>
+                  <span x-text="is_all_expanded() ? 'Collapse all' : 'Expand all'"></span>
+                </button>
               </div>
-            </aside>
+            </div>
 
-            <!-- Routes Tree Card -->
-            <div class="min-w-0">
-              <div class="card card-border bg-base-100">
-                <!-- Header Row -->
-                <div class="border-b border-base-200 px-3 py-2.5">
-                  <div class="grid items-center gap-2 text-sm font-semibold text-base-content/70" style="grid-template-columns: 1fr 80px 80px 100px;">
-                    <div class="flex items-center gap-2">
-                      <span>Route</span>
-                      <button class="btn btn-ghost btn-xs" @click="toggle_all()">
-                        <i class="hgi-stroke" :class="is_all_expanded() ? 'hgi-arrow-shrink' : 'hgi-arrow-expand'"></i>
-                        <span x-text="is_all_expanded() ? 'Collapse' : 'Expand'"></span>
-                      </button>
-                    </div>
-                    <div class="text-end">Roles</div>
-                    <div class="text-end">People</div>
-                    <div class="text-end">Actions</div>
-                  </div>
-                </div>
+            <!-- Header Row -->
+            <div class="border-b border-base-300 px-3 py-2.5">
+              <div class="grid grid-cols-[minmax(7rem,1fr)_3rem_3rem_3rem] items-center gap-2 text-[0.8125rem] font-medium text-base-content/58 sm:grid-cols-[minmax(9rem,1fr)_3.5rem_3.5rem_5.5rem] lg:grid-cols-[minmax(9rem,1fr)_5rem_5rem_6.25rem]">
+                <div>Route</div>
+                <div class="text-end">Roles</div>
+                <div class="text-end">People</div>
+                <div class="text-end">Actions</div>
+              </div>
+            </div>
 
-                <!-- Loading State -->
-                <template x-if="loading">
-                  <div class="p-6 text-center text-base-content/60">
-                    <span class="loading loading-spinner loading-md"></span>
-                    <p class="mt-2">Loading routes…</p>
-                  </div>
-                </template>
+            <!-- Loading State -->
+            <template x-if="loading">
+              <div class="p-6 text-center text-base-content/60">
+                <span class="loading loading-spinner loading-md"></span>
+                <p class="mt-2">Loading routes…</p>
+              </div>
+            </template>
 
-                <!-- Routes List -->
-                <ul class="divide-y divide-base-200">
+            <!-- Routes List -->
+            <ul class="divide-y divide-base-300">
                   <template x-for="row in flat_tree()" :key="row.node.id">
-                    <li class="hover:bg-base-200/50 transition-colors">
-                      <div class="grid items-center gap-2 px-3 py-2" style="grid-template-columns: 1fr 80px 80px 100px;">
+                    <li class="transition-colors hover:bg-base-200/35">
+                      <div class="grid grid-cols-[minmax(7rem,1fr)_3rem_3rem_3rem] items-center gap-2 px-3 py-2 sm:grid-cols-[minmax(9rem,1fr)_3.5rem_3.5rem_5.5rem] lg:grid-cols-[minmax(9rem,1fr)_5rem_5rem_6.25rem]">
                         <!-- Route Name & Path -->
-                        <div class="flex items-center min-w-0" :style="`padding-left: ${row.depth * 24}px`">
+                        <div class="flex items-center min-w-0" :style="`padding-left: ${row.depth * 16}px`">
                           <template x-if="row.node.children.length">
-                            <button class="btn btn-ghost btn-xs btn-square" @click="toggle(row.node.id)">
+                            <button type="button" class="btn btn-ghost btn-xs btn-square" @click="toggle(row.node.id)" :aria-label="`${is_expanded(row.node.id) ? 'Collapse' : 'Expand'} ${row.node.name}`">
                               <i class="hgi-stroke" :class="is_expanded(row.node.id) ? 'hgi-arrow-down-01' : 'hgi-arrow-right-01'"></i>
                             </button>
                           </template>
                           <template x-if="!row.node.children.length">
-                            <span class="w-6 text-center text-base-content/40"><i class="hgi-stroke hgi-file-01"></i></span>
+                            <span class="flex items-center">
+                              <span class="w-6 shrink-0"></span>
+                              <span class="ms-1 text-base-content/40"><i class="hgi-stroke hgi-file-01"></i></span>
+                            </span>
                           </template>
                           <template x-if="row.node.children.length">
                             <span class="ms-1 text-base-content/60"><i class="hgi-stroke" :class="is_expanded(row.node.id) ? 'hgi-folder-open' : 'hgi-folder-01'"></i></span></span>
                           </template>
-                          <span class="ms-2 font-medium truncate" x-text="row.node.name"></span>
+                          <span class="ms-2 truncate font-medium tracking-[-0.01em]" x-text="row.node.name"></span>
                           <span class="ms-2 text-xs text-base-content/50 font-mono truncate cursor-pointer hover:text-primary"
                                 :title="'Click to copy: ' + (row.node.route?.url || '')"
                                 @click.stop="copy_url(row.node.route?.url)"
@@ -152,17 +141,38 @@
                         <!-- Actions -->
                         <div class="flex items-center justify-end">
                           <template x-if="row.node.route">
-                            <button class="btn btn-primary btn-soft btn-sm" @click="open_secure(row.node.route)">
-                              <i class="hgi-stroke hgi-shield-01"></i>
-                              Manage
+                            <button class="btn btn-ghost btn-sm gap-2" @click="open_secure(row.node.route)">
+                              <i class="hgi-stroke hgi-shield-01 text-primary"></i>
+                              <span class="hidden sm:inline">Manage</span>
                             </button>
                           </template>
                         </div>
                       </div>
                     </li>
                   </template>
-                </ul>
+            </ul>
+
+            <template x-if="!loading && flat_tree().length === 0">
+              <div class="px-6 py-12 text-center">
+                <div class="mx-auto flex max-w-md flex-col items-center gap-3 text-base-content/65">
+                  <i class="hgi-stroke hgi-route-01 text-3xl text-base-content/35"></i>
+                  <div>
+                    <p class="font-medium text-base-content">No routes match these filters.</p>
+                    <p class="mt-1 text-sm">Clear filters or search for a different route.</p>
+                  </div>
+                  <button type="button" class="btn btn-sm" @click="reset_filters()">Reset filters</button>
+                </div>
               </div>
+            </template>
+
+            <div class="grid gap-3 border-t border-base-300 px-4 py-3 text-sm text-base-content/65 sm:grid-cols-3 sm:items-center" x-show="!loading && stats.total > 0">
+              <span class="sm:justify-self-start"><strong class="font-semibold text-base-content" x-text="stats.with_roles"></strong> with roles</span>
+              <span class="text-center sm:justify-self-center">
+                Showing <strong class="font-semibold text-base-content" x-text="flat_tree().length"></strong>
+                of <strong class="font-semibold text-base-content" x-text="stats.total"></strong>
+                records
+              </span>
+              <span class="sm:justify-self-end"><strong class="font-semibold text-base-content" x-text="stats.people_total"></strong> people grants</span>
             </div>
           </div>
 
@@ -223,6 +233,15 @@
                   const with_roles = this.routes.filter(r => (r.role_count||0) > 0).length;
                   const people_total = this.routes.reduce((a, r) => a + (r.profile_count||0), 0);
                   this.stats = { total, with_roles, people_total };
+                },
+                hasActiveFilters() {
+                  return Object.values(this.filters || {}).some(value => `${value || ''}`.trim().length);
+                },
+                routeSummary() {
+                  const total = this.stats.total || 0;
+                  if (!total) return 'No routes';
+                  if (total === 1) return '1 route';
+                  return `${total} routes`;
                 },
                 build_tree(routes) {
                   const root = [];
