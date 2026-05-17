@@ -216,33 +216,6 @@
                     </button>
                 </div>
 
-                <!-- Filters -->
-                <div class="rounded-lg border border-base-300 bg-base-100">
-                    <div class="grid gap-3 p-4 lg:grid-cols-[minmax(18rem,1fr)_16rem_auto] lg:items-end">
-                        <fieldset class="fieldset min-w-0 p-0">
-                            <legend class="fieldset-legend pb-1">Search</legend>
-                            <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2" @input.debounce.500ms="load()" @change.stop>
-                                <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
-                                <input type="search" placeholder="Search name, email, or mobile" x-model="filters.term">
-                            </label>
-                        </fieldset>
-
-                        <fieldset class="fieldset min-w-0 p-0">
-                            <legend class="fieldset-legend pb-1">App</legend>
-                            <select class="select select-sm w-full focus:outline-primary/55 focus:outline-offset-2" x-model="filters.app_name" @change="load()">
-                                <option value="">All apps</option>
-                                <template x-for="app in app_names" :key="app">
-                                    <option :value="app" x-text="app"></option>
-                                </template>
-                            </select>
-                        </fieldset>
-
-                        <button type="button" class="btn btn-ghost btn-sm justify-self-start lg:justify-self-end" @click="resetFilters()" :disabled="!hasActiveFilters()">
-                            Reset filters
-                        </button>
-                    </div>
-                </div>
-
                 <template x-if="load_error">
                     <div class="alert alert-error text-sm">
                         <i class="hgi-stroke hgi-alert-02"></i>
@@ -255,21 +228,34 @@
                 </template>
 
                 <!-- Results -->
-                <div class="overflow-hidden rounded-lg border border-base-300 bg-base-100">
-                    <div class="flex items-center justify-between border-b border-base-300 px-4 py-3 text-xs text-base-content/55">
-                        <span x-text="resultSummary()"></span>
-                        <template x-if="total_count > records.length">
-                            <span>Showing first <span x-text="records.length"></span>. Refine filters to narrow results.</span>
-                        </template>
+                <div class="overflow-hidden rounded-lg border border-base-300 bg-base-100" x-show="has_loaded || load_error" x-cloak style="display: none;">
+                    <div class="border-b border-base-300 px-4 py-3">
+                        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                                <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80" @input.debounce.500ms="load()" @change.stop>
+                                    <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
+                                    <input type="search" aria-label="Search profiles" placeholder="Search name, email, or mobile" x-model="filters.term">
+                                </label>
+                                <select class="select select-sm w-full focus:outline-primary/55 focus:outline-offset-2 sm:w-44" aria-label="Filter profiles by app" x-model="filters.app_name" @change="load()">
+                                    <option value="">All apps</option>
+                                    <template x-for="app in app_names" :key="app">
+                                        <option :value="app" x-text="app"></option>
+                                    </template>
+                                </select>
+                                <button type="button" class="btn btn-ghost btn-sm justify-start" @click="resetFilters()" :disabled="!hasActiveFilters()">
+                                    Reset
+                                </button>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/55">
+                                <span x-text="resultSummary()"></span>
+                                <template x-if="total_count > records.length">
+                                    <span>Showing first <span x-text="records.length"></span>. Refine filters to narrow results.</span>
+                                </template>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="divide-y divide-base-300 md:hidden">
-                        <template x-for="i in (loading_indicator ? 4 : 0)" :key="i">
-                            <div class="p-4">
-                                <div class="skeleton h-20 w-full"></div>
-                            </div>
-                        </template>
-
                         <template x-for="item in records" :key="item.id">
                             <article class="p-4 cursor-pointer outline-none transition-colors hover:bg-base-200/35 focus-visible:bg-base-200/45 focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-inset" role="button" tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)" @keydown.space.prevent="select(item)" :aria-label="`Edit profile ${item.full_name || item.email || 'profile'}`">
                                 <div class="flex items-start justify-between gap-3">
@@ -362,14 +348,6 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <template x-for="i in (loading_indicator ? 6 : 0)" :key="i">
-                                    <tr>
-                                        <td colspan="7" class="py-3">
-                                            <div class="skeleton h-8 w-full"></div>
-                                        </td>
-                                    </tr>
-                                </template>
-
                                 <template x-for="item in records" :key="item.id">
                                     <tr class="border-base-200 hover:bg-base-200/35 cursor-pointer outline-none focus-visible:bg-base-200/45 focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-inset" role="button" tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)" @keydown.space.prevent="select(item)" :aria-label="`Edit profile ${item.full_name || item.email || 'profile'}`">
                                         <td>
@@ -612,8 +590,7 @@
 
                     Alpine.data('profiles_admin', () => ({
                         loading: false,
-                        loading_indicator: false,
-                        loading_indicator_timer: null,
+                        has_loaded: false,
                         loading_request_id: 0,
                         saving: false,
                         load_error: false,
@@ -644,13 +621,6 @@
                         async load() {
                             const requestId = ++this.loading_request_id;
                             this.loading = true;
-                            this.loading_indicator = false;
-                            clearTimeout(this.loading_indicator_timer);
-                            this.loading_indicator_timer = setTimeout(() => {
-                                if (this.loading_request_id === requestId) {
-                                    this.loading_indicator = true;
-                                }
-                            }, 180);
                             this.load_error = false;
                             try {
                                 await saveFilters(this.filters);
@@ -661,16 +631,16 @@
                                 if (this.loading_request_id !== requestId) return;
                                 this.records = Array.isArray(records) ? records : [];
                                 this.total_count = this.records[0]?.total_count || this.records.length;
+                                this.has_loaded = true;
                             } catch (error) {
                                 if (this.loading_request_id !== requestId) return;
                                 this.load_error = true;
                                 this.records = [];
                                 this.total_count = 0;
+                                this.has_loaded = true;
                             } finally {
                                 if (this.loading_request_id === requestId) {
-                                    clearTimeout(this.loading_indicator_timer);
                                     this.loading = false;
-                                    this.loading_indicator = false;
                                 }
                             }
                         },
@@ -690,7 +660,7 @@
                                 this.closeDrawer({ force: true });
                                 await this.load();
                                 if (window.toast) {
-                                    window.toast({ type: 'success', message: 'Profile saved successfully', duration: 2000 });
+                                    window.toast({ type: 'success', message: 'Profile saved', duration: 2000 });
                                 }
                             } finally {
                                 this.saving = false;
@@ -776,8 +746,8 @@
                         },
 
                         resultSummary() {
+                            if (!this.has_loaded) return '';
                             const total = this.total_count || this.records.length;
-                            if (this.loading && !total) return '';
                             if (!total) return 'No profiles';
                             if (total === 1) return '1 profile';
                             return `${total} profiles`;
