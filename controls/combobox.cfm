@@ -24,9 +24,9 @@
     <cfoutput>
     <div
         x-data="moopaCombobox({
-            request_endpoint: #request_endpoint#,
-            placeholder: '#attributes.placeholder#',
-            multiple: #attributes.multiple#
+            request_endpoint: #encodeForHTMLAttribute(request_endpoint)#,
+            placeholder: '#encodeForJavaScript(attributes.placeholder)#',
+            multiple: #encodeForJavaScript(attributes.multiple)#
         })"
         x-modelable="value"
         x-model="#attributes.model#"

@@ -24,6 +24,64 @@
     </cffunction>
 
 
+    <cffunction name="getSysadminEmailList" access="private" returntype="string" output="false">
+        <cfset var normalizedEmails = [] />
+        <cfset var email = "" />
+
+        <cfloop list="#server.system.environment.SYSADMIN_EMAIL ?: ''#" item="email">
+            <cfset email = lCase(trim(email)) />
+            <cfif len(email)>
+                <cfset arrayAppend(normalizedEmails, email) />
+            </cfif>
+        </cfloop>
+
+        <cfif NOT arrayLen(normalizedEmails)>
+            <cfreturn "__moopa_no_configured_sysadmin_email__" />
+        </cfif>
+
+        <cfreturn arrayToList(normalizedEmails) />
+    </cffunction>
+
+
+    <cffunction name="isConfiguredHubSysadminEmail" access="private" returntype="boolean" output="false">
+        <cfargument name="email" type="string" required="true" />
+        <cfargument name="app_name" type="string" required="true" />
+
+        <cfreturn arguments.app_name EQ "hub" AND listFindNoCase(getSysadminEmailList(), lCase(trim(arguments.email))) GT 0 />
+    </cffunction>
+
+
+    <cffunction name="getProfileSysadminIdentity" access="private" returntype="struct" output="false">
+        <cfargument name="profile_id" type="string" required="true" />
+
+        <cfquery name="local.qProfile" returntype="array">
+            SELECT id::text, email, app_name
+            FROM moo_profile
+            WHERE id = <cfqueryparam cfsqltype="other" value="#arguments.profile_id#" />
+            LIMIT 1
+        </cfquery>
+
+        <cfif NOT arrayLen(local.qProfile)>
+            <cfreturn {} />
+        </cfif>
+
+        <cfreturn local.qProfile[1] />
+    </cffunction>
+
+
+    <cffunction name="isProtectedSysadminProfileById" access="private" returntype="boolean" output="false">
+        <cfargument name="profile_id" type="string" required="true" />
+        <cfset var profile = {} />
+
+        <cfif NOT len(arguments.profile_id)>
+            <cfreturn false />
+        </cfif>
+
+        <cfset profile = getProfileSysadminIdentity(arguments.profile_id) />
+        <cfreturn structKeyExists(profile, "id") AND isConfiguredHubSysadminEmail(profile.email ?: "", profile.app_name ?: "") />
+    </cffunction>
+
+
     <cffunction name="search">
 
         <cfset searchTerm = request.data.filter.term?:'' />
@@ -33,6 +91,10 @@
         SELECT COALESCE(array_to_json(array_agg(row_to_json(data)))::text, '[]') AS recordset
         FROM (
             SELECT #application.lib.db.select(table_name="moo_profile", field_list="id,app_name,full_name,email,mobile,address,roles,is_employee,employee_type,can_login,profile_picture_id,profile_avatar_id,last_login_at")#,
+                (
+                    moo_profile.app_name = 'hub'
+                    AND lower(moo_profile.email) IN (<cfqueryparam cfsqltype="varchar" value="#getSysadminEmailList()#" list="true" />)
+                ) AS is_configured_sysadmin,
                 COALESCE((
                     SELECT json_agg(moo_role.name ORDER BY moo_role.name)
                     FROM moo_profile_roles
@@ -76,9 +138,25 @@
     </cffunction>
 
     <cffunction name="save">
+        <cfset var protectedProfile = {} />
+
         <cfif NOT len(request.data.app_name ?: "")>
             <cfset request.data.app_name = application.app_name ?: "hub" />
         </cfif>
+
+        <cfif len(request.data.id ?: "") AND isProtectedSysadminProfileById(request.data.id)>
+            <cfset protectedProfile = getProfileSysadminIdentity(request.data.id) />
+            <cfif lCase(trim(request.data.email ?: "")) NEQ lCase(trim(protectedProfile.email ?: ""))>
+                <cfthrow type="moopa.security.protectedSysadmin" message="Configured Hub sysadmin profiles cannot have their email changed from the configured SYSADMIN_EMAIL value." />
+            </cfif>
+            <cfif (request.data.app_name ?: "") NEQ "hub">
+                <cfthrow type="moopa.security.protectedSysadmin" message="Configured Hub sysadmin profiles must remain in the hub app." />
+            </cfif>
+            <cfset request.data.can_login = true />
+        <cfelseif isConfiguredHubSysadminEmail(request.data.email ?: "", request.data.app_name ?: "")>
+            <cfset request.data.can_login = true />
+        </cfif>
+
         <cfreturn application.lib.db.save(
             table_name = "moo_profile",
             data = request.data
@@ -86,6 +164,9 @@
     </cffunction>
 
     <cffunction name="delete">
+        <cfif isProtectedSysadminProfileById(url.id ?: "")>
+            <cfthrow type="moopa.security.protectedSysadmin" message="Configured Hub sysadmin profiles cannot be deleted." />
+        </cfif>
         <cfreturn application.lib.db.delete(table_name="moo_profile", id="#url.id#") />
     </cffunction>
 
@@ -264,7 +345,7 @@
                                                             <i class="hgi-stroke hgi-pencil-edit-02 text-base-content/70"></i>
                                                         </button>
 
-                                                        <button class="btn btn-ghost btn-sm btn-square text-error" @click.stop="openDeleteModal(item)" title="Delete">
+                                                        <button class="btn btn-ghost btn-sm btn-square text-error" @click.stop="openDeleteModal(item)" title="Delete" :disabled="isProtectedSysadmin(item)" :aria-label="isProtectedSysadmin(item) ? 'Configured Hub sysadmin profiles cannot be deleted' : 'Delete profile'">
                                                             <i class="hgi-stroke hgi-delete-02"></i>
                                                         </button>
                                                     </div>
@@ -312,7 +393,15 @@
                             <!-- Permissions -->
                             <div class="divider text-sm text-base-content/50">Permissions</div>
                             <cf_table_controls table_name="moo_profile" fields="roles" />
-                            <cf_table_controls table_name="moo_profile" fields="can_login" />
+                            <template x-if="isProtectedSysadmin(current_record)">
+                                <div class="alert alert-info text-sm">
+                                    <i class="hgi-stroke hgi-shield-01"></i>
+                                    <span>This is the configured Hub sysadmin profile. Login access is required and cannot be disabled.</span>
+                                </div>
+                            </template>
+                            <div x-show="!isProtectedSysadmin(current_record)">
+                                <cf_table_controls table_name="moo_profile" fields="can_login" />
+                            </div>
 
                             <!-- Auth Identities -->
                             <div class="divider text-sm text-base-content/50">Authentication</div>
@@ -432,11 +521,24 @@
                         },
 
                         openDeleteModal(item) {
+                            if (this.isProtectedSysadmin(item)) {
+                                if (window.toast) {
+                                    window.toast({ type: 'error', message: 'Configured Hub sysadmin profiles cannot be deleted.', duration: 3000 });
+                                }
+                                return;
+                            }
                             this.current_record = item;
                             this.$refs.deleteModal.showModal();
                         },
 
                         async deleteRecord() {
+                            if (this.isProtectedSysadmin(this.current_record)) {
+                                this.$refs.deleteModal.close();
+                                if (window.toast) {
+                                    window.toast({ type: 'error', message: 'Configured Hub sysadmin profiles cannot be deleted.', duration: 3000 });
+                                }
+                                return;
+                            }
                             await req({ endpoint: 'delete', id: this.current_record.id });
                             this.$refs.deleteModal.close();
                             this.current_record = {};
@@ -444,6 +546,10 @@
                             if (window.toast) {
                                 window.toast({ type: 'success', message: 'Profile deleted', duration: 2000 });
                             }
+                        },
+
+                        isProtectedSysadmin(profile) {
+                            return !!profile?.is_configured_sysadmin;
                         }
                     }));
                 });
