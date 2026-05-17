@@ -82,11 +82,11 @@
             </div>
 
             <!-- Header Row -->
-            <div class="border-b border-base-300 px-3 py-2.5">
-              <div class="grid grid-cols-[minmax(7rem,1fr)_3rem_3rem_3rem] items-center gap-2 text-[0.8125rem] font-medium text-base-content/58 sm:grid-cols-[minmax(9rem,1fr)_3.5rem_3.5rem_5.5rem] lg:grid-cols-[minmax(9rem,1fr)_5rem_5rem_6.25rem]">
-                <div>Route</div>
-                <div class="text-end">Roles</div>
-                <div class="text-end">People</div>
+            <div class="border-b border-base-300 px-4 py-2.5">
+              <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-[0.8125rem] font-medium text-base-content/58 lg:grid-cols-[minmax(0,1fr)_5rem_5rem_6.25rem]">
+                <div>Route structure</div>
+                <div class="hidden text-end lg:block">Roles</div>
+                <div class="hidden text-end lg:block">People</div>
                 <div class="text-end">Actions</div>
               </div>
             </div>
@@ -104,37 +104,32 @@
             <ul class="divide-y divide-base-300">
                   <template x-for="row in flat_tree()" :key="row.node.id">
                     <li class="transition-colors hover:bg-base-200/35">
-                      <div class="grid grid-cols-[minmax(7rem,1fr)_3rem_3rem_3rem] items-center gap-2 px-3 py-2 sm:grid-cols-[minmax(9rem,1fr)_3.5rem_3.5rem_5.5rem] lg:grid-cols-[minmax(9rem,1fr)_5rem_5rem_6.25rem]">
+                      <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 lg:grid-cols-[minmax(0,1fr)_5rem_5rem_6.25rem]" :class="row.node.route ? 'bg-base-100' : 'bg-base-200/20'">
                         <!-- Route Name & Path -->
-                        <div class="flex items-center min-w-0" :style="`padding-left: ${row.depth * 16}px`">
-                          <template x-if="row.node.children.length">
-                            <button type="button" class="btn btn-ghost btn-xs btn-square" @click="toggle(row.node.id)" :aria-label="`${is_expanded(row.node.id) ? 'Collapse' : 'Expand'} ${row.node.name}`">
-                              <i class="hgi-stroke" :class="is_expanded(row.node.id) ? 'hgi-arrow-down-01' : 'hgi-arrow-right-01'"></i>
-                            </button>
-                          </template>
-                          <template x-if="!row.node.children.length">
-                            <span class="flex items-center">
-                              <span class="w-6 shrink-0"></span>
-                              <span class="ms-1 text-base-content/40"><i class="hgi-stroke hgi-file-01"></i></span>
-                            </span>
-                          </template>
-                          <template x-if="row.node.children.length">
-                            <span class="ms-1 text-base-content/60"><i class="hgi-stroke" :class="is_expanded(row.node.id) ? 'hgi-folder-open' : 'hgi-folder-01'"></i></span></span>
-                          </template>
-                          <span class="ms-2 truncate font-medium tracking-[-0.01em]" x-text="row.node.name"></span>
-                          <span class="ms-2 text-xs text-base-content/50 font-mono truncate cursor-pointer hover:text-primary"
-                                :title="'Click to copy: ' + (row.node.route?.url || '')"
-                                @click.stop="copy_url(row.node.route?.url)"
-                                x-text="row.node.route?.url"></span>
+                        <div class="flex min-w-0 items-center" :style="`padding-left: ${row.depth * 18}px`">
+                          <button x-show="row.node.children.length" type="button" class="btn btn-ghost btn-xs btn-square shrink-0 text-base-content/55" @click="toggle(row.node.id)" :aria-label="`${is_expanded(row.node.id) ? 'Collapse' : 'Expand'} ${row.node.name}`">
+                            <i class="hgi-stroke" :class="is_expanded(row.node.id) ? 'hgi-arrow-down-01' : 'hgi-arrow-right-01'"></i>
+                          </button>
+                          <span x-show="!row.node.children.length" class="w-6 shrink-0"></span>
+                          <span class="mx-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-field border border-base-300 bg-base-100 text-base-content/55" :class="row.node.route ? 'text-base-content/45' : 'text-primary'">
+                            <i class="hgi-stroke text-sm" :class="row.node.route ? 'hgi-file-01' : (is_expanded(row.node.id) ? 'hgi-folder-open' : 'hgi-folder-01')"></i>
+                          </span>
+                          <div class="min-w-0">
+                            <div class="flex min-w-0 items-baseline gap-2">
+                              <span class="truncate font-medium tracking-[-0.01em]" :class="row.node.route ? 'text-base-content' : 'text-base-content/82'" x-text="route_label(row.node)"></span>
+                              <span class="hidden rounded-full bg-base-200 px-1.5 py-0.5 text-[0.625rem] font-medium uppercase tracking-[0.08em] text-base-content/45 sm:inline" x-text="row.node.route ? 'Route' : 'Group'"></span>
+                            </div>
+                            <button x-show="row.node.route" type="button" class="block max-w-full truncate pt-0.5 text-left font-mono text-xs text-base-content/50 hover:text-primary focus:outline-primary/55 focus:outline-offset-2" :title="'Copy ' + (row.node.route?.url || '')" @click.stop="copy_url(row.node.route?.url)" x-text="row.node.route?.url"></button>
+                          </div>
                         </div>
                         <!-- Roles Count -->
-                        <div class="flex items-center justify-end">
+                        <div class="hidden items-center justify-end lg:flex">
                           <template x-if="row.node.route">
                             <span class="badge badge-sm badge-ghost" :title="'Roles'" x-text="row.node.route.role_count||0"></span>
                           </template>
                         </div>
                         <!-- Profiles Count -->
-                        <div class="flex items-center justify-end">
+                        <div class="hidden items-center justify-end lg:flex">
                           <template x-if="row.node.route">
                             <span class="badge badge-sm badge-soft badge-info" :title="'Profiles'" x-text="row.node.route.profile_count||0"></span>
                           </template>
@@ -278,6 +273,10 @@
                   return sort_nodes(root);
                 },
                 is_expanded(path) { return this.expanded_paths.has(path) },
+                route_label(node) {
+                  if (node.route && node.name === 'index') return 'Index route';
+                  return node.name;
+                },
                 toggle(path) {
                   if (this.expanded_paths.has(path)) this.expanded_paths.delete(path); else this.expanded_paths.add(path);
                 },
@@ -337,7 +336,7 @@
                 },
                 open_secure(route) {
                   if (!route?.id) return;
-                  this.security_iframe_src = `/security/routes/${route.id}`;
+                  this.security_iframe_src = `/sysadmin/routes/${route.id}`;
                   this.$refs.securityModal.showModal();
                 }
               }));

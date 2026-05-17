@@ -1,34 +1,33 @@
 [
-
-    {
-        "icon": "hgi-stroke hgi-settings-02",
-        "title": "System",
-        "items": [
-            {
-                "icon": "hgi-stroke hgi-shield-01",
-                "title": "Roles",
-                "route": "/security/roles"
-            },
-            {
-                "icon": "hgi-stroke hgi-route-01",
-                "title": "Routes",
-                "route": "/security/routes"
-            },
-            {
-                "icon": "hgi-stroke hgi-user",
-                "title": "Profiles",
-                "route": "/security/profiles"
-            },
-            {
-                "icon": "hgi-stroke hgi-alert-02",
-                "title": "Error Log",
-                "route": "/moo_error_log"
-            },
-            {
-                "icon": "hgi-stroke hgi-database",
-                "title": "Schema",
-                "route": "/schema"
-            }
-        ]
-    }
+  {
+    "icon": "hgi-stroke hgi-settings-02",
+    "title": "System",
+    "items": [
+      {
+        "icon": "hgi-stroke hgi-shield-01",
+        "title": "Roles",
+        "route": "/sysadmin/roles"
+      },
+      {
+        "icon": "hgi-stroke hgi-route-01",
+        "title": "Routes",
+        "route": "/sysadmin/routes"
+      },
+      {
+        "icon": "hgi-stroke hgi-user",
+        "title": "Profiles",
+        "route": "/sysadmin/profiles"
+      },
+      {
+        "icon": "hgi-stroke hgi-alert-02",
+        "title": "Error Log",
+        "route": "/sysadmin/error_log"
+      },
+      {
+        "icon": "hgi-stroke hgi-database",
+        "title": "Schema",
+        "route": "/sysadmin/schema"
+      }
+    ]
+  }
 ]

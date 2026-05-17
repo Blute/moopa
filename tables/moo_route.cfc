@@ -88,7 +88,7 @@
 
             <cfset aDBRoutes = deserializeJSON(qDBRoutes.data) />
             <cfcatch type="database">
-                <!--- First-run/dev fallback: route tables may not exist until /schema has been applied. --->
+                <!--- First-run/dev fallback: route tables may not exist until /sysadmin/schema has been applied. --->
                 <cfset routePersistenceAvailable = false />
                 <cfset aDBRoutes = [] />
             </cfcatch>
@@ -774,7 +774,7 @@ TODO: need to check if old way works for the following and which has precedence:
              }
              </style>
 
-            <div class="security-icon" @click="moo_iframe_modal_open('/security/routes/#request.route_id#')">
+            <div class="security-icon" @click="moo_iframe_modal_open('/sysadmin/routes/#request.route_id#')">
                 <i class="hgi-stroke hgi-shield-key"></i>
             </div>
 

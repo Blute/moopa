@@ -297,7 +297,7 @@
                 <cfoutput>
                 #error_line# <br>
                 #arguments.exception.message?:''# <br>
-                <a href="#server.system.environment.base_url#/moo_error_log">Error Log</a>
+                <a href="#server.system.environment.base_url#/sysadmin/error_log">Error Log</a>
                 </cfoutput>
             </cfsavecontent>
 

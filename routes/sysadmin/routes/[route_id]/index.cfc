@@ -417,19 +417,18 @@
                         this.showEditRoute = true;
                     },
 
-                    save_route() {
+                    async save_route() {
                         this.loadingState = 'loading';
 
-                        fetchData({
+                        await req({
                             method: 'POST',
                             endpoint: 'save_route',
-                            body: this.route_to_edit,
-                            callback: (data) => {
-                                this.load();
-                                this.loadingState = 'idle';
-                                this.showEditRoute = false;
-                            }
+                            body: this.route_to_edit
                         });
+
+                        await this.load();
+                        this.loadingState = 'idle';
+                        this.showEditRoute = false;
                     },
 
                     // Function to check if a profile has access to an endpoint
@@ -473,59 +472,50 @@
 
                     },
 
-                    toggleProfileAccess(profileId, endpointId) {
+                    async toggleProfileAccess(profileId, endpointId) {
                         // Handle the checkbox click event to set access
                         <cfif session.auth.is_sysadmin?:false>
-                            fetchData({
+                            await req({
                                 method: 'POST',
                                 endpoint: 'toggleProfileAccess',
                                 body: {
-                                    profileId:profileId,
-                                    endpointId:endpointId
-                                },
-                                callback: (data) => {
-                                    this.loadingState = 'idle';
-
-                                    this.load()
-
+                                    profileId: profileId,
+                                    endpointId: endpointId
                                 }
                             });
+
+                            this.loadingState = 'idle';
+                            await this.load();
                         </cfif>
 
                     },
 
-                    toggleRoleAccess(roleId, endpointId) {
+                    async toggleRoleAccess(roleId, endpointId) {
                         // Handle the checkbox click event to set access
 
                         <cfif session.auth.is_sysadmin?:false>
-                            fetchData({
+                            await req({
                                 method: 'POST',
                                 endpoint: 'toggleRoleAccess',
                                 body: {
-                                    roleId:roleId,
-                                    endpointId:endpointId
-                                },
-                                callback: (data) => {
-                                    this.loadingState = 'idle';
-
-                                    this.load()
-
+                                    roleId: roleId,
+                                    endpointId: endpointId
                                 }
                             });
+
+                            this.loadingState = 'idle';
+                            await this.load();
                         </cfif>
                     },
 
                     async load() {
-                        await fetchData({
-                            endpoint: 'load',
-                            callback: (data) => {
-                                this.route_to_edit = {}
-                                this.current_route = data.current_route
-                                this.endpoint_access = data.endpoint_access
-                                this.route_open_to = data.route_open_to
-                                this.who_has_access = data.who_has_access
-                            }
-                        });
+                        const data = await req({ endpoint: 'load' });
+
+                        this.route_to_edit = {};
+                        this.current_route = data.current_route;
+                        this.endpoint_access = data.endpoint_access;
+                        this.route_open_to = data.route_open_to;
+                        this.who_has_access = data.who_has_access;
                     },
 
                     init() {
