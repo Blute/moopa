@@ -61,7 +61,7 @@
           </div>
 
           <!-- Routes Tree Card -->
-          <div class="min-w-0 overflow-hidden rounded-lg border border-base-300 bg-base-100">
+          <div class="min-w-0 overflow-hidden rounded-lg border border-base-300 bg-base-100 md:flex md:max-h-[calc(100vh-9rem)] md:flex-col">
             <!-- Toolbar -->
             <div class="border-b border-base-300 px-4 py-3">
               <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -99,6 +99,7 @@
               </div>
             </template>
 
+            <div class="overflow-visible md:min-h-0 md:flex-1 md:overflow-auto">
             <!-- Routes List -->
             <ul class="divide-y divide-base-300">
                   <template x-for="row in flat_tree()" :key="row.node.id">
@@ -165,14 +166,11 @@
               </div>
             </template>
 
-            <div class="grid gap-3 border-t border-base-300 px-4 py-3 text-sm text-base-content/65 sm:grid-cols-3 sm:items-center" x-show="!loading && stats.total > 0">
-              <span class="sm:justify-self-start"><strong class="font-semibold text-base-content" x-text="stats.with_roles"></strong> with roles</span>
-              <span class="text-center sm:justify-self-center">
-                Showing <strong class="font-semibold text-base-content" x-text="flat_tree().length"></strong>
-                of <strong class="font-semibold text-base-content" x-text="stats.total"></strong>
-                records
-              </span>
-              <span class="sm:justify-self-end"><strong class="font-semibold text-base-content" x-text="stats.people_total"></strong> people grants</span>
+            </div>
+
+            <div class="flex flex-col gap-2 border-t border-base-300 bg-base-100/95 px-4 py-1.5 text-[0.6875rem] leading-5 text-base-content/50 sm:flex-row sm:items-center sm:justify-between" x-show="!loading && stats.total > 0">
+              <span><strong class="font-semibold text-base-content" x-text="stats.with_roles"></strong> roles · <strong class="font-semibold text-base-content" x-text="stats.people_total"></strong> people</span>
+              <span><strong class="font-semibold text-base-content" x-text="flat_tree().length"></strong> of <strong class="font-semibold text-base-content" x-text="stats.total"></strong></span>
             </div>
           </div>
 

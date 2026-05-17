@@ -234,7 +234,7 @@
                 </template>
 
                 <!-- Results -->
-                <div class="overflow-hidden rounded-lg border border-base-300 bg-base-100" x-show="has_loaded || load_error" x-cloak style="display: none;">
+                <div class="overflow-hidden rounded-lg border border-base-300 bg-base-100 md:flex md:max-h-[calc(100vh-9rem)] md:flex-col" x-show="has_loaded || load_error" x-cloak style="display: none;">
                     <div class="border-b border-base-300 px-4 py-3">
                         <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                             <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
@@ -259,6 +259,7 @@
                         </div>
                     </div>
 
+                    <div class="overflow-visible md:min-h-0 md:flex-1 md:overflow-auto">
                     <div class="divide-y divide-base-300 md:hidden">
                         <template x-for="item in records" :key="item.id">
                             <article class="p-4 cursor-pointer outline-none transition-colors hover:bg-base-200/35 focus-visible:bg-base-200/45 focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-inset" role="button" tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)" @keydown.space.prevent="select(item)" :aria-label="`Edit profile ${item.full_name || item.email || 'profile'}`">
@@ -446,26 +447,29 @@
                         </table>
                     </div>
 
-                    <div class="grid gap-3 border-t border-base-300 px-4 py-3 text-sm text-base-content/65 sm:grid-cols-3 sm:items-center" x-show="!loading && !load_error && total_count > 0">
-                        <label class="flex items-center gap-2 sm:justify-self-start">
-                            <span>Per page</span>
-                            <select class="select select-sm w-20 focus:outline-primary/55 focus:outline-offset-2" x-model.number="limit" @change="load({ resetOffset: true })" aria-label="Profiles per page">
-                                <option :value="20">20</option>
-                                <option :value="50">50</option>
-                                <option :value="100">100</option>
-                            </select>
-                        </label>
-                        <span class="text-center sm:justify-self-center">
-                            Showing <strong class="font-semibold text-base-content" x-text="rangeStart()"></strong>
-                            to <strong class="font-semibold text-base-content" x-text="records.length"></strong>
-                            of <strong class="font-semibold text-base-content" x-text="total_count"></strong>
-                            records
-                        </span>
-                        <button type="button" class="btn btn-ghost btn-sm sm:justify-self-end" x-show="canShowMore()" @click="showMore()">
-                            Show more
-                        </button>
+                    </div>
+
+                    <div class="flex flex-col gap-2 border-t border-base-300 bg-base-100/95 px-4 py-1.5 text-[0.6875rem] leading-5 text-base-content/50 shadow-[0_-8px_20px_oklch(19.5%_0.02_41_/_0.035)] sm:flex-row sm:items-center sm:justify-between" x-show="!loading && !load_error && total_count > 0">
+                        <span class="hidden text-base-content/45 sm:block">&nbsp;</span>
+                        <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 sm:justify-end">
+                            <label class="flex items-center gap-1.5">
+                                <span class="font-medium uppercase tracking-[0.08em] text-base-content/42">Rows</span>
+                                <select class="select h-7 min-h-7 w-14 rounded-md border-base-300 bg-base-100 px-2 text-xs focus:outline-primary/55 focus:outline-offset-2" x-model.number="limit" @change="load({ resetOffset: true })" aria-label="Profiles per page">
+                                    <option :value="20">20</option>
+                                    <option :value="50">50</option>
+                                    <option :value="100">100</option>
+                                </select>
+                            </label>
+                            <span class="tabular-nums">
+                                <strong class="font-semibold text-base-content" x-text="rangeStart()"></strong>–<strong class="font-semibold text-base-content" x-text="records.length"></strong> of <strong class="font-semibold text-base-content" x-text="total_count"></strong>
+                            </span>
+                            <button type="button" class="btn btn-ghost btn-xs h-6 min-h-6 px-2" x-show="canShowMore()" @click="showMore()">
+                                More
+                            </button>
+                        </div>
                     </div>
                 </div>
+
 
                 <!-- Edit Drawer -->
                 <div class="fixed inset-0 z-[1000]" x-show="drawer_open" x-cloak style="display: none;" @keydown.escape.window="closeDrawer()">

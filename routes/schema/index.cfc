@@ -29,7 +29,7 @@
                 <div class="grid grid-cols-1 gap-5">
 
                     <!-- Statements -->
-                    <div class="min-w-0 overflow-hidden rounded-lg border border-base-300 bg-base-100">
+                    <div class="min-w-0 overflow-hidden rounded-lg border border-base-300 bg-base-100 md:flex md:max-h-[calc(100vh-9rem)] md:flex-col">
                         <div class="border-b border-base-300 px-4 py-3">
                             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                 <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
@@ -66,7 +66,7 @@
                             </div>
                         </div>
 
-                        <div class="overflow-x-auto">
+                        <div class="overflow-x-auto md:min-h-0 md:flex-1">
                             <table class="table table-sm w-full">
                                 <thead>
                                     <tr>
@@ -137,14 +137,12 @@
                             </template>
                         </div>
 
-                        <div class="grid gap-3 border-t border-base-300 px-4 py-3 text-sm text-base-content/65 sm:grid-cols-3 sm:items-center" x-show="statements.length > 0">
-                            <span class="sm:justify-self-start"><strong class="font-semibold text-base-content" x-text="selectedCount"></strong> selected</span>
-                            <span class="text-center sm:justify-self-center">
-                                Showing <strong class="font-semibold text-base-content" x-text="filteredCount"></strong>
-                                of <strong class="font-semibold text-base-content" x-text="statements.length"></strong>
-                                records
-                            </span>
-                            <button type="button" class="btn btn-ghost btn-sm sm:justify-self-end" @click="toggleFilteredSelection()" :disabled="filteredCount === 0" x-text="filteredSelectedCount === filteredCount && filteredCount > 0 ? 'Clear visible' : 'Select visible'"></button>
+                        <div class="flex flex-col gap-2 border-t border-base-300 bg-base-100/95 px-4 py-1.5 text-[0.6875rem] leading-5 text-base-content/50 sm:flex-row sm:items-center sm:justify-between" x-show="statements.length > 0">
+                            <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                                <span><strong class="font-semibold text-base-content" x-text="selectedCount"></strong> selected</span>
+                                <button type="button" class="btn btn-ghost btn-xs h-6 min-h-6 px-2" @click="toggleFilteredSelection()" :disabled="filteredCount === 0" x-text="filteredSelectedCount === filteredCount && filteredCount > 0 ? 'Clear visible' : 'Select visible'"></button>
+                            </div>
+                            <span><strong class="font-semibold text-base-content" x-text="filteredCount"></strong> of <strong class="font-semibold text-base-content" x-text="statements.length"></strong></span>
                         </div>
                     </div>
 

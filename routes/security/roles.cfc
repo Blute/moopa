@@ -33,7 +33,10 @@
     </cffunction>
 
     <cffunction name="users">
-        <cfparam name="url.role_id" />
+        <cfset var roleId = request.data.role_id ?: (url.role_id ?: "") />
+        <cfif NOT len(roleId)>
+            <cfthrow type="moopa.security.missingRoleId" message="Role id is required to load role users." />
+        </cfif>
         <cfquery name="q">
             SELECT COALESCE(jsonb_agg(data ORDER BY full_name)::text, '[]') as data
             FROM (
@@ -42,14 +45,17 @@
                     , moo_profile.email
                 FROM moo_profile
                 INNER JOIN moo_profile_roles ON moo_profile_roles.primary_id = moo_profile.id
-                WHERE moo_profile_roles.foreign_id = <cfqueryparam value="#url.role_id#" cfsqltype="other" />
+                WHERE moo_profile_roles.foreign_id = <cfqueryparam value="#roleId#" cfsqltype="other" />
             ) as data
         </cfquery>
         <cfreturn q.data />
     </cffunction>
 
     <cffunction name="routes">
-        <cfparam name="url.role_id" />
+        <cfset var roleId = request.data.role_id ?: (url.role_id ?: "") />
+        <cfif NOT len(roleId)>
+            <cfthrow type="moopa.security.missingRoleId" message="Role id is required to load role routes." />
+        </cfif>
         <cfquery name="q">
             SELECT COALESCE(jsonb_agg(data ORDER BY url)::text, '[]') as data
             FROM (
@@ -58,7 +64,7 @@
                     , moo_route.mapping
                 FROM moo_route
                 INNER JOIN moo_route_roles ON moo_route_roles.primary_id = moo_route.id
-                WHERE moo_route_roles.foreign_id = <cfqueryparam value="#url.role_id#" cfsqltype="other" />
+                WHERE moo_route_roles.foreign_id = <cfqueryparam value="#roleId#" cfsqltype="other" />
             ) as data
         </cfquery>
         <cfreturn q.data />
@@ -83,80 +89,67 @@
 
 
 
-    <cffunction name="get" output="true">
+    <cffunction name="get">
         <cf_layout_default>
 
-            <div x-data="roles" x-cloak class="flex flex-col gap-5">
+            <div x-data="roles" x-cloak class="flex flex-col gap-4 lg:gap-5">
                 <!-- Header -->
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
+                    <div class="min-w-0">
                         <div class="flex items-center gap-3">
-                            <div class="flex h-11 w-11 items-center justify-center rounded-box bg-primary/10 text-primary">
-                                <i class="hgi-stroke hgi-shield-01 text-xl"></i>
+                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
+                                <i class="hgi-stroke hgi-shield-01 text-base"></i>
                             </div>
-                            <div>
-                                <h1 class="text-2xl font-semibold tracking-tight">Roles</h1>
-                                <p class="text-sm text-base-content/60">Create security roles and review their assigned users and routes.</p>
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                                    <h1 class="text-[1.625rem] font-semibold leading-none tracking-[-0.03em]">Roles</h1>
+                                    <span class="text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-base-content/42" x-text="roleSummary()"></span>
+                                </div>
+                                <p class="mt-1 max-w-[58ch] text-sm leading-5 text-base-content/62">Create security roles and review their assigned users and routes.</p>
                             </div>
                         </div>
                     </div>
-
-                    <button class="btn btn-sm btn-primary gap-2" @click="addNew">
-                        <i class="hgi-stroke hgi-plus-sign"></i>
-                        New Role
-                    </button>
                 </div>
 
-                <!-- Filters -->
-                <div class="card card-border bg-base-100 shadow-sm w-full max-w-5xl">
-                    <div class="card-body gap-4">
-                        <div class="flex flex-col gap-4 xl:flex-row xl:items-end">
-                            <fieldset class="fieldset w-full xl:max-w-2xl xl:flex-1">
-                                <legend class="fieldset-legend">Search</legend>
-                                <label class="input input-sm w-full">
+                <!-- Results -->
+                <div class="overflow-hidden rounded-lg border border-base-300 bg-base-100 md:flex md:max-h-[calc(100vh-9rem)] md:flex-col">
+                    <div class="border-b border-base-300 px-4 py-3">
+                        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                                <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80">
                                     <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
-                                    <input
-                                        placeholder="Search roles..."
-                                        aria-label="Search roles"
-                                        type="search"
-                                        x-model="filters.search"
-                                        @input.debounce.300ms="search()"
-                                    />
+                                    <input placeholder="Search roles" aria-label="Search roles" type="search" x-model="filters.search" @input.debounce.300ms="search()" />
                                 </label>
-                            </fieldset>
-
-                            <div class="flex flex-wrap gap-2">
-                                <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters()">
-                                    Reset filters
+                                <button type="button" class="btn btn-ghost btn-sm justify-start" @click="resetFilters()" :disabled="!hasActiveFilters()">
+                                    Reset
                                 </button>
                             </div>
+                            <button class="btn btn-sm btn-primary gap-2" @click="addNew">
+                                <i class="hgi-stroke hgi-plus-sign"></i>
+                                New Role
+                            </button>
                         </div>
                     </div>
-                </div>
 
-                <!-- Content Card -->
-                <div class="card card-border bg-base-100 shadow-sm">
-                    <div class="card-body p-0">
+                    <div class="overflow-visible md:min-h-0 md:flex-1 md:overflow-auto">
                         <!-- Table -->
                         <div class="overflow-auto">
-                            <table class="table">
+                            <table class="table table-sm w-full">
                                 <thead>
                                     <tr>
                                         <th>Name</th>
-                                        <th>Description</th>
                                         <th>Users</th>
                                         <th>Routes</th>
-                                        <th>Action</th>
+                                        <th class="text-end">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <template x-for="item in records" :key="item.id">
-                                        <tr class="hover:bg-base-200/40 *:text-nowrap">
+                                    <template x-for="item in visibleRecords()" :key="item.id">
+                                        <tr class="hover:bg-base-200/35 *:text-nowrap cursor-pointer outline-none focus-visible:bg-base-200/45 focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-inset" role="button" tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)" @keydown.space.prevent="select(item)" :aria-label="`Edit role ${item.name}`">
                                             <td class="font-medium" x-text="item.name"></td>
-                                            <td class="text-sm text-base-content/60" x-text="item.description || '—'"></td>
                                             <td>
                                                 <button
-                                                    @click="showUsersForRole(item)"
+                                                    @click.stop="showUsersForRole(item)"
                                                     class="badge badge-ghost hover:badge-primary cursor-pointer gap-1.5 transition-colors"
                                                     :class="{ 'badge-outline': item.user_count === 0 }"
                                                 >
@@ -166,7 +159,7 @@
                                             </td>
                                             <td>
                                                 <button
-                                                    @click="showRoutesForRole(item)"
+                                                    @click.stop="showRoutesForRole(item)"
                                                     class="badge badge-ghost hover:badge-secondary cursor-pointer gap-1.5 transition-colors"
                                                     :class="{ 'badge-outline': item.route_count === 0 }"
                                                 >
@@ -175,12 +168,14 @@
                                                 </button>
                                             </td>
                                             <td>
-                                                <button @click="select(item)" class="btn btn-square btn-ghost btn-sm" aria-label="Edit">
-                                                    <i class="hgi-stroke hgi-pencil-edit-02 text-base-content/80"></i>
-                                                </button>
-                                                <button @click="confirmDelete(item)" class="btn btn-square btn-ghost btn-sm" aria-label="Delete">
-                                                    <i class="hgi-stroke hgi-delete-02 text-error/80"></i>
-                                                </button>
+                                                <div class="flex items-center justify-end gap-1">
+                                                    <button @click.stop="select(item)" class="btn btn-square btn-ghost btn-sm" aria-label="Edit">
+                                                        <i class="hgi-stroke hgi-pencil-edit-02 text-base-content/80"></i>
+                                                    </button>
+                                                    <button @click.stop="confirmDelete(item)" class="btn btn-square btn-ghost btn-sm" aria-label="Delete">
+                                                        <i class="hgi-stroke hgi-delete-02 text-error/80"></i>
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     </template>
@@ -201,15 +196,30 @@
                             </div>
                         </div>
 
-                        <!-- Footer with count -->
-                        <div class="flex items-center justify-between p-6" x-show="records.length > 0">
-                            <span class="text-base-content/80 text-sm">
-                                Showing
-                                <span class="text-base-content font-medium" x-text="records.length"></span>
-                                <span x-text="records.length === 1 ? 'role' : 'roles'"></span>
-                            </span>
-                        </div>
                     </div>
+
+                        <div class="flex flex-col gap-2 border-t border-base-300 bg-base-100/95 px-4 py-1.5 text-[0.6875rem] leading-5 text-base-content/50 shadow-[0_-8px_20px_oklch(19.5%_0.02_41_/_0.035)] sm:flex-row sm:items-center sm:justify-between" x-show="records.length > 0">
+                            <span>
+                                <strong class="font-semibold text-base-content" x-text="totalUsers()"></strong> users ·
+                                <strong class="font-semibold text-base-content" x-text="totalRoutes()"></strong> routes
+                            </span>
+                            <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 sm:justify-end">
+                                <label class="flex items-center gap-1.5">
+                                    <span class="font-medium uppercase tracking-[0.08em] text-base-content/42">Rows</span>
+                                    <select class="select h-7 min-h-7 w-14 rounded-md border-base-300 bg-base-100 px-2 text-xs focus:outline-primary/55 focus:outline-offset-2" x-model.number="limit" aria-label="Roles per page">
+                                        <option :value="20">20</option>
+                                        <option :value="50">50</option>
+                                        <option :value="100">100</option>
+                                    </select>
+                                </label>
+                                <span class="tabular-nums">
+                                    <strong class="font-semibold text-base-content" x-text="visibleRecords().length ? 1 : 0"></strong>–<strong class="font-semibold text-base-content" x-text="visibleRecords().length"></strong> of <strong class="font-semibold text-base-content" x-text="records.length"></strong>
+                                </span>
+                                <button type="button" class="btn btn-ghost btn-xs h-6 min-h-6 px-2" x-show="canShowMore()" @click="showMore()">
+                                    More
+                                </button>
+                            </div>
+                        </div>
                 </div>
 
                 <!-- Edit Modal -->
@@ -223,12 +233,6 @@
                                     <span class="label-text font-medium">Name *</span>
                                 </label>
                                 <input type="text" class="input input-bordered w-full" x-model="current_record.name" required>
-                            </div>
-                            <div class="form-control">
-                                <label class="label">
-                                    <span class="label-text font-medium">Description</span>
-                                </label>
-                                <textarea class="textarea textarea-bordered w-full" rows="3" x-model="current_record.description" placeholder="Optional description"></textarea>
                             </div>
                         </div>
 
@@ -398,6 +402,7 @@
                             sortBy: 'name'
                         },
                         records: [],
+                        limit: 20,
                         current_record: {},
                         delete_record: null,
                         showEditModal: false,
@@ -507,7 +512,7 @@
                             try {
                                 this.roleUsers = await req({
                                     endpoint: 'users',
-                                    role_id: role.id
+                                    body: { role_id: role.id }
                                 });
                             } catch (error) {
                                 console.error('Error loading users:', error);
@@ -526,7 +531,7 @@
                             try {
                                 this.roleRoutes = await req({
                                     endpoint: 'routes',
-                                    role_id: role.id
+                                    body: { role_id: role.id }
                                 });
                             } catch (error) {
                                 console.error('Error loading routes:', error);
@@ -534,6 +539,37 @@
                             } finally {
                                 this.routesLoading = false;
                             }
+                        },
+
+                        visibleRecords() {
+                            return this.records.slice(0, this.limit);
+                        },
+
+                        canShowMore() {
+                            return this.visibleRecords().length < this.records.length;
+                        },
+
+                        showMore() {
+                            this.limit = Math.min(this.limit + 20, this.records.length);
+                        },
+
+                        hasActiveFilters() {
+                            return Object.values(this.filters || {}).some(value => `${value || ''}`.trim().length && value !== 'name');
+                        },
+
+                        roleSummary() {
+                            const total = this.records.length || 0;
+                            if (!total) return 'No roles';
+                            if (total === 1) return '1 role';
+                            return `${total} roles`;
+                        },
+
+                        totalUsers() {
+                            return this.records.reduce((total, role) => total + Number(role.user_count || 0), 0);
+                        },
+
+                        totalRoutes() {
+                            return this.records.reduce((total, role) => total + Number(role.route_count || 0), 0);
                         },
 
                         showNotification(message, type = 'info') {
