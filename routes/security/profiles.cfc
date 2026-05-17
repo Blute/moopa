@@ -197,15 +197,15 @@
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div class="min-w-0">
                         <div class="flex items-center gap-3">
-                            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-box bg-primary/10 text-primary">
-                                <i class="hgi-stroke hgi-user text-xl"></i>
+                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
+                                <i class="hgi-stroke hgi-user text-base"></i>
                             </div>
                             <div class="min-w-0">
-                                <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                                    <h1 class="text-2xl font-semibold tracking-tight">Profiles</h1>
-                                    <span class="text-xs font-medium uppercase tracking-[0.14em] text-base-content/45" x-text="resultSummary()"></span>
+                                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                                    <h1 class="text-[1.625rem] font-semibold leading-none tracking-[-0.03em]">Profiles</h1>
+                                    <span class="text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-base-content/42" x-text="resultSummary()"></span>
                                 </div>
-                                <p class="text-sm text-base-content/60">Manage identities, login access, roles, and authentication links.</p>
+                                <p class="mt-1 max-w-[58ch] text-sm leading-5 text-base-content/62">Manage identities, login access, roles, and authentication links.</p>
                             </div>
                         </div>
                     </div>
@@ -217,7 +217,7 @@
                 </div>
 
                 <!-- Filters -->
-                <div class="rounded-box border border-base-300 bg-base-100 shadow-sm">
+                <div class="rounded-lg border border-base-300 bg-base-100">
                     <div class="grid gap-3 p-4 lg:grid-cols-[minmax(18rem,1fr)_16rem_auto] lg:items-end">
                         <fieldset class="fieldset min-w-0 p-0">
                             <legend class="fieldset-legend pb-1">Search</legend>
@@ -255,7 +255,7 @@
                 </template>
 
                 <!-- Results -->
-                <div class="overflow-hidden rounded-box border border-base-300 bg-base-100 shadow-sm">
+                <div class="overflow-hidden rounded-lg border border-base-300 bg-base-100">
                     <div class="flex items-center justify-between border-b border-base-300 px-4 py-3 text-xs text-base-content/55">
                         <span x-text="resultSummary()"></span>
                         <template x-if="total_count > records.length">
@@ -271,7 +271,7 @@
                         </template>
 
                         <template x-for="item in records" :key="item.id">
-                            <article class="p-4" @click="select(item)">
+                            <article class="p-4 cursor-pointer outline-none transition-colors hover:bg-base-200/35 focus-visible:bg-base-200/45 focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-inset" role="button" tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)" @keydown.space.prevent="select(item)" :aria-label="`Edit profile ${item.full_name || item.email || 'profile'}`">
                                 <div class="flex items-start justify-between gap-3">
                                     <div class="flex min-w-0 items-start gap-3">
                                         <template x-if="item.profile_picture_id?.thumbnail">
@@ -290,7 +290,7 @@
                                         </template>
                                         <div class="min-w-0">
                                             <div class="flex flex-wrap items-center gap-2">
-                                                <h3 class="font-medium leading-tight" x-text="item.full_name || 'Unnamed profile'"></h3>
+                                                <h3 class="font-medium leading-tight tracking-[-0.01em]" x-text="item.full_name || 'Unnamed profile'"></h3>
                                                 <template x-if="isProtectedSysadmin(item)">
                                                     <span class="badge badge-xs badge-soft badge-primary gap-1">
                                                         <i class="hgi-stroke hgi-shield-01"></i>
@@ -298,7 +298,7 @@
                                                     </span>
                                                 </template>
                                             </div>
-                                            <p class="truncate text-sm text-base-content/60" x-text="item.email"></p>
+                                            <p class="truncate text-[0.8125rem] leading-5 text-base-content/62" x-text="item.email"></p>
                                         </div>
                                     </div>
                                     <div class="flex shrink-0 items-center gap-1">
@@ -328,7 +328,7 @@
                                     </div>
                                     <div class="col-span-2">
                                         <dt class="text-xs font-medium text-base-content/45">Last login</dt>
-                                        <dd class="mt-0.5 font-mono text-xs text-base-content/70" x-text="compactDate(item.last_login_at) || '—'"></dd>
+                                        <dd class="mt-0.5 font-mono text-xs tabular-nums text-base-content/70" x-text="compactDate(item.last_login_at) || '—'"></dd>
                                     </div>
                                 </dl>
                             </article>
@@ -351,7 +351,7 @@
                     <div class="hidden overflow-auto md:block">
                         <table class="table table-sm table-fixed w-full">
                             <thead class="bg-base-100">
-                                <tr class="border-base-300 text-xs text-base-content/55">
+                                <tr class="border-base-300 text-[0.8125rem] text-base-content/58">
                                     <th class="w-[27%] font-medium">Identity</th>
                                     <th class="w-[7%] font-medium">App</th>
                                     <th class="w-[12%] font-medium">Roles</th>
@@ -371,7 +371,7 @@
                                 </template>
 
                                 <template x-for="item in records" :key="item.id">
-                                    <tr class="border-base-200 hover:bg-base-200/35 cursor-pointer" @click="select(item)">
+                                    <tr class="border-base-200 hover:bg-base-200/35 cursor-pointer outline-none focus-visible:bg-base-200/45 focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-inset" role="button" tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)" @keydown.space.prevent="select(item)" :aria-label="`Edit profile ${item.full_name || item.email || 'profile'}`">
                                         <td>
                                             <div class="flex items-center gap-3">
                                                 <template x-if="item.profile_picture_id?.thumbnail">
@@ -390,7 +390,7 @@
                                                 </template>
                                                 <div class="min-w-0">
                                                     <div class="flex items-center gap-2">
-                                                        <p class="font-medium truncate" x-text="item.full_name || 'Unnamed profile'" :title="item.full_name"></p>
+                                                        <p class="truncate font-medium leading-5 tracking-[-0.01em]" x-text="item.full_name || 'Unnamed profile'" :title="item.full_name"></p>
                                                         <template x-if="isProtectedSysadmin(item)">
                                                             <span class="badge badge-xs badge-soft badge-primary gap-1" title="Configured Hub sysadmin">
                                                                 <i class="hgi-stroke hgi-shield-01"></i>
@@ -398,7 +398,7 @@
                                                             </span>
                                                         </template>
                                                     </div>
-                                                    <p class="text-xs text-base-content/60 truncate" x-text="item.email" :title="item.email"></p>
+                                                    <p class="truncate text-[0.8125rem] leading-4 text-base-content/62" x-text="item.email" :title="item.email"></p>
                                                 </div>
                                             </div>
                                         </td>
@@ -432,7 +432,7 @@
                                                 <span class="text-xs text-base-content/40">—</span>
                                             </template>
                                         </td>
-                                        <td><span class="block truncate text-xs font-mono text-base-content/70" x-text="compactDate(item.last_login_at) || '—'" :title="prettyDateTitle(item.last_login_at) || '—'"></span></td>
+                                        <td><span class="block truncate font-mono text-xs tabular-nums text-base-content/70" x-text="compactDate(item.last_login_at) || '—'" :title="prettyDateTitle(item.last_login_at) || '—'"></span></td>
                                         <td>
                                             <div class="flex items-center justify-end gap-1">
                                                 <button class="btn btn-ghost btn-sm btn-square min-h-9 h-9 w-9" @click.stop="select(item)" title="Edit profile" aria-label="Edit profile">
@@ -471,9 +471,9 @@
                     <aside class="absolute right-0 top-0 flex h-full w-full max-w-2xl flex-col border-l border-base-300 bg-base-100 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="profile-drawer-title" tabindex="-1" x-ref="drawerPanel" x-trap.noscroll="drawer_open" x-show="drawer_open" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full">
                         <header class="flex items-start justify-between gap-4 border-b border-base-300 px-6 py-5">
                             <div class="min-w-0">
-                                <p class="text-xs font-medium uppercase tracking-[0.14em] text-base-content/45" x-text="current_record.id ? 'Profile details' : 'New profile'"></p>
-                                <h2 id="profile-drawer-title" class="mt-1 text-xl font-semibold tracking-tight" x-text="current_record.id ? (current_record.full_name || 'Unnamed profile') : 'Create profile'"></h2>
-                                <p class="mt-1 truncate text-sm text-base-content/60" x-text="current_record.email || 'Add identity and access details.'"></p>
+                                <p class="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-base-content/45" x-text="current_record.id ? 'Profile details' : 'New profile'"></p>
+                                <h2 id="profile-drawer-title" class="mt-1 text-xl font-semibold leading-tight tracking-[-0.026em]" x-text="current_record.id ? (current_record.full_name || 'Unnamed profile') : 'Create profile'"></h2>
+                                <p class="mt-1 truncate text-sm leading-5 text-base-content/62" x-text="current_record.email || 'Add identity and access details.'"></p>
                             </div>
                             <button type="button" class="btn btn-ghost btn-sm btn-circle" @click="closeDrawer()" aria-label="Close profile editor">
                                 <i class="hgi-stroke hgi-cancel-01"></i>
@@ -485,7 +485,7 @@
                                 <section class="space-y-4">
                                     <div>
                                         <h3 class="text-sm font-semibold">Identity</h3>
-                                        <p class="text-sm text-base-content/55">Name, contact details, and the app this profile belongs to.</p>
+                                        <p class="max-w-[54ch] text-sm leading-5 text-base-content/58">Name, contact details, and the app this profile belongs to.</p>
                                     </div>
                                     <cf_table_controls table_name="moo_profile" fields="full_name" />
                                     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -496,7 +496,7 @@
                                 <section class="space-y-4 border-t border-base-300 pt-6">
                                     <div>
                                         <h3 class="text-sm font-semibold">Profile picture</h3>
-                                        <p class="text-sm text-base-content/55">Used in the shell and profile lists where available.</p>
+                                        <p class="max-w-[54ch] text-sm leading-5 text-base-content/58">Used in the shell and profile lists where available.</p>
                                     </div>
                                     <cf_table_controls table_name="moo_profile" fields="profile_picture_id" />
                                 </section>
@@ -504,7 +504,7 @@
                                 <section class="space-y-4 border-t border-base-300 pt-6">
                                     <div>
                                         <h3 class="text-sm font-semibold">Permissions</h3>
-                                        <p class="text-sm text-base-content/55">Roles and login access for this identity.</p>
+                                        <p class="max-w-[54ch] text-sm leading-5 text-base-content/58">Roles and login access for this identity.</p>
                                     </div>
                                     <cf_table_controls table_name="moo_profile" fields="roles" />
                                     <template x-if="isProtectedSysadmin(current_record)">
@@ -521,17 +521,17 @@
                                 <section class="space-y-4 border-t border-base-300 pt-6">
                                     <div>
                                         <h3 class="text-sm font-semibold">Authentication links</h3>
-                                        <p class="text-sm text-base-content/55">External or local identities connected to this profile.</p>
+                                        <p class="max-w-[54ch] text-sm leading-5 text-base-content/58">External or local identities connected to this profile.</p>
                                     </div>
                                     <template x-if="current_record.auth_identities?.length">
-                                        <div class="divide-y divide-base-300 rounded-box border border-base-300">
+                                        <div class="divide-y divide-base-300 rounded-lg border border-base-300">
                                             <template x-for="identity in current_record.auth_identities" :key="identity.provider + ':' + identity.provider_subject">
                                                 <div class="px-3 py-2 text-xs font-mono text-base-content/70 break-all" x-text="formatAuthIdentity(identity)"></div>
                                             </template>
                                         </div>
                                     </template>
                                     <template x-if="!current_record.auth_identities?.length">
-                                        <div class="rounded-box border border-dashed border-base-300 px-4 py-3 text-sm text-base-content/55">No auth identities linked.</div>
+                                        <div class="rounded-lg border border-dashed border-base-300 px-4 py-3 text-sm text-base-content/55">No auth identities linked.</div>
                                     </template>
                                 </section>
                             </div>
