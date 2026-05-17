@@ -86,6 +86,14 @@
 
         <cfset searchTerm = request.data.filter.term?:'' />
         <cfset appNameFilter = request.data.filter.app_name?:'' />
+        <cfset limit = val(request.data.limit ?: 20) />
+        <cfset offset = val(request.data.offset ?: 0) />
+        <cfif NOT listFind("20,50,100", limit)>
+            <cfthrow type="moopa.security.invalidProfileLimit" message="Profile search limit must be one of 20, 50, or 100." />
+        </cfif>
+        <cfif offset LT 0>
+            <cfthrow type="moopa.security.invalidProfileOffset" message="Profile search offset cannot be negative." />
+        </cfif>
 
         <cfquery name="qData">
         SELECT COALESCE(array_to_json(array_agg(row_to_json(data)))::text, '[]') AS recordset
@@ -120,7 +128,8 @@
             <cfelse>
                 ORDER BY moo_profile.full_name
             </cfif>
-            LIMIT 100
+            LIMIT <cfqueryparam cfsqltype="integer" value="#limit#" />
+            OFFSET <cfqueryparam cfsqltype="integer" value="#offset#" />
         ) AS data
         </cfquery>
 
@@ -210,10 +219,7 @@
                         </div>
                     </div>
 
-                    <button class="btn btn-primary btn-sm gap-2" @click="addNew">
-                        <i class="hgi-stroke hgi-plus-sign"></i>
-                        New Profile
-                    </button>
+
                 </div>
 
                 <template x-if="load_error">
@@ -232,11 +238,11 @@
                     <div class="border-b border-base-300 px-4 py-3">
                         <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                             <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-                                <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80" @input.debounce.500ms="load()" @change.stop>
+                                <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80" @input.debounce.500ms="load({ resetOffset: true })" @change.stop>
                                     <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
                                     <input type="search" aria-label="Search profiles" placeholder="Search name, email, or mobile" x-model="filters.term">
                                 </label>
-                                <select class="select select-sm w-full focus:outline-primary/55 focus:outline-offset-2 sm:w-44" aria-label="Filter profiles by app" x-model="filters.app_name" @change="load()">
+                                <select class="select select-sm w-full focus:outline-primary/55 focus:outline-offset-2 sm:w-44" aria-label="Filter profiles by app" x-model="filters.app_name" @change="load({ resetOffset: true })">
                                     <option value="">All apps</option>
                                     <template x-for="app in app_names" :key="app">
                                         <option :value="app" x-text="app"></option>
@@ -246,12 +252,10 @@
                                     Reset
                                 </button>
                             </div>
-                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/55">
-                                <span x-text="resultSummary()"></span>
-                                <template x-if="total_count > records.length">
-                                    <span>Showing first <span x-text="records.length"></span>. Refine filters to narrow results.</span>
-                                </template>
-                            </div>
+                            <button class="btn btn-primary btn-sm gap-2" @click="addNew">
+                                <i class="hgi-stroke hgi-plus-sign"></i>
+                                New Profile
+                            </button>
                         </div>
                     </div>
 
@@ -441,6 +445,26 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <div class="grid gap-3 border-t border-base-300 px-4 py-3 text-sm text-base-content/65 sm:grid-cols-3 sm:items-center" x-show="!loading && !load_error && total_count > 0">
+                        <label class="flex items-center gap-2 sm:justify-self-start">
+                            <span>Per page</span>
+                            <select class="select select-sm w-20 focus:outline-primary/55 focus:outline-offset-2" x-model.number="limit" @change="load({ resetOffset: true })" aria-label="Profiles per page">
+                                <option :value="20">20</option>
+                                <option :value="50">50</option>
+                                <option :value="100">100</option>
+                            </select>
+                        </label>
+                        <span class="text-center sm:justify-self-center">
+                            Showing <strong class="font-semibold text-base-content" x-text="rangeStart()"></strong>
+                            to <strong class="font-semibold text-base-content" x-text="records.length"></strong>
+                            of <strong class="font-semibold text-base-content" x-text="total_count"></strong>
+                            records
+                        </span>
+                        <button type="button" class="btn btn-ghost btn-sm sm:justify-self-end" x-show="canShowMore()" @click="showMore()">
+                            Show more
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Edit Drawer -->
@@ -600,6 +624,8 @@
                         pending_drawer_close: false,
                         records: [],
                         total_count: 0,
+                        limit: 20,
+                        offset: 0,
                         current_record: {},
                         filters: { ...default_filters },
                         app_names: [],
@@ -618,7 +644,10 @@
                             await this.load();
                         },
 
-                        async load() {
+                        async load(options = {}) {
+                            if (options.resetOffset) {
+                                this.offset = 0;
+                            }
                             const requestId = ++this.loading_request_id;
                             this.loading = true;
                             this.load_error = false;
@@ -626,10 +655,15 @@
                                 await saveFilters(this.filters);
                                 const records = await req({
                                     endpoint: 'search',
-                                    body: { filter: this.filters }
+                                    body: {
+                                        filter: this.filters,
+                                        limit: this.limit,
+                                        offset: this.offset
+                                    }
                                 });
                                 if (this.loading_request_id !== requestId) return;
-                                this.records = Array.isArray(records) ? records : [];
+                                const nextRecords = Array.isArray(records) ? records : [];
+                                this.records = options.append ? [...this.records, ...nextRecords] : nextRecords;
                                 this.total_count = this.records[0]?.total_count || this.records.length;
                                 this.has_loaded = true;
                             } catch (error) {
@@ -647,6 +681,7 @@
 
                         async resetFilters() {
                             this.filters = { ...default_filters };
+                            this.offset = 0;
                             await clearFilters();
                             await this.load();
                         },
@@ -745,12 +780,26 @@
                             return Object.values(this.filters || {}).some(value => `${value || ''}`.trim().length);
                         },
 
+                        canShowMore() {
+                            return this.records.length < this.total_count;
+                        },
+
+                        async showMore() {
+                            if (!this.canShowMore()) return;
+                            this.offset = this.records.length;
+                            await this.load({ append: true });
+                        },
+
                         resultSummary() {
                             if (!this.has_loaded) return '';
                             const total = this.total_count || this.records.length;
                             if (!total) return 'No profiles';
                             if (total === 1) return '1 profile';
                             return `${total} profiles`;
+                        },
+
+                        rangeStart() {
+                            return this.records.length ? 1 : 0;
                         },
 
                         compactDate(value) {
