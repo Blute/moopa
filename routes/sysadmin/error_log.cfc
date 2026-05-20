@@ -123,14 +123,20 @@
                             <div class="min-w-0">
                                 <p class="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-base-content/45" x-text="formatDateTime(current_record.created_at)"></p>
                                 <h2 id="error-drawer-title" class="mt-1 text-xl font-semibold leading-tight tracking-[-0.026em]" x-text="current_record.message || 'Error details'"></h2>
-                                <p class="mt-1 truncate font-mono text-xs text-base-content/62" x-text="current_record.line || 'No line captured.'"></p>
+                                <div class="mt-1 flex min-w-0 items-center gap-2">
+                                    <p class="truncate font-mono text-xs text-base-content/62" x-text="current_record.line || 'No line captured.'"></p>
+                                    <button type="button" class="btn btn-ghost btn-xs shrink-0" @click="copyToClipboard()" :disabled="!current_record.line">
+                                        <i class="hgi-stroke hgi-copy-01"></i>
+                                        Copy line
+                                    </button>
+                                </div>
                             </div>
-                            <button type="button" class="btn btn-ghost btn-sm btn-circle" @click="closeDrawer()" aria-label="Close error details">
+                            <button type="button" class="btn btn-ghost btn-sm btn-circle shrink-0" @click="closeDrawer()" aria-label="Close error details">
                                 <i class="hgi-stroke hgi-cancel-01"></i>
                             </button>
                         </header>
 
-                        <div class="flex-1 overflow-y-auto px-6 py-5" x-data="{ activeTab: 'exception' }">
+                        <div class="flex-1 overflow-y-auto px-6 py-5">
                             <div class="mb-4 flex flex-wrap gap-2">
                                 <template x-for="tab in detailTabs" :key="tab.key">
                                     <button type="button" class="btn btn-sm" :class="activeTab === tab.key ? 'btn-primary' : 'btn-ghost'" @click="activeTab = tab.key" x-text="tab.label"></button>
@@ -138,18 +144,25 @@
                             </div>
                             <template x-for="tab in detailTabs" :key="tab.key">
                                 <section x-show="activeTab === tab.key">
-                                    <pre class="min-h-96 overflow-auto rounded-lg bg-neutral p-4 text-xs leading-relaxed text-neutral-content"><code x-text="formatJsonValue(current_record[tab.key])"></code></pre>
+                                    <template x-if="tab.key === 'summary'">
+                                        <div class="space-y-3">
+                                            <div class="flex flex-col gap-3 rounded-lg border border-base-300 bg-base-200/35 px-4 py-3 text-sm leading-6 text-base-content/70 sm:flex-row sm:items-center sm:justify-between">
+                                                <span>Markdown formatted for pasting into an LLM agent.</span>
+                                                <button type="button" class="btn btn-primary btn-sm shrink-0" @click="copySummaryToClipboard()" :disabled="!hasCurrentRecord()">
+                                                    <i class="hgi-stroke hgi-copy-01"></i>
+                                                    Copy prompt
+                                                </button>
+                                            </div>
+                                            <pre class="min-h-96 overflow-auto rounded-lg bg-neutral p-4 text-xs leading-relaxed text-neutral-content"><code x-text="errorSummaryMarkdown()"></code></pre>
+                                        </div>
+                                    </template>
+                                    <template x-if="tab.key !== 'summary'">
+                                        <pre class="min-h-96 overflow-auto rounded-lg bg-neutral p-4 text-xs leading-relaxed text-neutral-content"><code x-text="formatJsonValue(current_record[tab.key])"></code></pre>
+                                    </template>
                                 </section>
                             </template>
                         </div>
 
-                        <footer class="flex justify-end gap-2 border-t border-base-300 bg-base-100/95 px-6 py-4 shadow-[0_-8px_24px_oklch(19.5%_0.02_41_/_0.06)]">
-                            <button type="button" class="btn btn-ghost btn-sm" @click="copyToClipboard()" :disabled="!current_record.line">
-                                <i class="hgi-stroke hgi-copy-01"></i>
-                                Copy line
-                            </button>
-                            <button type="button" class="btn btn-primary btn-sm" @click="closeDrawer()">Close</button>
-                        </footer>
                     </aside>
                 </div>
             </div>
@@ -161,7 +174,9 @@
                         records: [],
                         current_record: {},
                         drawer_open: false,
+                        activeTab: 'summary',
                         detailTabs: [
+                            { key: 'summary', label: 'Prompt' },
                             { key: 'exception', label: 'Exception' },
                             { key: 'current_auth', label: 'Auth' },
                             { key: 'cgi_scope', label: 'CGI' },
@@ -207,12 +222,154 @@
                                 endpoint: 'read',
                                 body: { id: item.id }
                             });
+                            this.activeTab = 'summary';
                             this.drawer_open = true;
                             this.$nextTick(() => this.$refs.drawerPanel?.focus());
                         },
 
                         closeDrawer() {
                             this.drawer_open = false;
+                        },
+
+                        hasCurrentRecord() {
+                            return !!(this.current_record && Object.keys(this.current_record).length);
+                        },
+
+                        parseJsonValue(value) {
+                            let parsed = value;
+
+                            for (let index = 0; index < 3; index++) {
+                                if (typeof parsed !== 'string') break;
+
+                                const trimmed = parsed.trim();
+                                if (!trimmed) return '';
+
+                                try {
+                                    parsed = JSON.parse(trimmed);
+                                } catch (e) {
+                                    break;
+                                }
+                            }
+
+                            return parsed;
+                        },
+
+                        exceptionObject() {
+                            const exception = this.parseJsonValue(this.current_record.exception);
+                            if (!exception || typeof exception !== 'object' || Array.isArray(exception)) return {};
+                            return exception;
+                        },
+
+                        getObjectValue(object, keys) {
+                            if (!object || typeof object !== 'object') return '';
+
+                            for (const key of keys) {
+                                if (Object.prototype.hasOwnProperty.call(object, key)) {
+                                    return object[key];
+                                }
+                            }
+
+                            const normalisedKeys = keys.map(key => key.toLowerCase());
+                            const matchingEntry = Object.entries(object).find(([key]) => normalisedKeys.includes(key.toLowerCase()));
+                            return matchingEntry ? matchingEntry[1] : '';
+                        },
+
+                        findObjectValue(object, keys, maxDepth = 4) {
+                            const directValue = this.getObjectValue(object, keys);
+                            if (directValue !== undefined && directValue !== null && directValue !== '') return directValue;
+                            if (maxDepth <= 0 || !object || typeof object !== 'object') return '';
+
+                            const values = Array.isArray(object) ? object : Object.values(object);
+                            for (const value of values) {
+                                if (!value || typeof value !== 'object') continue;
+                                const foundValue = this.findObjectValue(value, keys, maxDepth - 1);
+                                if (foundValue !== undefined && foundValue !== null && foundValue !== '') return foundValue;
+                            }
+
+                            return '';
+                        },
+
+                        cleanMarkdownText(value) {
+                            if (value === undefined || value === null) return '';
+                            if (typeof value === 'string') return value.replace(/\s+/g, ' ').trim();
+                            if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+                            return JSON.stringify(value);
+                        },
+
+                        markdownInlineCode(value) {
+                            const text = this.cleanMarkdownText(value) || '—';
+                            return `\`${text.replace(/`/g, '\\`')}\``;
+                        },
+
+                        markdownFence(language, value) {
+                            const text = value || '';
+                            const fence = text.includes('```') ? '~~~~' : '```';
+                            return `${fence}${language}\n${text}\n${fence}`;
+                        },
+
+                        exceptionType() {
+                            const exception = this.exceptionObject();
+                            return this.cleanMarkdownText(this.getObjectValue(exception, ['type']) || this.current_record.tag || 'Unknown');
+                        },
+
+                        exceptionMessage() {
+                            const exception = this.exceptionObject();
+                            return this.cleanMarkdownText(this.getObjectValue(exception, ['message']) || this.current_record.message || '—');
+                        },
+
+                        exceptionSql() {
+                            const sql = this.findObjectValue(this.exceptionObject(), ['sql']);
+                            if (sql === undefined || sql === null) return '';
+                            if (typeof sql === 'string') return sql.trim();
+                            if (typeof sql === 'number' || typeof sql === 'boolean') return String(sql);
+                            return JSON.stringify(sql, null, 2);
+                        },
+
+                        compactSqlForSummary(sql) {
+                            if (!sql) return '';
+
+                            return String(sql)
+                                .replace(/\r\n?/g, '\n')
+                                .split('\n')
+                                .map(line => line.replace(/[ \t]+$/g, ''))
+                                .filter(line => line.trim().length)
+                                .join('\n')
+                                .trim();
+                        },
+
+                        exceptionTagContext() {
+                            const tagContext = this.getObjectValue(this.exceptionObject(), ['tagContext']);
+                            return Array.isArray(tagContext) ? tagContext : [];
+                        },
+
+                        isDatabaseException() {
+                            return this.exceptionType().toLowerCase().includes('database') || !!this.exceptionSql();
+                        },
+
+                        errorSummaryMarkdown() {
+                            if (!this.hasCurrentRecord()) return 'No error selected.';
+
+                            const lines = [
+                                `${String.fromCharCode(35)} Moopa error summary`,
+                                '',
+                                `- Type: ${this.markdownInlineCode(this.exceptionType())}`,
+                                `- Message: ${this.exceptionMessage()}`
+                            ];
+
+                            if (this.isDatabaseException()) {
+                                const sql = this.compactSqlForSummary(this.exceptionSql());
+                                lines.push('', `${String.fromCharCode(35).repeat(2)} SQL`, '', sql ? this.markdownFence('sql', sql) : 'No SQL captured.');
+                            }
+
+                            const tagContextLines = this.exceptionTagContext().slice(0, 3).map((context, index) => {
+                                const template = this.cleanMarkdownText(this.getObjectValue(context, ['template']) || 'Unknown template');
+                                const line = this.cleanMarkdownText(this.getObjectValue(context, ['line']) || 'Unknown line');
+                                return `${index + 1}. ${this.markdownInlineCode(`${template}:${line}`)}`;
+                            });
+
+                            lines.push('', `${String.fromCharCode(35).repeat(2)} Tag context`, '', tagContextLines.length ? tagContextLines.join('\n') : 'No tag context captured.');
+
+                            return lines.join('\n');
                         },
 
                         formatDateTime(value) {
@@ -222,25 +379,64 @@
                             return `${date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric', weekday: 'short' })} ${date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
                         },
 
-                        copyToClipboard() {
-                            if (!this.current_record.line) return;
-                            navigator.clipboard.writeText(this.current_record.line).then(() => {
-                                if (window.toast) {
-                                    window.toast({ type: 'success', message: 'Line copied', duration: 1500 });
+                        copyTextWithFallback(text) {
+                            const textarea = document.createElement('textarea');
+                            textarea.value = text;
+                            textarea.setAttribute('readonly', '');
+                            textarea.style.position = 'fixed';
+                            textarea.style.left = '-9999px';
+                            document.body.appendChild(textarea);
+                            textarea.select();
+
+                            try {
+                                if (!document.execCommand('copy')) {
+                                    throw new Error('Copy command was rejected.');
                                 }
-                            });
+                            } finally {
+                                document.body.removeChild(textarea);
+                            }
+                        },
+
+                        async copyTextToClipboard(text, successMessage) {
+                            if (!text) return;
+
+                            try {
+                                if (navigator.clipboard?.writeText) {
+                                    await navigator.clipboard.writeText(text);
+                                } else {
+                                    this.copyTextWithFallback(text);
+                                }
+
+                                if (window.toast) {
+                                    window.toast({ type: 'success', message: successMessage, duration: 1500 });
+                                }
+                            } catch (e) {
+                                try {
+                                    this.copyTextWithFallback(text);
+                                    if (window.toast) {
+                                        window.toast({ type: 'success', message: successMessage, duration: 1500 });
+                                    }
+                                } catch (fallbackError) {
+                                    if (window.toast) {
+                                        window.toast({ type: 'error', message: 'Could not copy to clipboard', duration: 3000 });
+                                    }
+                                }
+                            }
+                        },
+
+                        copySummaryToClipboard() {
+                            this.copyTextToClipboard(this.errorSummaryMarkdown(), 'Prompt copied');
+                        },
+
+                        copyToClipboard() {
+                            this.copyTextToClipboard(this.current_record.line, 'Line copied');
                         },
 
                         formatJsonValue(value) {
-                            if (value === undefined || value === null || value === '') return 'No data captured.';
-                            try {
-                                if (typeof value === 'string') {
-                                    return JSON.stringify(JSON.parse(value), null, 2);
-                                }
-                                return JSON.stringify(value, null, 2);
-                            } catch (e) {
-                                return String(value);
-                            }
+                            const parsed = this.parseJsonValue(value);
+                            if (parsed === undefined || parsed === null || parsed === '') return 'No data captured.';
+                            if (typeof parsed === 'string') return parsed;
+                            return JSON.stringify(parsed, null, 2);
                         }
                     }));
                 });
