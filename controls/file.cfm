@@ -29,9 +29,9 @@
             class="#attributes.class#"
             x-id="['input_file']"
             x-data="moopaFileUploadField({
-                request_endpoint: #request_endpoint#,
-                table_name: '#attributes.table_name#',
-                field_name: '#attributes.field_name#',
+                request_endpoint: #encodeForHTMLAttribute(request_endpoint)#,
+                table_name: '#encodeForJavaScript(attributes.table_name)#',
+                field_name: '#encodeForJavaScript(attributes.field_name)#',
                 show_file_list: #lCase(attributes.show_file_list)#
             })"
             x-modelable="value"

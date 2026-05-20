@@ -1206,6 +1206,15 @@ Delete - delete
                     <cfset field.html = { }>
                 </cfif>
 
+                <!--- Explicit UI metadata must win over schema-derived control defaults.
+                      Legacy and project table definitions commonly use html.type="file",
+                      "email", "tel", etc. If we eagerly default uuid FK fields to combobox,
+                      file fields such as moo_profile.profile_picture_id render as searchable
+                      foreign-key dropdowns and call endpoints that do not exist. --->
+                <cfif !structKeyExists(field.html, "control") AND len(field.html.type ?: "")>
+                    <cfset field.html.control = "control_#replaceNoCase(field.html.type, 'input_', '')#" />
+                </cfif>
+
                 <cfswitch expression="#field.type#">
                     <cfcase value="numeric">
                         <cfset field.html.control = (field.html.control?:'control_number') />

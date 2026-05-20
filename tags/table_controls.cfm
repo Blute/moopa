@@ -64,8 +64,10 @@ Delegates actual rendering to <cf_control>.
             <cfset control_attrs.control = "text" />
         </cfif>
 
-        <!--- Generate field ID. --->
+        <!--- Generate field ID and pass table context to controls that need it. --->
         <cfset control_attrs.id = "#attributes.table_name#_#field_name#" />
+        <cfset control_attrs.table_name = attributes.table_name />
+        <cfset control_attrs.field_name = field_name />
 
         <!--- Apply any config overrides for this field. --->
         <cfif structKeyExists(attributes.config, field_name)>
