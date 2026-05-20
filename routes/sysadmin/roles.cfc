@@ -1,4 +1,4 @@
-<cfcomponent key="0b348660-a526-4ad5-a807-fd7ec8d2d31c">
+<cfcomponent key="0b348660-a526-4ad5-a807-fd7ec8d2d31c" open_to="security">
 
 
     <cffunction name="read">

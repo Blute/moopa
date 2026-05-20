@@ -1,4 +1,4 @@
-<cfcomponent key="8659f978-4823-4f1f-bf23-3f9c864b503f">
+<cfcomponent key="8659f978-4823-4f1f-bf23-3f9c864b503f" open_to="security">
 
     <cffunction name="read">
       <cfreturn application.lib.db.read(table_name='moo_route', id=id, field_list="*", returnAsCFML=true)/>
@@ -8,10 +8,11 @@
       <cfquery name="q">
       SELECT COALESCE(jsonb_agg(data)::text, '[]') as data
       FROM (
-          SELECT #application.lib.db.select(table_name="moo_route", field_list="id,key,url,mapping")#,
+          SELECT #application.lib.db.select(table_name="moo_route", field_list="id,key,url,mapping,app_name")#,
                  (SELECT count(*) FROM moo_route_roles WHERE primary_id = moo_route.id) AS role_count,
                  (SELECT count(*) FROM moo_route_profiles WHERE primary_id = moo_route.id) AS profile_count
           FROM moo_route
+          WHERE app_name = <cfqueryparam cfsqltype="varchar" value="#application.app_name#" />
           ORDER BY url
       ) as data
       </cfquery>
@@ -54,7 +55,7 @@
                     <h1 class="text-[1.625rem] font-semibold leading-none tracking-[-0.03em]">Routes</h1>
                     <span class="text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-base-content/42" x-text="routeSummary()"></span>
                   </div>
-                  <p class="mt-1 max-w-[58ch] text-sm leading-5 text-base-content/62">Manage security across all application routes with a clear, navigable tree.</p>
+                  <p class="mt-1 max-w-[58ch] text-sm leading-5 text-base-content/62">Manage security for this app's routes and shared routes with a clear, navigable tree.</p>
                 </div>
               </div>
             </div>
@@ -115,9 +116,9 @@
                             <i class="hgi-stroke text-sm" :class="row.node.route ? 'hgi-file-01' : (is_expanded(row.node.id) ? 'hgi-folder-open' : 'hgi-folder-01')"></i>
                           </span>
                           <div class="min-w-0">
-                            <div class="flex min-w-0 items-baseline gap-2">
+                            <div class="flex min-w-0 items-center gap-2">
                               <span class="truncate font-medium tracking-[-0.01em]" :class="row.node.route ? 'text-base-content' : 'text-base-content/82'" x-text="route_label(row.node)"></span>
-                              <span class="hidden rounded-full bg-base-200 px-1.5 py-0.5 text-[0.625rem] font-medium uppercase tracking-[0.08em] text-base-content/45 sm:inline" x-text="row.node.route ? 'Route' : 'Group'"></span>
+                              <span x-show="row.node.route && is_shared_route(row.node.route)" class="badge badge-neutral badge-xs hidden uppercase tracking-[0.08em] sm:inline-flex">Shared</span>
                             </div>
                             <button x-show="row.node.route" type="button" class="block max-w-full truncate pt-0.5 text-left font-mono text-xs text-base-content/50 hover:text-primary focus:outline-primary/55 focus:outline-offset-2" :title="'Copy ' + (row.node.route?.url || '')" @click.stop="copy_url(row.node.route?.url)" x-text="row.node.route?.url"></button>
                           </div>
@@ -277,6 +278,9 @@
                   if (node.route && node.name === 'index') return 'Index route';
                   return node.name;
                 },
+                is_shared_route(route) {
+                  return (route?.mapping || '').startsWith('/shared/routes/');
+                },
                 toggle(path) {
                   if (this.expanded_paths.has(path)) this.expanded_paths.delete(path); else this.expanded_paths.add(path);
                 },
@@ -305,7 +309,8 @@
                   const q = (this.filters.q || '').toLowerCase();
                   const matches = (node) => {
                     if (!q) return true;
-                    const self_match = node.name.toLowerCase().includes(q) || (node.route?.url || '').toLowerCase().includes(q);
+                    const route_search = [node.route?.url, node.route?.app_name, node.route?.mapping].filter(Boolean).join(' ').toLowerCase();
+                    const self_match = node.name.toLowerCase().includes(q) || route_search.includes(q);
                     if (self_match) return true;
                     return node.children.some(matches);
                   };

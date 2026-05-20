@@ -72,10 +72,7 @@ packages overriding core Moopa controls.
 
     <cfloop from="#arrayLen(application.moopa_packages)#" to="1" step="-1" index="package_index">
         <cfset control_package = application.moopa_packages[package_index] />
-        <cfif isArray(control_package.load ?: "")
-            AND arrayFindNoCase(control_package.load, "controls")
-            AND ((control_package.kind ?: "") NEQ "app" OR (control_package.app_name ?: control_package.name) EQ (application.app_name ?: "project"))>
-
+        <cfif ((control_package.kind ?: "") NEQ "app" OR (control_package.app_name ?: control_package.name) EQ application.app_name)>
             <cfset candidate_template = "#control_package.path#/controls/#control_type#.cfm" />
             <cfif fileExists(expandPath(candidate_template))>
                 <cfset control_template = candidate_template />
@@ -85,7 +82,7 @@ packages overriding core Moopa controls.
     </cfloop>
 
     <cfif !len(control_template)>
-        <cfthrow message="No control template found for control '#control_type#'. Add '#control_type#.cfm' to a package controls directory loaded by application.moopa_packages." />
+        <cfthrow message="No control template found for control '#control_type#'. Add '#control_type#.cfm' to a conventional package controls directory." />
     </cfif>
 
     <cfoutput>

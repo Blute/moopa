@@ -31,7 +31,10 @@
         <!--- LET THE TEMPLATE KNOW WE HAVE INITIALIZE IN CASE WE WANT TO ALERT THE USER --->
         <cfset request.application_initialized = true />
 
-        <cfset application.app_name = server.system.environment.APP_NAME ?: "project" />
+        <cfset application.app_name = trim(server.system.environment.APP_NAME ?: "") />
+        <cfif NOT len(application.app_name)>
+            <cfthrow message="APP_NAME is required. Set APP_NAME to the app directory name under code/apps/." />
+        </cfif>
         <cfset application.moopa_packages = _getMoopaPackages() />
         <cfset application.path = {} />
         <cfloop array="#application.moopa_packages#" item="local.package">
@@ -413,14 +416,18 @@
 
 
     <cffunction name="_getMoopaPackages" access="private" returntype="array" output="false">
-        <cfif isArray(this.moopa_packages ?: "")>
-            <cfreturn duplicate(this.moopa_packages) />
+        <cfset var appPath = "/apps/#application.app_name#" />
+        <cfset var physicalAppPath = expandPath(appPath) />
+
+        <cfif NOT directoryExists(physicalAppPath)>
+            <cfthrow message="APP_NAME '#application.app_name#' does not match an app directory at #appPath#." />
         </cfif>
 
-        <!--- Backwards-compatible default for existing single-project apps. --->
         <cfreturn [
-            { name: "moopa", path: "/moopa", kind: "core", load: ["routes", "tables", "lib", "controls", "navs"] },
-            { name: "project", path: "/project", kind: "app", app_name: application.app_name, load: ["routes", "tables", "lib", "controls", "navs"] }
+            { name: "moopa", path: "/moopa", kind: "core" },
+            { name: "domain", path: "/domain", kind: "domain" },
+            { name: "shared", path: "/shared", kind: "shared" },
+            { name: application.app_name, path: appPath, kind: "app", app_name: application.app_name }
         ] />
     </cffunction>
 
@@ -429,11 +436,24 @@
         <cfargument name="package" type="struct" required="true" />
         <cfargument name="capability" type="string" required="true" />
 
-        <cfif NOT isArray(arguments.package.load ?: "")>
-            <cfreturn false />
+        <cfset var packageKind = arguments.package.kind ?: "" />
+
+        <cfif arguments.capability EQ "routes">
+            <!--- Routes are app-local by convention, plus shared routes for every app. --->
+            <cfreturn listFindNoCase("app,shared", packageKind) GT 0 />
         </cfif>
 
-        <cfreturn arrayFindNoCase(arguments.package.load, arguments.capability) GT 0 />
+        <cfif arguments.capability EQ "navs">
+            <!--- Navigation follows the route-owning packages: app plus shared. --->
+            <cfreturn listFindNoCase("app,shared", packageKind) GT 0 />
+        </cfif>
+
+        <cfif listFindNoCase("tables,controls,lib", arguments.capability)>
+            <!--- Framework, domain, shared, and active app tables/controls/libs are globally available. --->
+            <cfreturn listFindNoCase("core,domain,shared,app", packageKind) GT 0 />
+        </cfif>
+
+        <cfreturn false />
     </cffunction>
 
 

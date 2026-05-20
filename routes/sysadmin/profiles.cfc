@@ -1,4 +1,4 @@
-<cfcomponent key="88fcf7cb-d88c-41b0-b1c8-861c1cfe1895">
+<cfcomponent key="88fcf7cb-d88c-41b0-b1c8-861c1cfe1895" open_to="security">
 
 
     <cffunction name="uploadFileToServerWithProgress.profile_picture_id">

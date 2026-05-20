@@ -1,4 +1,4 @@
-<cfcomponent key="6220e84e-4e5e-4893-90cf-51d33ec6640e">
+<cfcomponent key="6220e84e-4e5e-4893-90cf-51d33ec6640e" open_to="security">
 
     <cffunction name="get">
 

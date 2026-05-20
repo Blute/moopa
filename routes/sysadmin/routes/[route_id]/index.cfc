@@ -1,7 +1,24 @@
-<cfcomponent key="2befa9ac-1cc6-483f-bde1-1cca8cc1a818">
+<cfcomponent key="2befa9ac-1cc6-483f-bde1-1cca8cc1a818" open_to="security">
+
+
+    <cffunction name="assertRouteInCurrentApp" access="private" returntype="void" output="false">
+        <cfargument name="route_id" type="string" required="true" />
+
+        <cfquery name="qRouteScope">
+            SELECT id
+            FROM moo_route
+            WHERE id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
+              AND app_name = <cfqueryparam cfsqltype="varchar" value="#application.app_name#" />
+        </cfquery>
+
+        <cfif qRouteScope.recordcount NEQ 1>
+            <cfthrow type="moopa.security.routeWrongApp" message="Route '#arguments.route_id#' does not belong to app '#application.app_name#'." />
+        </cfif>
+    </cffunction>
 
 
     <cffunction name="load">
+        <cfset assertRouteInCurrentApp(arguments.route_id) />
         <cfset stResult = {} />
         <cfset stResult.current_route = application.lib.db.read(table_name='moo_route', id="#arguments.route_id#", field_list="*", returnAsCFML=true) />
         <cfset stResult.route_open_to = application.stAllRoutes[arguments.route_id].open_to />
@@ -106,6 +123,7 @@
     </cffunction>
 
     <cffunction name="toggleProfileAccess">
+        <cfset assertRouteInCurrentApp(arguments.route_id) />
 
         <cfquery name="qCheckExists">
         SELECT *
@@ -139,6 +157,7 @@
     </cffunction>
 
     <cffunction name="toggleRoleAccess">
+        <cfset assertRouteInCurrentApp(arguments.route_id) />
 
         <cfquery name="qCheckExists">
         SELECT *
@@ -182,6 +201,10 @@
 
 
     <cffunction name="save_route">
+        <cfparam name="request.data.id" />
+        <cfset assertRouteInCurrentApp(request.data.id) />
+        <cfset request.data.app_name = application.app_name />
+
         <cfreturn application.lib.db.save(
             table_name = "moo_route",
             data = request.data
