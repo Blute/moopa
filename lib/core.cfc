@@ -242,18 +242,15 @@
             <cfreturn true />
         </cfif>
 
-        <cfquery name="local.qAccounts">
-            SELECT count(*) AS account_count
-            FROM moo_profile_auth
-            INNER JOIN moo_profile ON moo_profile.id = moo_profile_auth.profile_id
-            WHERE moo_profile.app_name = <cfqueryparam cfsqltype="varchar" value="hub" />
-            AND moo_profile.can_login = true
-            AND lower(moo_profile.email) IN (<cfqueryparam cfsqltype="varchar" value="#sysadminEmails#" list="true" />)
-            AND moo_profile_auth.app_name = <cfqueryparam cfsqltype="varchar" value="hub" />
-            AND moo_profile_auth.provider = <cfqueryparam cfsqltype="varchar" value="local_password" />
+        <cfquery name="local.qProfiles">
+            SELECT count(*) AS profile_count
+            FROM moo_profile
+            WHERE app_name = <cfqueryparam cfsqltype="varchar" value="hub" />
+            AND can_login = true
+            AND lower(email) IN (<cfqueryparam cfsqltype="varchar" value="#sysadminEmails#" list="true" />)
         </cfquery>
 
-        <cfreturn val(local.qAccounts.account_count) EQ 0 />
+        <cfreturn val(local.qProfiles.profile_count) EQ 0 />
     </cffunction>
 
 
