@@ -425,7 +425,6 @@
 
         <cfreturn [
             { name: "moopa", path: "/moopa", kind: "core" },
-            { name: "domain", path: "/domain", kind: "domain" },
             { name: "shared", path: "/shared", kind: "shared" },
             { name: application.app_name, path: appPath, kind: "app", app_name: application.app_name }
         ] />
@@ -449,8 +448,8 @@
         </cfif>
 
         <cfif listFindNoCase("tables,controls,lib", arguments.capability)>
-            <!--- Framework, domain, shared, and active app tables/controls/libs are globally available. --->
-            <cfreturn listFindNoCase("core,domain,shared,app", packageKind) GT 0 />
+            <!--- Framework, shared project, and active app tables/controls/libs are globally available. --->
+            <cfreturn listFindNoCase("core,shared,app", packageKind) GT 0 />
         </cfif>
 
         <cfreturn false />

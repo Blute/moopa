@@ -62,7 +62,7 @@ packages overriding core Moopa controls.
     <!---
         Determine control template path.
         Package-oriented projects resolve in reverse package order so the current
-        app overrides shared/domain packages, which override core Moopa controls.
+        app overrides shared project controls, which override core Moopa controls.
     --->
     <cfset control_template = "" />
 

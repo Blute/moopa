@@ -11,7 +11,7 @@ Table definitions in Moopa serve dual purposes:
 
 ## Table Definition Structure
 
-Table definitions live in `code/domain/tables/{table_name}.cfc or code/apps/{app}/tables/{table_name}.cfc`:
+Table definitions live in `code/shared/tables/{table_name}.cfc` or `code/apps/{app}/tables/{table_name}.cfc`:
 
 ```cfml
 <cfcomponent>
@@ -388,7 +388,7 @@ With overrides:
 
 ## Syncing Schema
 
-Visit `/schema/` to compare code definitions with database and generate ALTER statements. The framework reads all CFC files in `package table directories such as `code/domain/tables/`, `code/apps/{app}/tables/`, and `code/moopa/tables/` and compares with the live database.
+Visit `/schema/` to compare code definitions with database and generate ALTER statements. The framework reads all CFC files in package table directories such as `code/shared/tables/`, `code/apps/{app}/tables/`, and `code/moopa/tables/` and compares with the live database.
 
 ## Naming Conventions
 

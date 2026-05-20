@@ -1,118 +1,43 @@
 # Moopa Packages
 
-Moopa supports package-based application loading. A project can run multiple app runtimes from one shared codebase, with each runtime selecting exactly one active app via `APP_NAME`.
+Moopa supports convention-based multi-app projects. One codebase can run several app runtimes, with each runtime selecting exactly one active app via `APP_NAME`.
 
-## Why packages exist
-
-Older Moopa projects used a two-folder model:
-
-```txt
-code/moopa
-code/project
-```
-
-That works for a single app, but becomes awkward when one codebase contains multiple related apps such as:
-
-```txt
-hub
-generic
-```
-
-Packages let a project split code by responsibility while still sharing framework, domain, and project-level code.
-
-## Typical project shape
+## Project shape
 
 ```txt
 code/
   moopa/              # Moopa framework
   apps/
-    hub/              # control-plane/admin app
-    generic/          # generic app scaffold
-  domain/             # shared table definitions and domain services
-  shared/             # shared project routes/tags/controls/libs
+    hub/              # control-plane/admin app, APP_NAME=hub
+    www/              # example public app, APP_NAME=www
+  shared/             # project-owned shared tables/libs/routes/tags/controls/navs
   www/                # common web root / Application.cfc
 ```
 
-## Defining packages
+There is intentionally no separate `domain/` package. Project-wide business code and table definitions live in `shared/`. If code is needed by every app in this project, put it in `shared`; if it belongs to one app, put it under `apps/{app}`; if it belongs to the framework, put it in `moopa`.
 
-Projects define packages in the application component that extends `moopa.application`:
+## Runtime app selection
 
-```cfml
-<cfcomponent extends="moopa.application">
-
-    <cfset this.moopa_packages = [
-        {
-            name: "moopa",
-            path: "/moopa",
-            kind: "core",
-            load: ["tables", "lib", "controls"]
-        },
-        {
-            name: "moopa_hub",
-            path: "/moopa",
-            kind: "app",
-            app_name: "hub",
-            route_mount: "",
-            default_open_to: "security",
-            load: ["routes", "navs"]
-        },
-        {
-            name: "domain",
-            path: "/domain",
-            kind: "domain",
-            load: ["tables", "lib"]
-        },
-        {
-            name: "shared",
-            path: "/shared",
-            kind: "shared",
-            load: ["routes", "lib", "controls"]
-        },
-        {
-            name: "hub",
-            path: "/apps/hub",
-            kind: "app",
-            app_name: "hub",
-            route_mount: "",
-            default_open_to: "security",
-            load: ["routes", "tables", "lib", "controls", "navs"]
-        },
-        {
-            name: "generic",
-            path: "/apps/generic",
-            kind: "app",
-            app_name: "generic",
-            route_mount: "",
-            default_open_to: "security",
-            load: ["routes", "tables", "lib", "controls", "navs"]
-        }
-    ] />
-
-</cfcomponent>
-```
-
-If `this.moopa_packages` is not defined, Moopa falls back to the legacy package layout:
+Each container/runtime sets:
 
 ```txt
-/moopa
-/project
+APP_NAME=hub
+APP_NAME=www
 ```
 
-## Package fields
+Moopa then loads packages in this order:
 
-| Field | Required | Description |
-|---|---:|---|
-| `name` | yes | Unique logical package name. Used in diagnostics and `application.path`. |
-| `path` | yes | Lucee mapping path, e.g. `/moopa`, `/apps/hub`, `/shared`. |
-| `kind` | no | Package role. Common values: `core`, `domain`, `shared`, `app`. |
-| `app_name` | for app packages | Runtime `APP_NAME` value that activates this package. Defaults to `name` if omitted. |
-| `load` | yes | Array of capabilities to load from this package. |
-| `route_mount` | no | URL prefix applied to this package's routes. Empty string means mount at `/`. |
-| `default_open_to` | no | Default `open_to` value for routes in this package. Defaults to `security`. |
+```txt
+moopa
+shared
+apps/{APP_NAME}
+```
+
+`APP_NAME` must match a directory under `code/apps/`.
 
 ## Load capabilities
 
-`load` controls which subdirectories Moopa scans.
+Moopa scans conventional subdirectories from the active packages.
 
 | Capability | Directory | Loaded into |
 |---|---|---|
@@ -122,26 +47,49 @@ If `this.moopa_packages` is not defined, Moopa falls back to the legacy package 
 | `controls` | `{path}/controls` | `application.control` |
 | `navs` | `{path}/navs` | `application.navs` |
 
+Load rules:
+
+- `routes`: loaded from `shared` and the active app.
+- `navs`: loaded from `shared` and the active app.
+- `tables`, `lib`, `controls`: loaded from `moopa`, `shared`, and the active app.
+
 Missing directories are ignored.
 
-## Runtime app selection
+## Where code belongs
 
-Each container/runtime sets:
+### `code/moopa`
+
+Framework-owned services, controls, tags, tables, and routes. Code here must be generic enough to be used by other Moopa projects.
+
+### `code/shared`
+
+Project-owned code available to every app in the repo:
 
 ```txt
-APP_NAME=hub
-APP_NAME=generic
+code/shared/tables
+code/shared/lib
+code/shared/routes
+code/shared/tags
+code/shared/controls
+code/shared/navs
 ```
 
-Packages with `kind="app"` only load when:
+Use this for project-wide table definitions, business services, integrations, shared route helpers, shared tags, and shared controls.
 
-```cfml
-(package.app_name ?: package.name) EQ application.app_name
+### `code/apps/{app}`
+
+App-owned code for one runtime only:
+
+```txt
+code/apps/hub/routes
+code/apps/hub/lib
+code/apps/hub/tables
+code/apps/hub/tags
+code/apps/hub/controls
+code/apps/hub/navs
 ```
 
-Non-app packages load in every runtime.
-
-This means every runtime can share framework/domain/shared code while registering only one app's routes.
+Routes and navigation are normally app-owned because each app has its own URL space.
 
 ## Hub as the control plane
 
@@ -153,44 +101,21 @@ Every Moopa project should include a `hub` app. Hub is the control-plane/admin a
 - route management
 - sysadmin tools
 
-Moopa's core services are needed by every app, but Moopa's admin UI should only be exposed in Hub.
-
-Use two logical packages pointing at the same physical `/moopa` directory:
-
-```cfml
-{
-    name: "moopa",
-    path: "/moopa",
-    kind: "core",
-    load: ["tables", "lib", "controls"]
-},
-{
-    name: "moopa_hub",
-    path: "/moopa",
-    kind: "app",
-    app_name: "hub",
-    route_mount: "",
-    default_open_to: "security",
-    load: ["routes", "navs"]
-}
-```
-
-This gives all apps access to framework internals while only Hub registers Moopa admin routes like:
+Framework sysadmin routes/navs are exposed by convention through the Hub app. A starter project may symlink:
 
 ```txt
-/schema/
-/security/
-/sysadmin/
+code/apps/hub/routes/sysadmin -> ../../../moopa/routes/sysadmin
+code/apps/hub/navs/sysadmin.json -> ../../../moopa/navs/sysadmin.json
 ```
 
-## Routes
+If a project needs custom sysadmin behavior, replace the symlink with copied app-owned routes/navs.
 
-Routes are loaded from active packages with `load` containing `routes`.
+## Routes
 
 A file like:
 
 ```txt
-code/apps/generic/routes/about.cfc
+code/apps/www/routes/about.cfc
 ```
 
 maps to:
@@ -199,45 +124,24 @@ maps to:
 /about/
 ```
 
-for the `generic` runtime.
+for the `www` runtime.
 
 The same route path can exist in different apps because each app has its own runtime route registry:
 
 ```txt
-code/apps/hub/routes/profile.cfc  -> /profile/ in Hub
-code/apps/generic/routes/profile.cfc  -> /profile/ in Generic
+code/apps/hub/routes/profile.cfc -> /profile/ in Hub
+code/apps/www/routes/profile.cfc -> /profile/ in WWW
 ```
 
 Within one runtime, duplicate route URLs throw an error.
-
-### Route mounts
-
-`route_mount` prefixes the package's routes.
-
-```cfml
-{
-    name: "api",
-    path: "/apps/api",
-    kind: "app",
-    app_name: "api",
-    route_mount: "/api",
-    load: ["routes"]
-}
-```
-
-Then:
-
-```txt
-/apps/api/routes/products.cfc -> /api/products/
-```
-
-Most app packages mount at `/` because the domain/subdomain identifies the app.
 
 ## App-scoped profiles
 
 Profiles are app-scoped through `moo_profile.app_name`.
 
 The active runtime app is selected by `APP_NAME`, and authenticated profiles must belong to that app. Auth provider choice is separate from app ownership and is stored in linked auth identity records.
+
+`moo_profile.app_name` identifies the app that owns the profile. `moo_profile_auth.provider` identifies how the profile signs in.
 
 ## Login/provider model
 
@@ -256,15 +160,13 @@ code/apps/{app}/routes/login/logout.cfc
 <cfreturn application.lib.auth_local_password.handlePost() />
 ```
 
-or later:
+or:
 
 ```cfml
 <cfreturn application.lib.auth_microsoft.handlePost() />
 ```
 
 Unauthenticated users should be redirected to the current app's `/login/` route. A shared `/logout/` route may redirect to `/login/logout/` so provider-specific logout remains app-owned.
-
-`moo_profile.app_name` identifies the app that owns the profile. `moo_profile_auth.provider` identifies how the profile signs in.
 
 ## Custom tags
 
@@ -278,7 +180,7 @@ Recommended search order:
 /code/moopa/tags
 ```
 
-This lets the active app override/shared tags without seeing tags from sibling apps.
+This lets the active app override shared/framework tags without seeing tags from sibling apps.
 
 In Docker/CFConfig this can be expressed with `{env:APP_NAME}`:
 
@@ -295,10 +197,10 @@ In Docker/CFConfig this can be expressed with `{env:APP_NAME}`:
 Moopa fails loudly on ambiguous package definitions:
 
 - duplicate route URLs within one runtime throw
-- duplicate table definitions throw
 - duplicate libs/controls/navs throw
+- duplicate table definitions normally throw
 
-This is intentional. Package boundaries should be explicit, and silent precedence bugs are difficult to diagnose.
+Table definitions are the exception when a later conventional package intentionally overrides an earlier one. This allows project code in `shared/tables` or app code in `apps/{app}/tables` to override a framework table definition when necessary.
 
 ## First-run route persistence
 
@@ -307,14 +209,3 @@ Moopa route registration normally persists route metadata to `moo_route` and `mo
 For first-run/starter scenarios, those tables may not exist yet. The package-aware route loader can fall back to in-memory route registration when the route persistence tables are missing, allowing `/login/` or other public setup routes to render before schema is applied.
 
 Production apps should still apply schema and use persistent route metadata for permissions/security management.
-
-## Backwards compatibility
-
-If no `this.moopa_packages` is configured, Moopa keeps the legacy default:
-
-```txt
-/moopa
-/project
-```
-
-Legacy projects can continue to work while newer projects adopt the package model.

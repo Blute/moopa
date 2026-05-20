@@ -27,7 +27,7 @@
                 <cfset local.packageSchema = processDirectory(local.package.path) />
                 <cfloop collection="#local.packageSchema#" item="local.tableName">
                     <!--- Later conventional packages override earlier table definitions.
-                          This lets project/domain tables intentionally replace Moopa core
+                          This lets shared project tables intentionally replace Moopa core
                           tables such as moo_profile while keeping convention over configuration. --->
                     <cfset this.codeSchema[local.tableName] = local.packageSchema[local.tableName] />
                 </cfloop>
