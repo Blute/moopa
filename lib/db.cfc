@@ -26,9 +26,9 @@
             <cfif directoryExists(expandPath("#local.package.path#/tables"))>
                 <cfset local.packageSchema = processDirectory(local.package.path) />
                 <cfloop collection="#local.packageSchema#" item="local.tableName">
-                    <cfif structKeyExists(this.codeSchema, local.tableName)>
-                        <cfthrow message="Duplicate table definition '#local.tableName#' loaded from package '#local.package.name#'. Package boundaries require unique table names." />
-                    </cfif>
+                    <!--- Later conventional packages override earlier table definitions.
+                          This lets project/domain tables intentionally replace Moopa core
+                          tables such as moo_profile while keeping convention over configuration. --->
                     <cfset this.codeSchema[local.tableName] = local.packageSchema[local.tableName] />
                 </cfloop>
             </cfif>

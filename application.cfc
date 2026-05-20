@@ -500,7 +500,7 @@
                     <cfcontinue />
                 </cfif>
 
-                <cfif structKeyExists(arguments.target, local.componentName)>
+                <cfif structKeyExists(arguments.target, local.componentName) AND arguments.capability NEQ "tables">
                     <cfthrow message="Duplicate #arguments.label# '#local.componentName#' loaded from #local.componentPath#. Package boundaries require unique component names." />
                 </cfif>
 
