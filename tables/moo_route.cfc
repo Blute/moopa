@@ -84,6 +84,20 @@
         <cfreturn "#lcase(trim(arguments.app_name))#:#lcase(trim(arguments.key))#" />
     </cffunction>
 
+    <cffunction name="routeUrlIdentity" access="private" returntype="string" output="false">
+        <cfargument name="url" type="string" required="true" />
+        <cfargument name="app_name" type="string" required="true" />
+
+        <cfif NOT len(trim(arguments.url))>
+            <cfthrow message="Route URL identity requires a route URL." />
+        </cfif>
+        <cfif NOT len(trim(arguments.app_name))>
+            <cfthrow message="Route URL identity requires an app_name." />
+        </cfif>
+
+        <cfreturn "#lcase(trim(arguments.app_name))#:#lcase(trim(arguments.url))#" />
+    </cffunction>
+
 
 
     <cffunction name="initializeRoutesIntoApplicationScope">
@@ -104,6 +118,7 @@
         <!--- ------------------- --->
 
         <cfset stDBRoutes = {} />
+        <cfset stDBRoutesByAppUrl = {} />
         <cfset stLegacyDBRoutesByKey = {} />
         <cfset routePersistenceAvailable = true />
 
@@ -132,6 +147,7 @@
         <cfloop array="#aDBRoutes#" item="route">
             <cfif len(route.app_name ?: "")>
                 <cfset stDBRoutes[routeIdentity(route.key, route.app_name)] = route />
+                <cfset stDBRoutesByAppUrl[routeUrlIdentity(route.url, route.app_name)] = route />
             <cfelse>
                 <!--- Legacy rows created before routes were app-scoped. The active app can claim them on re-init. --->
                 <cfset stLegacyDBRoutesByKey[route.key] = route />
@@ -227,6 +243,14 @@ TODO: need to check if old way works for the following and which has precedence:
                     AND structKeyExists(stLegacyDBRoutesByKey, stRoute.key)>
                     <!--- Claim a pre-app-scoped route row for this app to preserve local permissions during the refactor. --->
                     <cfset stDBRoutes[stRoute.identity] = stLegacyDBRoutesByKey[stRoute.key] />
+                </cfif>
+
+                <cfset stRoute.urlIdentity = routeUrlIdentity(stRoute.url, stRoute.app_name) />
+                <cfif routePersistenceAvailable
+                    AND NOT structKeyExists(stDBRoutes, stRoute.identity)
+                    AND structKeyExists(stDBRoutesByAppUrl, stRoute.urlIdentity)>
+                    <!--- The conventional source route is the same app URL with a new key. Claim the row by URL so re-inits update cleanly instead of violating idx_moo_route_app_name_url. --->
+                    <cfset stDBRoutes[stRoute.identity] = stDBRoutesByAppUrl[stRoute.urlIdentity] />
                 </cfif>
 
 
