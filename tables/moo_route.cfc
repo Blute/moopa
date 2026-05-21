@@ -835,7 +835,7 @@ TODO: need to check if old way works for the following and which has precedence:
              </style>
 
             <div class="security-icon" @click="moo_iframe_modal_open('/sysadmin/routes/#request.route_id#')">
-                <i class="hgi-stroke hgi-shield-key"></i>
+                <i class="fa-solid fa-key"></i>
             </div>
 
 

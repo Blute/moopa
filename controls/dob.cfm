@@ -34,7 +34,7 @@
             class="btn btn-square join-item"
             title="Clear date"
         >
-            <i class="hgi-stroke hgi-cancel-01"></i>
+            <i class="fa-solid fa-xmark"></i>
         </button>
 
         <!-- DaisyUI Dialog Modal -->

@@ -207,7 +207,7 @@
                     <div class="min-w-0">
                         <div class="flex items-center gap-3">
                             <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
-                                <i class="hgi-stroke hgi-user text-base"></i>
+                                <i class="fa-solid fa-user text-base"></i>
                             </div>
                             <div class="min-w-0">
                                 <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
@@ -224,7 +224,7 @@
 
                 <template x-if="load_error">
                     <div class="alert alert-error text-sm">
-                        <i class="hgi-stroke hgi-alert-02"></i>
+                        <i class="fa-solid fa-triangle-exclamation"></i>
                         <div>
                             <p class="font-medium">Profiles could not be loaded.</p>
                             <p class="text-error-content/80">Try again, or check the server logs if the problem continues.</p>
@@ -239,7 +239,7 @@
                         <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                             <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
                                 <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80" @input.debounce.500ms="load({ resetOffset: true })" @change.stop>
-                                    <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
+                                    <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
                                     <input type="search" aria-label="Search profiles" placeholder="Search name, email, or mobile" x-model="filters.term">
                                 </label>
                                 <select class="select select-sm w-full focus:outline-primary/55 focus:outline-offset-2 sm:w-44" aria-label="Filter profiles by app" x-model="filters.app_name" @change="load({ resetOffset: true })">
@@ -253,7 +253,7 @@
                                 </button>
                             </div>
                             <button class="btn btn-primary btn-sm gap-2" @click="addNew">
-                                <i class="hgi-stroke hgi-plus-sign"></i>
+                                <i class="fa-solid fa-plus"></i>
                                 New Profile
                             </button>
                         </div>
@@ -284,7 +284,7 @@
                                                 <h3 class="font-medium leading-tight tracking-[-0.01em]" x-text="item.full_name || 'Unnamed profile'"></h3>
                                                 <template x-if="isProtectedSysadmin(item)">
                                                     <span class="badge badge-xs badge-soft badge-primary gap-1">
-                                                        <i class="hgi-stroke hgi-shield-01"></i>
+                                                        <i class="fa-solid fa-shield-halved"></i>
                                                         Protected
                                                     </span>
                                                 </template>
@@ -294,10 +294,10 @@
                                     </div>
                                     <div class="flex shrink-0 items-center gap-1">
                                         <button class="btn btn-ghost btn-sm btn-square min-h-10 h-10 w-10" @click.stop="select(item)" title="Edit profile" aria-label="Edit profile">
-                                            <i class="hgi-stroke hgi-pencil-edit-02 text-base-content/70"></i>
+                                            <i class="fa-solid fa-pen-to-square text-base-content/70"></i>
                                         </button>
                                         <button class="btn btn-ghost btn-sm btn-square min-h-10 h-10 w-10 text-error" @click.stop="openDeleteModal(item)" title="Delete profile" :disabled="isProtectedSysadmin(item)" :aria-label="isProtectedSysadmin(item) ? 'Configured Hub sysadmin profiles cannot be deleted' : 'Delete profile'">
-                                            <i class="hgi-stroke hgi-delete-02"></i>
+                                            <i class="fa-solid fa-trash"></i>
                                         </button>
                                     </div>
                                 </div>
@@ -309,7 +309,7 @@
                                     <div>
                                         <dt class="text-xs font-medium text-base-content/45">Login</dt>
                                         <dd class="mt-0.5 inline-flex items-center gap-1.5 text-xs font-medium" :class="item.can_login ? 'text-success' : 'text-base-content/50'">
-                                            <i class="hgi-stroke" :class="item.can_login ? 'hgi-login-03' : 'hgi-lock-key'"></i>
+                                            <i class="fa-solid" :class="item.can_login ? 'fa-right-to-bracket' : 'fa-lock'"></i>
                                             <span x-text="isProtectedSysadmin(item) ? 'Protected' : (item.can_login ? 'Can log in' : 'Login disabled')"></span>
                                         </dd>
                                     </div>
@@ -328,7 +328,7 @@
                         <template x-if="!loading && !load_error && records.length === 0">
                             <div class="px-6 py-12 text-center">
                                 <div class="mx-auto flex max-w-md flex-col items-center gap-3 text-base-content/65">
-                                    <i class="hgi-stroke hgi-user-group text-3xl text-base-content/35"></i>
+                                    <i class="fa-solid fa-users text-3xl text-base-content/35"></i>
                                     <div>
                                         <p class="font-medium text-base-content" x-text="hasActiveFilters() ? 'No profiles match these filters.' : 'No profiles yet.'"></p>
                                         <p class="mt-1 text-sm" x-text="hasActiveFilters() ? 'Clear filters or search for a different name, email, or mobile.' : 'Create the first identity for this app.'"></p>
@@ -376,7 +376,7 @@
                                                         <p class="truncate font-medium leading-5 tracking-[-0.01em]" x-text="item.full_name || 'Unnamed profile'" :title="item.full_name"></p>
                                                         <template x-if="isProtectedSysadmin(item)">
                                                             <span class="badge badge-xs badge-soft badge-primary gap-1" title="Configured Hub sysadmin">
-                                                                <i class="hgi-stroke hgi-shield-01"></i>
+                                                                <i class="fa-solid fa-shield-halved"></i>
                                                                 Protected
                                                             </span>
                                                         </template>
@@ -399,7 +399,7 @@
                                         <td>
                                             <div class="flex flex-col gap-1">
                                                 <span class="inline-flex items-center gap-1.5 text-xs font-medium" :class="item.can_login ? 'text-success' : 'text-base-content/50'">
-                                                    <i class="hgi-stroke" :class="item.can_login ? 'hgi-login-03' : 'hgi-lock-key'"></i>
+                                                    <i class="fa-solid" :class="item.can_login ? 'fa-right-to-bracket' : 'fa-lock'"></i>
                                                     <span x-text="isProtectedSysadmin(item) ? 'Protected' : (item.can_login ? 'Can log in' : 'Login disabled')"></span>
                                                 </span>
                                                 <template x-if="item.is_employee">
@@ -419,10 +419,10 @@
                                         <td>
                                             <div class="flex items-center justify-end gap-1">
                                                 <button class="btn btn-ghost btn-sm btn-square min-h-9 h-9 w-9" @click.stop="select(item)" title="Edit profile" aria-label="Edit profile">
-                                                    <i class="hgi-stroke hgi-pencil-edit-02 text-base-content/70"></i>
+                                                    <i class="fa-solid fa-pen-to-square text-base-content/70"></i>
                                                 </button>
                                                 <button class="btn btn-ghost btn-sm btn-square min-h-9 h-9 w-9 text-error" @click.stop="openDeleteModal(item)" title="Delete profile" :disabled="isProtectedSysadmin(item)" :aria-label="isProtectedSysadmin(item) ? 'Configured Hub sysadmin profiles cannot be deleted' : 'Delete profile'">
-                                                    <i class="hgi-stroke hgi-delete-02"></i>
+                                                    <i class="fa-solid fa-trash"></i>
                                                 </button>
                                             </div>
                                         </td>
@@ -433,7 +433,7 @@
                                     <tr>
                                         <td colspan="7" class="px-6 py-12 text-center">
                                             <div class="mx-auto flex max-w-md flex-col items-center gap-3 text-base-content/65">
-                                                <i class="hgi-stroke hgi-user-group text-3xl text-base-content/35"></i>
+                                                <i class="fa-solid fa-users text-3xl text-base-content/35"></i>
                                                 <div>
                                                     <p class="font-medium text-base-content" x-text="hasActiveFilters() ? 'No profiles match these filters.' : 'No profiles yet.'"></p>
                                                     <p class="mt-1 text-sm" x-text="hasActiveFilters() ? 'Clear filters or search for a different name, email, or mobile.' : 'Create the first identity for this app.'"></p>
@@ -482,7 +482,7 @@
                                 <p class="mt-1 truncate text-sm leading-5 text-base-content/62" x-text="current_record.email || 'Add identity and access details.'"></p>
                             </div>
                             <button type="button" class="btn btn-ghost btn-sm btn-circle" @click="closeDrawer()" aria-label="Close profile editor">
-                                <i class="hgi-stroke hgi-cancel-01"></i>
+                                <i class="fa-solid fa-xmark"></i>
                             </button>
                         </header>
 
@@ -515,7 +515,7 @@
                                     <cf_table_controls table_name="moo_profile" fields="roles" />
                                     <template x-if="isProtectedSysadmin(current_record)">
                                         <div class="alert alert-info text-sm">
-                                            <i class="hgi-stroke hgi-shield-01"></i>
+                                            <i class="fa-solid fa-shield-halved"></i>
                                             <span>Configured Hub sysadmin. Login access is required and this profile cannot be deleted.</span>
                                         </div>
                                     </template>
@@ -545,14 +545,14 @@
 
                         <footer class="flex flex-col-reverse gap-3 border-t border-base-300 bg-base-100/95 px-6 py-4 shadow-[0_-8px_24px_oklch(19.5%_0.02_41_/_0.06)] sm:flex-row sm:items-center sm:justify-between">
                             <button type="button" class="btn btn-ghost btn-sm text-error" @click="openDeleteModal(current_record)" x-show="current_record.id && !isProtectedSysadmin(current_record)">
-                                <i class="hgi-stroke hgi-delete-02"></i>
+                                <i class="fa-solid fa-trash"></i>
                                 Delete
                             </button>
                             <div class="flex justify-end gap-2 sm:ml-auto">
                                 <button type="button" class="btn btn-ghost btn-sm" @click="closeDrawer()">Cancel</button>
                                 <button type="button" class="btn btn-primary btn-sm" @click="handleSave" :disabled="saving">
                                     <span class="loading loading-spinner loading-xs" x-show="saving"></span>
-                                    <i class="hgi-stroke hgi-tick-02" x-show="!saving"></i>
+                                    <i class="fa-solid fa-check" x-show="!saving"></i>
                                     Save
                                 </button>
                             </div>
@@ -565,7 +565,7 @@
                     <div class="modal-box max-w-sm">
                         <div class="flex items-start gap-3">
                             <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-warning/12 text-warning">
-                                <i class="hgi-stroke hgi-alert-02 text-xl"></i>
+                                <i class="fa-solid fa-triangle-exclamation text-xl"></i>
                             </div>
                             <div>
                                 <h3 class="text-lg font-semibold">Discard changes?</h3>
@@ -590,7 +590,7 @@
                 <dialog id="delete_modal" class="modal" x-ref="deleteModal">
                     <div class="modal-box max-w-sm text-center">
                         <div class="py-4">
-                            <i class="hgi-stroke hgi-alert-02 text-3xl text-error mb-4 block"></i>
+                            <i class="fa-solid fa-triangle-exclamation text-3xl text-error mb-4 block"></i>
                             <h3 class="text-lg font-semibold">Delete Profile</h3>
                             <p class="text-base-content/70 mt-2">
                                 Are you sure you want to delete <span class="font-medium" x-text="current_record.full_name"></span>?
@@ -602,7 +602,7 @@
                                 <button class="btn btn-ghost">Cancel</button>
                             </form>
                             <button class="btn btn-error" @click="deleteRecord">
-                                <i class="hgi-stroke hgi-delete-02"></i>
+                                <i class="fa-solid fa-trash"></i>
                                 Delete
                             </button>
                         </div>

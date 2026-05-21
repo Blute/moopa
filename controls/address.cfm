@@ -58,7 +58,7 @@ The address object stored in the model contains Photon-derived data:
                     type="button"
                     title="Clear address"
                 >
-                    <i class="hgi-stroke hgi-cancel-01"></i>
+                    <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
         </template>
@@ -72,7 +72,7 @@ The address object stored in the model contains Photon-derived data:
                     :style="`anchor-name: --${$id('addr-anchor')}`"
                 >
                     <template x-if="!loading">
-                        <i class="hgi-stroke hgi-search-01 text-base-content/50"></i>
+                        <i class="fa-solid fa-magnifying-glass text-base-content/50"></i>
                     </template>
                     <template x-if="loading">
                         <span class="loading loading-spinner loading-sm"></span>
@@ -98,7 +98,7 @@ The address object stored in the model contains Photon-derived data:
                         @click="searchQuery = ''; suggestions = []; closePopover();"
                         tabindex="-1"
                     >
-                        <i class="hgi-stroke hgi-cancel-01"></i>
+                        <i class="fa-solid fa-xmark"></i>
                     </button>
                 </label>
 
@@ -118,7 +118,7 @@ The address object stored in the model contains Photon-derived data:
 
                     <!--- Error state --->
                     <div x-show="error" class="px-4 py-3 text-error text-sm">
-                        <i class="hgi-stroke hgi-alert-circle mr-1"></i>
+                        <i class="fa-solid fa-circle-exclamation mr-1"></i>
                         <span x-text="error"></span>
                     </div>
 
@@ -137,7 +137,7 @@ The address object stored in the model contains Photon-derived data:
                                     :class="{'active': highlightedIndex === index}"
                                     class="flex items-center gap-2 py-2"
                                 >
-                                    <i class="hgi-stroke hgi-location-04 text-base-content/50 flex-shrink-0"></i>
+                                    <i class="fa-solid fa-location-dot text-base-content/50 flex-shrink-0"></i>
                                     <span x-text="suggestion.full"></span>
                                 </a>
                             </li>

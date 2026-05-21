@@ -48,7 +48,7 @@
             <div class="min-w-0">
               <div class="flex items-center gap-3">
                 <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
-                  <i class="hgi-stroke hgi-route-01 text-base"></i>
+                  <i class="fa-solid fa-route text-base"></i>
                 </div>
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
@@ -68,7 +68,7 @@
               <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
                   <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80">
-                    <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
+                    <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
                     <input type="search" aria-label="Search routes" placeholder="Search routes" x-model.debounce="filters.q">
                   </label>
                   <button type="button" class="btn btn-ghost btn-sm justify-start" @click="reset_filters()" :disabled="!hasActiveFilters()">
@@ -76,7 +76,7 @@
                   </button>
                 </div>
                 <button class="btn btn-ghost btn-sm gap-2" @click="toggle_all()" :disabled="stats.total === 0">
-                  <i class="hgi-stroke" :class="is_all_expanded() ? 'hgi-arrow-shrink' : 'hgi-arrow-expand'"></i>
+                  <i class="fa-solid" :class="is_all_expanded() ? 'fa-compress' : 'fa-expand'"></i>
                   <span x-text="is_all_expanded() ? 'Collapse all' : 'Expand all'"></span>
                 </button>
               </div>
@@ -109,11 +109,11 @@
                         <!-- Route Name & Path -->
                         <div class="flex min-w-0 items-center" :style="`padding-left: ${row.depth * 18}px`">
                           <button x-show="row.node.children.length" type="button" class="btn btn-ghost btn-xs btn-square shrink-0 text-base-content/55" @click="toggle(row.node.id)" :aria-label="`${is_expanded(row.node.id) ? 'Collapse' : 'Expand'} ${row.node.name}`">
-                            <i class="hgi-stroke" :class="is_expanded(row.node.id) ? 'hgi-arrow-down-01' : 'hgi-arrow-right-01'"></i>
+                            <i class="fa-solid" :class="is_expanded(row.node.id) ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
                           </button>
                           <span x-show="!row.node.children.length" class="w-6 shrink-0"></span>
                           <span class="mx-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-field border border-base-300 bg-base-100 text-base-content/55" :class="row.node.route ? 'text-base-content/45' : 'text-primary'">
-                            <i class="hgi-stroke text-sm" :class="row.node.route ? 'hgi-file-01' : (is_expanded(row.node.id) ? 'hgi-folder-open' : 'hgi-folder-01')"></i>
+                            <i class="fa-solid text-sm" :class="row.node.route ? 'fa-file' : (is_expanded(row.node.id) ? 'fa-folder-open' : 'fa-folder')"></i>
                           </span>
                           <div class="min-w-0">
                             <div class="flex min-w-0 items-center gap-2">
@@ -139,7 +139,7 @@
                         <div class="flex items-center justify-end">
                           <template x-if="row.node.route">
                             <button class="btn btn-ghost btn-sm gap-2" @click="open_secure(row.node.route)">
-                              <i class="hgi-stroke hgi-shield-01 text-primary"></i>
+                              <i class="fa-solid fa-shield-halved text-primary"></i>
                               <span class="hidden sm:inline">Manage</span>
                             </button>
                           </template>
@@ -152,7 +152,7 @@
             <template x-if="!loading && flat_tree().length === 0">
               <div class="px-6 py-12 text-center">
                 <div class="mx-auto flex max-w-md flex-col items-center gap-3 text-base-content/65">
-                  <i class="hgi-stroke hgi-route-01 text-3xl text-base-content/35"></i>
+                  <i class="fa-solid fa-route text-3xl text-base-content/35"></i>
                   <div>
                     <p class="font-medium text-base-content">No routes match these filters.</p>
                     <p class="mt-1 text-sm">Clear filters or search for a different route.</p>
@@ -175,12 +175,12 @@
             <div class="modal-box max-w-6xl w-11/12 h-[85vh] p-0 flex flex-col">
               <div class="flex items-center justify-between px-5 py-3 border-b border-base-200 bg-base-200/30">
                 <h3 class="font-semibold text-lg flex items-center gap-2">
-                  <i class="hgi-stroke hgi-security-check text-primary"></i>
+                  <i class="fa-solid fa-check text-primary"></i>
                   Route Security
                 </h3>
                 <form method="dialog">
                   <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close">
-                    <i class="hgi-stroke hgi-cancel-01"></i>
+                    <i class="fa-solid fa-xmark"></i>
                   </button>
                 </form>
               </div>

@@ -13,7 +13,7 @@
                     <div class="min-w-0">
                         <div class="flex items-center gap-3">
                             <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
-                                <i class="hgi-stroke hgi-database text-base"></i>
+                                <i class="fa-solid fa-database text-base"></i>
                             </div>
                             <div class="min-w-0">
                                 <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
@@ -34,7 +34,7 @@
                             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                 <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
                                     <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80">
-                                        <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
+                                        <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
                                         <input type="search" aria-label="Search schema statements" x-model.debounce.250ms="filter.statement" placeholder="Search statements" />
                                     </label>
                                     <select class="select select-sm w-full focus:outline-primary/55 focus:outline-offset-2 sm:w-52" aria-label="Filter statements by table" x-model="filter.table">
@@ -50,16 +50,16 @@
                                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                                     <cfoutput>
                                         <a href="#encodeForHTMLAttribute(reinitUrl)#" class="btn btn-primary btn-sm gap-2">
-                                            <i class="hgi-stroke hgi-refresh-01"></i>
+                                            <i class="fa-solid fa-rotate-right"></i>
                                             Re-init
                                         </a>
                                     </cfoutput>
                                     <button type="button" class="btn btn-ghost btn-sm gap-2" @click="openSqlDrawer()" :disabled="selectedCount === 0">
-                                        <i class="hgi-stroke hgi-code"></i>
+                                        <i class="fa-solid fa-code"></i>
                                         Show SQL
                                     </button>
                                     <button type="button" class="btn btn-success btn-sm gap-2" @click="copyToClipboard" :disabled="selectedCount === 0">
-                                        <i class="hgi-stroke hgi-copy-01"></i>
+                                        <i class="fa-solid fa-copy"></i>
                                         Copy SQL
                                     </button>
                                 </div>
@@ -127,7 +127,7 @@
 
                             <template x-if="filteredCount === 0">
                                 <div class="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                                    <i class="hgi-stroke hgi-filter-remove text-3xl text-base-content/35"></i>
+                                    <i class="fa-solid fa-filter-circle-xmark text-3xl text-base-content/35"></i>
                                     <div>
                                         <h3 class="font-semibold" x-text="hasActiveFilters() ? 'No statements match these filters.' : 'No pending schema statements.'"></h3>
                                         <p class="text-sm text-base-content/60" x-text="hasActiveFilters() ? 'Clear filters or search for a different table or statement.' : 'The database schema matches the code definitions.'"></p>
@@ -161,7 +161,7 @@
                                 </p>
                             </div>
                             <button type="button" class="btn btn-ghost btn-sm btn-circle" @click="closeSqlDrawer()" aria-label="Close selected SQL drawer">
-                                <i class="hgi-stroke hgi-cancel-01"></i>
+                                <i class="fa-solid fa-xmark"></i>
                             </button>
                         </header>
                         <div class="flex-1 overflow-y-auto px-6 py-5">
@@ -177,7 +177,7 @@
                         <footer class="flex justify-end gap-2 border-t border-base-300 bg-base-100/95 px-6 py-4 shadow-[0_-8px_24px_oklch(19.5%_0.02_41_/_0.06)]">
                             <button type="button" class="btn btn-ghost btn-sm" @click="closeSqlDrawer()">Close</button>
                             <button type="button" class="btn btn-success btn-sm gap-2" @click="copyToClipboard" :disabled="selectedCount === 0">
-                                <i class="hgi-stroke hgi-copy-01"></i>
+                                <i class="fa-solid fa-copy"></i>
                                 Copy SQL
                             </button>
                         </footer>
@@ -198,7 +198,7 @@
                                         <p class="text-sm text-base-content/60" x-text="openMismatch ? openMismatch.table_name : ''"></p>
                                     </div>
                                     <button type="button" class="btn btn-ghost btn-sm btn-circle" @click.stop="openMismatch = null" aria-label="Close">
-                                        <i class="hgi-stroke hgi-cancel-01"></i>
+                                        <i class="fa-solid fa-xmark"></i>
                                     </button>
                                 </div>
 
@@ -321,7 +321,7 @@
                             if (window.sonner) {
                                 window.sonner.success("Selected SQL copied", {
                                     description: `${this.selectedCount} statement${this.selectedCount === 1 ? "" : "s"} copied to clipboard.`,
-                                    icon: "hgi-tick-02"
+                                    icon: "fa-solid fa-check"
                                 });
                             }
                         }

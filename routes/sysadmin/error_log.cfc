@@ -36,7 +36,7 @@
                     <div class="min-w-0">
                         <div class="flex items-center gap-3">
                             <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
-                                <i class="hgi-stroke hgi-alert-02 text-base"></i>
+                                <i class="fa-solid fa-triangle-exclamation text-base"></i>
                             </div>
                             <div class="min-w-0">
                                 <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
@@ -55,7 +55,7 @@
                         <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                             <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
                                 <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80">
-                                    <i class="hgi-stroke hgi-search-01 text-base-content/40"></i>
+                                    <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
                                     <input type="search" aria-label="Search error log" placeholder="Search messages or lines" x-model="filters.term" @input.debounce.300ms="search()" />
                                 </label>
                                 <button type="button" class="btn btn-ghost btn-sm justify-start" @click="resetFilter(); search();" :disabled="!hasActiveFilters()">
@@ -99,7 +99,7 @@
                     <template x-if="records.length === 0">
                         <div class="px-6 py-12 text-center">
                             <div class="mx-auto flex max-w-md flex-col items-center gap-3 text-base-content/65">
-                                <i class="hgi-stroke hgi-alert-02 text-3xl text-base-content/35"></i>
+                                <i class="fa-solid fa-triangle-exclamation text-3xl text-base-content/35"></i>
                                 <div>
                                     <p class="font-medium text-base-content" x-text="hasActiveFilters() ? 'No errors match these filters.' : 'No errors logged.'"></p>
                                     <p class="mt-1 text-sm" x-text="hasActiveFilters() ? 'Clear filters or search for a different message or line.' : 'Captured application errors will appear here.'"></p>
@@ -126,13 +126,13 @@
                                 <div class="mt-1 flex min-w-0 items-center gap-2">
                                     <p class="truncate font-mono text-xs text-base-content/62" x-text="current_record.line || 'No line captured.'"></p>
                                     <button type="button" class="btn btn-ghost btn-xs shrink-0" @click="copyToClipboard()" :disabled="!current_record.line">
-                                        <i class="hgi-stroke hgi-copy-01"></i>
+                                        <i class="fa-solid fa-copy"></i>
                                         Copy line
                                     </button>
                                 </div>
                             </div>
                             <button type="button" class="btn btn-ghost btn-sm btn-circle shrink-0" @click="closeDrawer()" aria-label="Close error details">
-                                <i class="hgi-stroke hgi-cancel-01"></i>
+                                <i class="fa-solid fa-xmark"></i>
                             </button>
                         </header>
 
@@ -149,7 +149,7 @@
                                             <div class="flex flex-col gap-3 rounded-lg border border-base-300 bg-base-200/35 px-4 py-3 text-sm leading-6 text-base-content/70 sm:flex-row sm:items-center sm:justify-between">
                                                 <span>Markdown formatted for pasting into an LLM agent.</span>
                                                 <button type="button" class="btn btn-primary btn-sm shrink-0" @click="copySummaryToClipboard()" :disabled="!hasCurrentRecord()">
-                                                    <i class="hgi-stroke hgi-copy-01"></i>
+                                                    <i class="fa-solid fa-copy"></i>
                                                     Copy prompt
                                                 </button>
                                             </div>

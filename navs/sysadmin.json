@@ -1,35 +1,35 @@
 [
   {
-    "icon": "hgi-stroke hgi-settings-02",
+    "icon": "fa-solid fa-gear",
     "title": "System",
     "items": [
       {
-        "icon": "hgi-stroke hgi-shield-01",
+        "icon": "fa-solid fa-shield-halved",
         "title": "Roles",
         "route": "/sysadmin/roles"
       },
       {
-        "icon": "hgi-stroke hgi-route-01",
+        "icon": "fa-solid fa-route",
         "title": "Routes",
         "route": "/sysadmin/routes"
       },
       {
-        "icon": "hgi-stroke hgi-settings-02",
+        "icon": "fa-solid fa-gear",
         "title": "App Summary",
         "route": "/sysadmin/app_summary"
       },
       {
-        "icon": "hgi-stroke hgi-user",
+        "icon": "fa-solid fa-user",
         "title": "Profiles",
         "route": "/sysadmin/profiles"
       },
       {
-        "icon": "hgi-stroke hgi-alert-02",
+        "icon": "fa-solid fa-triangle-exclamation",
         "title": "Error Log",
         "route": "/sysadmin/error_log"
       },
       {
-        "icon": "hgi-stroke hgi-database",
+        "icon": "fa-solid fa-database",
         "title": "Schema",
         "route": "/sysadmin/schema"
       }

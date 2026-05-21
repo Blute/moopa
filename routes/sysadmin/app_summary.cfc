@@ -14,7 +14,7 @@
                         <div class="min-w-0">
                             <div class="flex items-center gap-3">
                                 <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
-                                    <i class="hgi-stroke hgi-settings-02 text-base"></i>
+                                    <i class="fa-solid fa-gear text-base"></i>
                                 </div>
                                 <div class="min-w-0">
                                     <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
@@ -26,7 +26,7 @@
                             </div>
                         </div>
                         <a href="/sysadmin/app_summary/?X-Endpoint=load" class="btn btn-ghost btn-sm gap-2">
-                            <i class="hgi-stroke hgi-code text-sm"></i>
+                            <i class="fa-solid fa-code text-sm"></i>
                             JSON
                         </a>
                     </div>
