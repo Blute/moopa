@@ -14,6 +14,11 @@
         "route": "/sysadmin/routes"
       },
       {
+        "icon": "hgi-stroke hgi-settings-02",
+        "title": "App Summary",
+        "route": "/sysadmin/app_summary"
+      },
+      {
         "icon": "hgi-stroke hgi-user",
         "title": "Profiles",
         "route": "/sysadmin/profiles"
