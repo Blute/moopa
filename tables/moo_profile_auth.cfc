@@ -12,19 +12,23 @@
             "fields": {
                 "app_name": {
                     "type": "varchar",
+                    "nullable": false,
                     "searchable": true
                 },
                 "profile_id": {
                     "type": "uuid",
+                    "nullable": false,
                     "foreign_key_table": "moo_profile",
                     "foreign_key_onDelete": "CASCADE"
                 },
                 "provider": {
                     "type": "varchar",
+                    "nullable": false,
                     "searchable": true
                 },
                 "provider_subject": {
                     "type": "varchar",
+                    "nullable": false,
                     "searchable": true
                 },
                 "provider_payload": {
