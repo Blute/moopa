@@ -8,6 +8,10 @@
         <cfset this.codeSchema = {} />
         <cfset this.searchable_tables = {} />
 
+        <cfset variables.returnFormatter = CreateObject("component", "/moopa/internal/db/return_formatter").init() />
+        <cfset variables.writeMapper = CreateObject("component", "/moopa/internal/db/write_mapper").init() />
+        <cfset variables.relationshipWriter = CreateObject("component", "/moopa/internal/db/relationship_writer").init() />
+
 
         <!--- Merge table definitions from conventional packages. --->
         <cfif NOT (isDefined("application.moopa_packages") AND isArray(application.moopa_packages))>
@@ -151,7 +155,6 @@ Delete - delete
 
 
         <!--- Initialize variables --->
-        <cfset var shouldReturnJSON = isJSONReturnFormat(arguments.returnFormat) />
         <cfset var dynamicSQL = "'is_new_record',true">
         <cfset var defaultValueList = "">
 
@@ -233,11 +236,7 @@ Delete - delete
             <cfset stDefaultObject = read(table_name=arguments.table_name, id=new_object.id, returnFormat="cfml") />
         </cfif>
 
-        <cfif shouldReturnJSON>
-            <cfreturn serializeJSON(stDefaultObject) />
-        </cfif>
-
-        <cfreturn stDefaultObject />
+        <cfreturn variables.returnFormatter.formatCFML(stDefaultObject, arguments.returnFormat) />
     </cffunction>
 
 
@@ -373,7 +372,6 @@ Delete - delete
         <cfargument name="returnFormat" type="string" required="false" default="json" />
         <cfargument name="include_sensitive" type="boolean" required="false" default=false hint="Include fields marked sensitive: true" />
 
-        <cfset var shouldReturnJSON = isJSONReturnFormat(arguments.returnFormat) />
         <cfset var res = {} />
 
         <cfif !structKeyExists(this.codeSchema, arguments.table_name)>
@@ -411,17 +409,7 @@ Delete - delete
         </cfif>
 
 
-        <cfif shouldReturnJSON>
-            <cfreturn res />
-        </cfif>
-
-        <cftry>
-            <cfreturn deserializeJSON(res) />
-            <cfcatch type="any">
-                <cfdump var="#cfcatch#">
-                <cfdump var="#qResult#"><cfabort>
-            </cfcatch>
-        </cftry>
+        <cfreturn variables.returnFormatter.formatJSONText(res, arguments.returnFormat) />
     </cffunction>
 
 
@@ -437,8 +425,6 @@ Delete - delete
         <cfargument name="limit" type="string" required="false" default=250 />
         <cfargument name="select_append" type="string" required="false" default="" hint="Additional SELECT expressions to append (e.g. subqueries, computed fields)" />
         <cfargument name="returnFormat" type="string" required="false" default="json" />
-
-        <cfset var shouldReturnJSON = isJSONReturnFormat(arguments.returnFormat) />
 
         <cfif !structKeyExists(this.codeSchema, arguments.table_name)>
             <cfthrow message="Invalid Table Name" />
@@ -526,19 +512,11 @@ Delete - delete
         <cfif arraylen(arguments.ids) GT 1>
             <cfset orderedRecordset = sortRecordsetByIds(qData.recordset, arguments.ids) />
 
-            <cfif shouldReturnJSON>
-                <cfreturn serializeJSON(orderedRecordset) />
-            </cfif>
-
-            <cfreturn orderedRecordset />
+            <cfreturn variables.returnFormatter.formatCFML(orderedRecordset, arguments.returnFormat) />
 
         <cfelse>
 
-            <cfif shouldReturnJSON>
-                <cfreturn qData.recordset />
-            </cfif>
-
-            <cfreturn deserializeJSON(qData.recordset) />
+            <cfreturn variables.returnFormatter.formatJSONText(qData.recordset, arguments.returnFormat) />
         </cfif>
     </cffunction>
 
@@ -614,8 +592,6 @@ Delete - delete
         <cfargument name="data" type="struct" required="false" default="#structNew()#" />
         <cfargument name="returnFormat" type="string" required="false" default="json" />
 
-        <cfset var shouldReturnJSON = isJSONReturnFormat(arguments.returnFormat) />
-
         <cfif len(arguments.data.id?:'')>
             <cfset idValue = arguments.data.id />
         <cfelseif len(arguments.id)>
@@ -632,11 +608,7 @@ Delete - delete
 
         <!--- Note: pg_trgm search uses the search_text generated column which is automatically updated --->
 
-        <cfif shouldReturnJSON>
-            <cfreturn serializeJSON(result) />
-        </cfif>
-
-        <cfreturn result />
+        <cfreturn variables.returnFormatter.formatCFML(result, arguments.returnFormat) />
     </cffunction>
 
 
@@ -652,54 +624,19 @@ Delete - delete
         <cfargument name="returnFormat" type="string" required="false" default="json" />
         <cfargument name="index_record" type="boolean" default=true />
 
-        <cfset var shouldReturnJSON = isJSONReturnFormat(arguments.returnFormat) />
         <cfset var result = {
             id : (arguments.data.id?:''),
             sql_statements : []
         } />
 
         <cfset var stModel = this.codeSchema[arguments.table_name] />
+        <cfset var recordExists = false />
+        <cfset var model_field = {} />
+        <cfset var stParams = {} />
+        <cfset var sql = "" />
 
         <!--- MAIN PAYLOAD --->
-        <cfset var stDataFields = {} />
-
-
-
-
-        <cfloop collection="#arguments.data#" item="data_field" index="field_name">
-
-            <!--- Remove keys not in the table --->
-            <cfif !structKeyExists(stModel.fields, field_name)>
-                <cfcontinue />
-            </cfif>
-
-            <cfif len(stModel.fields[field_name].generation_expression?:'')>
-                <cfcontinue />
-            </cfif>
-            <cfif findNoCase('serial', stModel.fields[field_name].type)>
-                <cfcontinue />
-            </cfif>
-
-            <cfif isNull(arguments.data[field_name])>
-                <cfset stDataFields[field_name] = "" />
-                <cfcontinue />
-            </cfif>
-
-            <cfset stDataFields[field_name] = arguments.data[field_name] />
-
-            <cfset model_field = stModel.fields[field_name] />
-
-            <!--- CONVERT STRUCT TO JUST THE Foreign Key --->
-            <cfif len(model_field.foreign_key_field?:'') AND isStruct(stDataFields[field_name])>
-                <cfif isEmpty(stDataFields[field_name])>
-                    <cfset stDataFields[field_name] = "" />
-                <cfelse>
-                    <cfset stDataFields[field_name] = stDataFields[field_name][model_field.foreign_key_field] />
-                </cfif>
-            </cfif>
-        </cfloop>
-
-        <cfset recordExists = false />
+        <cfset var stDataFields = variables.writeMapper.getWritableFields(stModel, arguments.data) />
 
         <cfif len(stDataFields.id?:'')>
 
@@ -746,67 +683,11 @@ Delete - delete
 
                             <cfset model_field = stModel.fields[data_field_name] />
 
-                            <cfif !(model_field.is_system?:false) AND (model_field.type NEQ "many_to_many") AND (model_field.type NEQ "relation")>
+                            <cfif variables.writeMapper.isPersistedColumn(model_field)>
 
                                 ,
 
-                                <cfset stParams = {
-                                                    cfsqltype: 'varchar'
-                                                    , value=data_field
-                                                    , null=false
-                                } />
-
-                                <cfif model_field.is_nullable AND !len(stParams.value)>
-                                    <cfset stParams.null = true />
-                                </cfif>
-
-                                <cfswitch expression="#model_field.type#">
-                                    <cfcase value="timestamptz">
-                                        <cfset stParams.cfsqltype = 'timestamp' />
-                                    </cfcase>
-                                    <cfcase value="date">
-                                        <cfset stParams.cfsqltype = 'date' />
-                                    </cfcase>
-                                    <cfcase value="bool">
-                                        <cfset stParams.cfsqltype = 'boolean' />
-                                    </cfcase>
-                                    <cfcase value="jsonb">
-                                        <cfset stParams.cfsqltype = 'other' />
-                                        <cfif  !IsSimpleValue(stParams.value)>
-                                            <cfset stParams.value = serializeJSON(stParams.value) />
-                                        </cfif>
-
-                                        <cfif !len(trim(stParams.value))>
-                                            <cfset stParams.value = '' />
-                                            <cfset stParams.null = true />
-                                        </cfif>
-                                    </cfcase>
-                                    <cfcase value="uuid">
-                                        <cfset stParams.cfsqltype = 'other' />
-                                        <cfif !len(trim(data_field))>
-                                            <cfset stParams.value = '' />
-                                            <cfset stParams.null = true />
-                                        </cfif>
-
-                                    </cfcase>
-                                    <cfcase value="int2,int4,int8,smallserial,serial,bigserial,numeric">
-                                        <cfset stParams.cfsqltype = 'numeric' />
-                                    </cfcase>
-
-                                    <cfdefaultcase>
-                                        <cfset stParams.cfsqltype = model_field.type />
-
-                                        <cfif isSimpleValue(stParams.value)>
-                                            <cfset stParams.value = trim(stParams.value) />
-                                        </cfif>
-                                    </cfdefaultcase>
-                                </cfswitch>
-
-
-                                <cfif isNull(data_field)>
-                                    <cfset stParams.value = '' />
-                                    <cfset stParams.null = true />
-                                </cfif>
+                                <cfset stParams = variables.writeMapper.buildQueryParam(model_field, data_field, true) />
 
                                 #data_field_name#=<cfqueryparam attributeCollection="#stParams#" />
                             </cfif>
@@ -842,7 +723,7 @@ Delete - delete
                     <cfloop collection="#stDataFields#" item="data_field" index="data_field_name">
                         <cfif structKeyExists(stModel.fields, data_field_name)>
                             <cfset model_field = stModel.fields[data_field_name] />
-                            <cfif !(model_field.is_system?:false) AND (model_field.type NEQ "many_to_many") AND (model_field.type NEQ "relation")>
+                            <cfif variables.writeMapper.isPersistedColumn(model_field)>
                                 , #data_field_name#
                             </cfif>
                         </cfif>
@@ -871,65 +752,11 @@ Delete - delete
 
                             <cfset model_field = stModel.fields[data_field_name] />
 
-                            <cfif !(model_field.is_system?:false) AND (model_field.type NEQ "many_to_many") AND (model_field.type NEQ "relation")>
+                            <cfif variables.writeMapper.isPersistedColumn(model_field)>
 
                                 ,
 
-                                <cfset stParams = {
-                                                    cfsqltype: 'varchar'
-                                                    , value=data_field
-                                                    , null=false
-                                } />
-
-                                <cfif model_field.is_nullable AND !len(stParams.value)>
-                                    <cfset stParams.null = true />
-                                </cfif>
-
-                                <cfswitch expression="#model_field.type#">
-                                    <cfcase value="timestamptz">
-                                        <cfset stParams.cfsqltype = 'timestamp' />
-                                    </cfcase>
-                                    <cfcase value="date">
-                                        <cfset stParams.cfsqltype = 'date' />
-                                    </cfcase>
-                                    <cfcase value="bool">
-                                        <cfset stParams.cfsqltype = 'boolean' />
-                                    </cfcase>
-                                    <cfcase value="jsonb">
-                                        <cfset stParams.cfsqltype = 'other' />
-                                        <cfif  !IsSimpleValue(stParams.value)>
-                                            <cfset stParams.value = serializeJSON(stParams.value) />
-                                        </cfif>
-
-                                        <cfif !len(trim(stParams.value))>
-                                            <cfset stParams.value = '' />
-                                            <cfset stParams.null = true />
-                                        </cfif>
-                                    </cfcase>
-                                    <cfcase value="uuid">
-                                        <cfset stParams.cfsqltype = 'other' />
-                                        <cfif !len(trim(data_field))>
-                                            <cfset stParams.value = '' />
-                                            <cfset stParams.null = true />
-                                        </cfif>
-
-                                    </cfcase>
-                                    <cfcase value="int2,int4,int8,smallserial,serial,bigserial,numeric">
-                                        <cfset stParams.cfsqltype = 'numeric' />
-                                    </cfcase>
-
-                                    <cfdefaultcase>
-                                        <cfset stParams.cfsqltype = model_field.type />
-                                    </cfdefaultcase>
-                                </cfswitch>
-
-
-                                <cfif isNull(data_field)>
-                                    <cfset stParams.value = '' />
-                                    <cfset stParams.null = true />
-
-                                </cfif>
-                                <!--- <cfdump var="#stParams#" label="stParams for #data_field_name#" expand="true"> --->
+                                <cfset stParams = variables.writeMapper.buildQueryParam(model_field, data_field, false) />
                                 <cfqueryparam attributeCollection="#stParams#" />
                             </cfif>
                         </cfif>
@@ -953,40 +780,11 @@ Delete - delete
         </cfif>
 
         <!--- many_to_many PAYLOADS --->
-        <cfloop collection="#arguments.data#" item="data_field" index="data_field_name">
-            <cfif structKeyExists(stModel.fields, data_field_name)>
-
-                <cfset model_field = stModel.fields[data_field_name] />
-                <cfif (model_field.type?:'') EQ "many_to_many">
-
-
-                    <cfquery name="q" result="sql">
-                        DELETE FROM #model_field.bridgingTableName#
-                        WHERE primary_id = <cfqueryparam cfsqltype="other" value="#result.id#" />;
-
-                        <cfloop array="#data_field#" item="item" index="seq">
-                            <cfif isStruct(item)>
-                                <cfset fk_value = item.id />
-                            <cfelse>
-                                <cfset fk_value = item />
-                            </cfif>
-                            INSERT INTO #model_field.bridgingTableName# (primary_id,foreign_id,sequence) VALUES ('#result.id#', '#fk_value#', #seq#);
-                        </cfloop>
-
-
-                    </cfquery>
-
-                    <cfset arrayAppend(result.sql_statements, sql) />
-
-                </cfif>
-            </cfif>
+        <cfloop array="#variables.relationshipWriter.saveManyToManyFields(stModel, arguments.data, result.id)#" item="sql">
+            <cfset arrayAppend(result.sql_statements, sql) />
         </cfloop>
 
-        <cfif shouldReturnJSON>
-            <cfreturn serializeJSON(result) />
-        </cfif>
-
-        <cfreturn result />
+        <cfreturn variables.returnFormatter.formatCFML(result, arguments.returnFormat) />
 
     </cffunction>
 
@@ -994,18 +792,6 @@ Delete - delete
 
 
     <!--- HELPER FUNCTIONS --->
-
-    <cffunction name="isJSONReturnFormat" access="private" returntype="boolean" output="false" hint="Validates the db returnFormat argument and returns true when JSON should be returned.">
-        <cfargument name="returnFormat" type="string" required="true" />
-
-        <cfset var normalizedReturnFormat = lCase(trim(arguments.returnFormat)) />
-
-        <cfif NOT listFindNoCase("json,cfml", normalizedReturnFormat)>
-            <cfthrow type="moopa.db.invalidReturnFormat" message="Invalid returnFormat '#arguments.returnFormat#'. Use 'json' or 'cfml'." />
-        </cfif>
-
-        <cfreturn normalizedReturnFormat EQ "json" />
-    </cffunction>
 
 
     <cffunction name="formatLabelFromFieldName" access="private">
