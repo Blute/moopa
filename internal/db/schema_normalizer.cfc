@@ -184,6 +184,20 @@
         <cfargument name="codeSchemaOutput" type="struct" required="true">
 
             <cfloop collection="#table.fields#" item="field" index="field_name">
+                <cfset normalizeFieldDefaults(table, field, field_name) />
+                <cfset applyFieldTypeMetadata(table, field, field_name, codeSchemaOutput) />
+                <cfset initializeFieldProjectionModes(field) />
+                <cfset addFieldIndexMetadata(table, field) />
+                <cfset addFieldPrimaryKeyMetadata(table, field) />
+                <cfset addFieldForeignKeyMetadata(table, field) />
+            </cfloop>
+    </cffunction>
+
+    <cffunction name="normalizeFieldDefaults" access="private" returntype="void" output="false" hint="Apply base defaults shared by all field types.">
+        <cfargument name="table" type="struct" required="true">
+        <cfargument name="field" type="struct" required="true">
+        <cfargument name="field_name" type="string" required="true">
+
 
                 <cfset field.name = field_name />
 
@@ -239,6 +253,13 @@
                 <cfif !structKeyExists(field.html, "control") AND len(field.html.type ?: "")>
                     <cfset field.html.control = "control_#replaceNoCase(field.html.type, 'input_', '')#" />
                 </cfif>
+    </cffunction>
+
+    <cffunction name="applyFieldTypeMetadata" access="private" returntype="void" output="false" hint="Apply type-specific field metadata, select expressions, and bridge-table schema.">
+        <cfargument name="table" type="struct" required="true">
+        <cfargument name="field" type="struct" required="true">
+        <cfargument name="field_name" type="string" required="true">
+        <cfargument name="codeSchemaOutput" type="struct" required="true">
 
                 <cfswitch expression="#field.type#">
                     <cfcase value="numeric">
@@ -417,11 +438,20 @@
                         <cfthrow message="Unsupported data type: #field.type#">
                     </cfdefaultcase>
                 </cfswitch>
+    </cffunction>
+
+    <cffunction name="initializeFieldProjectionModes" access="private" returntype="void" output="false" hint="Initialize expanded and condensed projections from the simple projection before relationship enrichment.">
+        <cfargument name="field" type="struct" required="true">
 
 
                 <cfset field.sql_select_expanded = field.sql_select_simple>
                 <cfset field.sql_select_condensed = field.sql_select_simple>
 
+    </cffunction>
+
+    <cffunction name="addFieldIndexMetadata" access="private" returntype="void" output="false" hint="Convert field-level index shorthand into table index metadata.">
+        <cfargument name="table" type="struct" required="true">
+        <cfargument name="field" type="struct" required="true">
 
                 <cfif structKeyExists(field, "index")>
                     <cfset indexName = "idx_#table.table_name#_#field.name#" />
@@ -453,6 +483,11 @@
 
                     <cfset structDelete(field, "index")>
                 </cfif>
+    </cffunction>
+
+    <cffunction name="addFieldPrimaryKeyMetadata" access="private" returntype="void" output="false" hint="Move field-level primary key shorthand into table primary key metadata.">
+        <cfargument name="table" type="struct" required="true">
+        <cfargument name="field" type="struct" required="true">
 
 
                 <cfif (field.primary_key?:false)>
@@ -463,6 +498,11 @@
 
                     <cfset structDelete(field, "primary_key")>
                 </cfif>
+    </cffunction>
+
+    <cffunction name="addFieldForeignKeyMetadata" access="private" returntype="void" output="false" hint="Add table foreign-key metadata for UUID foreign-key fields.">
+        <cfargument name="table" type="struct" required="true">
+        <cfargument name="field" type="struct" required="true">
 
 
                 <cfif field.type EQ "uuid" AND len(field.foreign_key_table?:'') AND len(field.foreign_key_field?:'') >
@@ -480,7 +520,6 @@
 
 
 
-            </cfloop>
     </cffunction>
 
     <cffunction name="addSearchMetadata" access="private" returntype="void" output="false" hint="Collect searchable fields and add search_text generated-column metadata.">
