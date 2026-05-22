@@ -11,6 +11,11 @@
         <cfset variables.returnFormatter = CreateObject("component", "/moopa/internal/db/return_formatter").init() />
         <cfset variables.writeMapper = CreateObject("component", "/moopa/internal/db/write_mapper").init() />
         <cfset variables.relationshipWriter = CreateObject("component", "/moopa/internal/db/relationship_writer").init() />
+        <cfset variables.recordWriter = CreateObject("component", "/moopa/internal/db/record_writer").init(
+            writeMapper = variables.writeMapper,
+            relationshipWriter = variables.relationshipWriter,
+            returnFormatter = variables.returnFormatter
+        ) />
         <cfset variables.schemaNormalizer = CreateObject("component", "/moopa/internal/db/schema_normalizer").init() />
 
 
@@ -625,169 +630,15 @@ Delete - delete
         <cfargument name="returnFormat" type="string" required="false" default="json" />
         <cfargument name="index_record" type="boolean" default=true />
 
-        <cfset var result = {
-            id : (arguments.data.id?:''),
-            sql_statements : []
-        } />
-
         <cfset var stModel = this.codeSchema[arguments.table_name] />
-        <cfset var recordExists = false />
-        <cfset var model_field = {} />
-        <cfset var stParams = {} />
-        <cfset var sql = "" />
 
-        <!--- MAIN PAYLOAD --->
-        <cfset var stDataFields = variables.writeMapper.getWritableFields(stModel, arguments.data) />
-
-        <cfif len(stDataFields.id?:'')>
-
-            <cfif !(data.is_new_record?:false)>
-                <cfset recordExists = true />
-            </cfif>
-<!---
-            <cfquery name="qExists">
-                SELECT id::text
-                FROM #stModel.table_name#
-                WHERE
-                    <cfset bFirst = true />
-                    <cfloop array="#stModel.primary_keys#" item="pk_name" index="i">
-                        <cfif NOT bFirst>AND</cfif><cfset bFirst = false />
-
-                        <cfset stParams = {
-                                                cfsqltype: 'other'
-                                                , value='#stDataFields[pk_name]#'
-                                                , null=false
-                            } />
-                        #pk_name# = <cfqueryparam attributeCollection="#stParams#" />
-                    </cfloop>
-            </cfquery>
-            <cfif qExists.recordCount>
-                <cfset recordExists = true />
-            </cfif> --->
-
-        </cfif>
-
-        <cfif recordExists>
-            <cfquery name="qUpdate" result="sql">
-                UPDATE #stModel.table_name#
-                SET last_updated_at = now(),
-
-                <!--- LAST_UPDATED_BY --->
-                <cfif len(session.auth.profile.id?:'')>
-                    last_updated_by = '#session.auth.profile.id?:''#'
-                <cfelse>
-                    last_updated_by = null
-                </cfif>
-
-                    <cfloop collection="#stDataFields#" item="data_field" index="data_field_name">
-
-
-                            <cfset model_field = stModel.fields[data_field_name] />
-
-                            <cfif variables.writeMapper.isPersistedColumn(model_field)>
-
-                                ,
-
-                                <cfset stParams = variables.writeMapper.buildQueryParam(model_field, data_field, true) />
-
-                                #data_field_name#=<cfqueryparam attributeCollection="#stParams#" />
-                            </cfif>
-                    </cfloop>
-                WHERE
-                    <cfset bFirst = true />
-                    <cfloop array="#stModel.primary_keys#" item="pk_name" index="i">
-                        <cfif NOT bFirst>AND</cfif><cfset bFirst = false />
-
-                        <cfset stParams = {
-                                                cfsqltype: 'other'
-                                                , value='#stDataFields[pk_name]#'
-                                                , null=false
-                            } />
-                        #pk_name# = <cfqueryparam attributeCollection="#stParams#" />
-                    </cfloop>
-                </cfquery>
-
-                <cfset arrayAppend(result.sql_statements, sql) />
-
-        <cfelse>
-
-            <cfif structIsEmpty(arguments.data)>
-                <cfquery name="qCreate" result="sql">
-                INSERT INTO #stModel.table_name# DEFAULT VALUES;
-                </cfquery>
-            <cfelse>
-                <cfquery name="qCreate" result="sql">
-                INSERT INTO #stModel.table_name# (
-
-                    created_by
-
-                    <cfloop collection="#stDataFields#" item="data_field" index="data_field_name">
-                        <cfif structKeyExists(stModel.fields, data_field_name)>
-                            <cfset model_field = stModel.fields[data_field_name] />
-                            <cfif variables.writeMapper.isPersistedColumn(model_field)>
-                                , #data_field_name#
-                            </cfif>
-                        </cfif>
-                    </cfloop>
-
-                    <cfif len(stDataFields.id?:'')>
-                        , id
-                    </cfif>
-
-
-
-                )
-                VALUES (
-
-
-                    <!--- CREATED_BY --->
-                    <cfif len(session.auth.profile.id?:'')>
-                        '#session.auth.profile.id?:''#'
-                    <cfelse>
-                        null
-                    </cfif>
-
-
-                    <cfloop collection="#stDataFields#" item="data_field" index="data_field_name">
-                        <cfif structKeyExists(stModel.fields, data_field_name)>
-
-                            <cfset model_field = stModel.fields[data_field_name] />
-
-                            <cfif variables.writeMapper.isPersistedColumn(model_field)>
-
-                                ,
-
-                                <cfset stParams = variables.writeMapper.buildQueryParam(model_field, data_field, false) />
-                                <cfqueryparam attributeCollection="#stParams#" />
-                            </cfif>
-                        </cfif>
-                    </cfloop>
-
-
-                    <cfif len(stDataFields.id?:'')>
-                        ,
-                        <cfqueryparam cfsqltype="other" value="#stDataFields.id#" />
-                    </cfif>
-
-
-                )
-                </cfquery>
-            </cfif>
-            <!--- Update the currentID with the id of the new record --->
-            <cfset result.id = sql.id />
-
-            <cfset arrayAppend(result.sql_statements, sql) />
-
-        </cfif>
-
-        <!--- many_to_many PAYLOADS --->
-        <cfloop array="#variables.relationshipWriter.saveManyToManyFields(stModel, arguments.data, result.id)#" item="sql">
-            <cfset arrayAppend(result.sql_statements, sql) />
-        </cfloop>
-
-        <cfreturn variables.returnFormatter.formatCFML(result, arguments.returnFormat) />
+        <cfreturn variables.recordWriter.save(
+            stModel = stModel,
+            data = arguments.data,
+            returnFormat = arguments.returnFormat,
+            index_record = arguments.index_record
+        ) />
 
     </cffunction>
-
 
 </cfcomponent>
