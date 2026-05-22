@@ -1,7 +1,24 @@
-<cfcomponent key="2befa9ac-1cc6-483f-bde1-1cca8cc1a818">
+<cfcomponent key="2befa9ac-1cc6-483f-bde1-1cca8cc1a818" open_to="security">
+
+
+    <cffunction name="assertRouteInCurrentApp" access="private" returntype="void" output="false">
+        <cfargument name="route_id" type="string" required="true" />
+
+        <cfquery name="qRouteScope">
+            SELECT id
+            FROM moo_route
+            WHERE id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
+              AND app_name = <cfqueryparam cfsqltype="varchar" value="#application.app_name#" />
+        </cfquery>
+
+        <cfif qRouteScope.recordcount NEQ 1>
+            <cfthrow type="moopa.security.routeWrongApp" message="Route '#arguments.route_id#' does not belong to app '#application.app_name#'." />
+        </cfif>
+    </cffunction>
 
 
     <cffunction name="load">
+        <cfset assertRouteInCurrentApp(arguments.route_id) />
         <cfset stResult = {} />
         <cfset stResult.current_route = application.lib.db.read(table_name='moo_route', id="#arguments.route_id#", field_list="*", returnAsCFML=true) />
         <cfset stResult.route_open_to = application.stAllRoutes[arguments.route_id].open_to />
@@ -106,6 +123,7 @@
     </cffunction>
 
     <cffunction name="toggleProfileAccess">
+        <cfset assertRouteInCurrentApp(arguments.route_id) />
 
         <cfquery name="qCheckExists">
         SELECT *
@@ -139,6 +157,7 @@
     </cffunction>
 
     <cffunction name="toggleRoleAccess">
+        <cfset assertRouteInCurrentApp(arguments.route_id) />
 
         <cfquery name="qCheckExists">
         SELECT *
@@ -182,6 +201,10 @@
 
 
     <cffunction name="save_route">
+        <cfparam name="request.data.id" />
+        <cfset assertRouteInCurrentApp(request.data.id) />
+        <cfset request.data.app_name = application.app_name />
+
         <cfreturn application.lib.db.save(
             table_name = "moo_route",
             data = request.data
@@ -240,7 +263,7 @@
                 </div>
                 <cfif session.auth.is_sysadmin?:false>
                     <button type="button" class="btn btn-sm btn-primary gap-2" @click="edit_route" x-show="!showEditRoute">
-                        <i class="fal fa-pencil"></i>
+                        <i class="fa-solid fa-pen-to-square"></i>
                         Edit Access
                     </button>
                 </cfif>
@@ -271,7 +294,7 @@
                         <div class="card-body p-0">
                             <div class="px-5 pt-5 pb-3 border-b border-base-200">
                                 <h3 class="font-semibold flex items-center gap-2">
-                                    <i class="fal fa-shield-check text-primary"></i>
+                                    <i class="fa-solid fa-check text-primary"></i>
                                     Endpoint Permissions
                                 </h3>
                                 <p class="text-sm text-base-content/60 mt-1">Click to toggle access for profiles and roles</p>
@@ -304,12 +327,12 @@
                                                 <th class="font-semibold text-sm">ALL ACCESS</th>
                                                 <template x-for="profile in current_route.profiles" :key="profile.id">
                                                     <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleProfileAccess(profile.id)">
-                                                        <i class="fas fa-xl" :class="isProfileAccessSet(profile.id) ? 'fa-shield-check text-success' : 'fa-shield-check opacity-20'"></i>
+                                                        <i class="fa-solid text-xl" :class="isProfileAccessSet(profile.id) ? 'fa-check text-success' : 'fa-check opacity-20'"></i>
                                                     </td>
                                                 </template>
                                                 <template x-for="role in current_route.roles" :key="role.id">
                                                     <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleRoleAccess(role.id)">
-                                                        <i class="fas fa-xl" :class="isRoleAccessSet(role.id) ? 'fa-shield-check text-success' : 'fa-shield-check opacity-20'"></i>
+                                                        <i class="fa-solid text-xl" :class="isRoleAccessSet(role.id) ? 'fa-check text-success' : 'fa-check opacity-20'"></i>
                                                     </td>
                                                 </template>
                                             </tr>
@@ -320,20 +343,20 @@
                                                     <template x-for="profile in current_route.profiles" :key="profile.id">
                                                         <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleProfileAccess(profile.id, endpoint.id)">
                                                             <div x-show="isProfileAccessSet(profile.id)">
-                                                                <i class="fat fa-xl fa-shield-check text-success/50"></i>
+                                                                <i class="fa-solid text-xl fa-check text-success/50"></i>
                                                             </div>
                                                             <div x-show="!isProfileAccessSet(profile.id)">
-                                                                <i class="far fa-xl" :class="isProfileAccessSet(profile.id, endpoint.id) ? 'fa-shield-check text-success' : 'fa-shield-check text-error/60'"></i>
+                                                                <i class="fa-solid text-xl" :class="isProfileAccessSet(profile.id, endpoint.id) ? 'fa-check text-success' : 'fa-xmark text-error/60'"></i>
                                                             </div>
                                                         </td>
                                                     </template>
                                                     <template x-for="role in current_route.roles" :key="role.id">
                                                         <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleRoleAccess(role.id, endpoint.id)">
                                                             <div x-show="isRoleAccessSet(role.id)">
-                                                                <i class="fat fa-xl fa-shield-check text-success/50"></i>
+                                                                <i class="fa-solid text-xl fa-check text-success/50"></i>
                                                             </div>
                                                             <div x-show="!isRoleAccessSet(role.id)">
-                                                                <i class="far fa-xl" :class="isRoleAccessSet(role.id, endpoint.id) ? 'fa-shield-check text-success' : 'fa-shield-check text-error/60'"></i>
+                                                                <i class="fa-solid text-xl" :class="isRoleAccessSet(role.id, endpoint.id) ? 'fa-check text-success' : 'fa-xmark text-error/60'"></i>
                                                             </div>
                                                         </td>
                                                     </template>
@@ -346,7 +369,7 @@
 
                             <template x-if="!current_route.profiles?.length && !current_route.roles?.length">
                                 <div class="p-8 text-center text-base-content/50">
-                                    <i class="fal fa-user-shield fa-2x mb-3 block"></i>
+                                    <i class="fa-solid fa-user-shield text-2xl mb-3 block"></i>
                                     <p>No profiles or roles assigned to this route</p>
                                     <p class="text-sm mt-1">Click "Edit Roles & Profiles" to add access</p>
                                 </div>
@@ -360,7 +383,7 @@
                     <div class="card card-border bg-base-100 sticky top-4">
                         <div class="card-body">
                             <h3 class="font-semibold flex items-center gap-2 mb-3">
-                                <i class="fal fa-users text-secondary"></i>
+                                <i class="fa-solid fa-users text-secondary"></i>
                                 Who Has Access
                             </h3>
 
@@ -384,7 +407,7 @@
 
                             <template x-if="who_has_access.length === 0">
                                 <div class="text-center py-4 text-base-content/50">
-                                    <i class="fal fa-user-slash fa-lg mb-2 block"></i>
+                                    <i class="fa-solid fa-user-slash text-lg mb-2 block"></i>
                                     <p class="text-sm">No users have access via roles</p>
                                 </div>
                             </template>
@@ -417,19 +440,18 @@
                         this.showEditRoute = true;
                     },
 
-                    save_route() {
+                    async save_route() {
                         this.loadingState = 'loading';
 
-                        fetchData({
+                        await req({
                             method: 'POST',
                             endpoint: 'save_route',
-                            body: this.route_to_edit,
-                            callback: (data) => {
-                                this.load();
-                                this.loadingState = 'idle';
-                                this.showEditRoute = false;
-                            }
+                            body: this.route_to_edit
                         });
+
+                        await this.load();
+                        this.loadingState = 'idle';
+                        this.showEditRoute = false;
                     },
 
                     // Function to check if a profile has access to an endpoint
@@ -473,59 +495,50 @@
 
                     },
 
-                    toggleProfileAccess(profileId, endpointId) {
+                    async toggleProfileAccess(profileId, endpointId) {
                         // Handle the checkbox click event to set access
                         <cfif session.auth.is_sysadmin?:false>
-                            fetchData({
+                            await req({
                                 method: 'POST',
                                 endpoint: 'toggleProfileAccess',
                                 body: {
-                                    profileId:profileId,
-                                    endpointId:endpointId
-                                },
-                                callback: (data) => {
-                                    this.loadingState = 'idle';
-
-                                    this.load()
-
+                                    profileId: profileId,
+                                    endpointId: endpointId
                                 }
                             });
+
+                            this.loadingState = 'idle';
+                            await this.load();
                         </cfif>
 
                     },
 
-                    toggleRoleAccess(roleId, endpointId) {
+                    async toggleRoleAccess(roleId, endpointId) {
                         // Handle the checkbox click event to set access
 
                         <cfif session.auth.is_sysadmin?:false>
-                            fetchData({
+                            await req({
                                 method: 'POST',
                                 endpoint: 'toggleRoleAccess',
                                 body: {
-                                    roleId:roleId,
-                                    endpointId:endpointId
-                                },
-                                callback: (data) => {
-                                    this.loadingState = 'idle';
-
-                                    this.load()
-
+                                    roleId: roleId,
+                                    endpointId: endpointId
                                 }
                             });
+
+                            this.loadingState = 'idle';
+                            await this.load();
                         </cfif>
                     },
 
                     async load() {
-                        await fetchData({
-                            endpoint: 'load',
-                            callback: (data) => {
-                                this.route_to_edit = {}
-                                this.current_route = data.current_route
-                                this.endpoint_access = data.endpoint_access
-                                this.route_open_to = data.route_open_to
-                                this.who_has_access = data.who_has_access
-                            }
-                        });
+                        const data = await req({ endpoint: 'load' });
+
+                        this.route_to_edit = {};
+                        this.current_route = data.current_route;
+                        this.endpoint_access = data.endpoint_access;
+                        this.route_open_to = data.route_open_to;
+                        this.who_has_access = data.who_has_access;
                     },
 
                     init() {

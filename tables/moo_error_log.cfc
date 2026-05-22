@@ -9,7 +9,7 @@
             "item_label_template": "`${item.name}`",
             "label_generation_expression": "COALESCE(message::text, id::text)",
             "order_by": "created_at desc",
-            "searchable_fields": "message",
+            "searchable_fields": "message,line",
             "fields": {
                 "message": {},
                 "line": {},

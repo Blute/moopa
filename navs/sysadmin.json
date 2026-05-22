@@ -1,39 +1,38 @@
 [
-
-    {
-        "icon": "fal fa-cog",
-        "title": "System",
-        "items": [
-            {
-                "icon": "fal fa-shield-alt",
-                "title": "Roles",
-                "route": "/security/roles"
-            },
-            {
-                "icon": "fal fa-route",
-                "title": "Routes",
-                "route": "/security/routes"
-            },
-            {
-                "icon": "fal fa-user",
-                "title": "Profiles",
-                "route": "/security/profiles"
-            },
-            {
-                "icon": "fal fa-search",
-                "title": "Search Indexing",
-                "route": "/sysadmin/ms"
-            },
-            {
-                "icon": "fal fa-exclamation-triangle",
-                "title": "Error Log",
-                "route": "/moo_error_log"
-            },
-            {
-                "icon": "fal fa-database",
-                "title": "Schema",
-                "route": "/schema"
-            }
-        ]
-    }
+  {
+    "icon": "fa-solid fa-gear",
+    "title": "System",
+    "items": [
+      {
+        "icon": "fa-solid fa-shield-halved",
+        "title": "Roles",
+        "route": "/sysadmin/roles"
+      },
+      {
+        "icon": "fa-solid fa-route",
+        "title": "Routes",
+        "route": "/sysadmin/routes"
+      },
+      {
+        "icon": "fa-solid fa-gear",
+        "title": "App Summary",
+        "route": "/sysadmin/app_summary"
+      },
+      {
+        "icon": "fa-solid fa-user",
+        "title": "Profiles",
+        "route": "/sysadmin/profiles"
+      },
+      {
+        "icon": "fa-solid fa-triangle-exclamation",
+        "title": "Error Log",
+        "route": "/sysadmin/error_log"
+      },
+      {
+        "icon": "fa-solid fa-database",
+        "title": "Schema",
+        "route": "/sysadmin/schema"
+      }
+    ]
+  }
 ]

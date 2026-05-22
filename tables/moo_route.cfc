@@ -6,7 +6,7 @@
         {
             "title": "Route",
             "title_plural": "Routes",
-            "searchable_fields": "url",
+            "searchable_fields": "url,app_name,mapping",
             "fields": {
                 "key": {
                     "type"="uuid",
@@ -17,6 +17,13 @@
                 },
                 "url": {},
                 "mapping": {},
+                "app_name": {
+                    "type": "varchar",
+                    "nullable": false,
+                    "html": {
+                        "type": "text"
+                    }
+                },
                 "is_secure_by_referrer": {"type": "bool", "default": false},
 
 
@@ -42,12 +49,53 @@
                   "foreign_key_field": "route_id"
                 },
                 "screenshot": {}
+            },
+            "indexes": {
+                "idx_moo_route_key_app_name": {
+                    "type": "btree",
+                    "fields": "key,app_name",
+                    "unique": true
+                },
+                "idx_moo_route_app_name_url": {
+                    "type": "btree",
+                    "fields": "app_name,url",
+                    "unique": true
+                }
             }
           }
 
         />
 
         <cfreturn this>
+    </cffunction>
+
+
+    <cffunction name="routeIdentity" access="private" returntype="string" output="false">
+        <cfargument name="key" type="string" required="true" />
+        <cfargument name="app_name" type="string" required="true" />
+
+        <cfif NOT len(trim(arguments.key))>
+            <cfthrow message="Route identity requires a route key." />
+        </cfif>
+        <cfif NOT len(trim(arguments.app_name))>
+            <cfthrow message="Route identity requires an app_name." />
+        </cfif>
+
+        <cfreturn "#lcase(trim(arguments.app_name))#:#lcase(trim(arguments.key))#" />
+    </cffunction>
+
+    <cffunction name="routeUrlIdentity" access="private" returntype="string" output="false">
+        <cfargument name="url" type="string" required="true" />
+        <cfargument name="app_name" type="string" required="true" />
+
+        <cfif NOT len(trim(arguments.url))>
+            <cfthrow message="Route URL identity requires a route URL." />
+        </cfif>
+        <cfif NOT len(trim(arguments.app_name))>
+            <cfthrow message="Route URL identity requires an app_name." />
+        </cfif>
+
+        <cfreturn "#lcase(trim(arguments.app_name))#:#lcase(trim(arguments.url))#" />
     </cffunction>
 
 
@@ -70,24 +118,40 @@
         <!--- ------------------- --->
 
         <cfset stDBRoutes = {} />
+        <cfset stDBRoutesByAppUrl = {} />
+        <cfset stLegacyDBRoutesByKey = {} />
+        <cfset routePersistenceAvailable = true />
 
-        <cfquery name="qDBRoutes">
-        SELECT COALESCE(jsonb_agg(data)::text, '[]') as data
-        FROM (
-                SELECT id::text as id, key::text as key, url, mapping,
-                COALESCE((
-                    SELECT json_agg(json_build_object('id', moo_route_endpoint.id::text, 'name', moo_route_endpoint.name))
-                    FROM moo_route_endpoint
-                    WHERE moo_route_endpoint.route_id = moo_route.id
-                ), '[]') AS endpoints
-                FROM moo_route
-        ) as data
-        </cfquery>
+        <cftry>
+            <cfquery name="qDBRoutes">
+            SELECT COALESCE(jsonb_agg(data)::text, '[]') as data
+            FROM (
+                    SELECT id::text as id, key::text as key, url, mapping, app_name,
+                    COALESCE((
+                        SELECT json_agg(json_build_object('id', moo_route_endpoint.id::text, 'name', moo_route_endpoint.name))
+                        FROM moo_route_endpoint
+                        WHERE moo_route_endpoint.route_id = moo_route.id
+                    ), '[]') AS endpoints
+                    FROM moo_route
+            ) as data
+            </cfquery>
 
-        <cfset aDBRoutes = deserializeJSON(qDBRoutes.data) />
+            <cfset aDBRoutes = deserializeJSON(qDBRoutes.data) />
+            <cfcatch type="database">
+                <!--- First-run/dev fallback: route tables may not exist until /sysadmin/schema has been applied. --->
+                <cfset routePersistenceAvailable = false />
+                <cfset aDBRoutes = [] />
+            </cfcatch>
+        </cftry>
 
         <cfloop array="#aDBRoutes#" item="route">
-            <cfset stDBRoutes[route.key] = route />
+            <cfif len(route.app_name ?: "")>
+                <cfset stDBRoutes[routeIdentity(route.key, route.app_name)] = route />
+                <cfset stDBRoutesByAppUrl[routeUrlIdentity(route.url, route.app_name)] = route />
+            <cfelse>
+                <!--- Legacy rows created before routes were app-scoped. The active app can claim them on re-init. --->
+                <cfset stLegacyDBRoutesByKey[route.key] = route />
+            </cfif>
         </cfloop>
 
 
@@ -97,11 +161,30 @@
         <!--- PROCESS ALL ROUTES --->
         <!--- ------------------ --->
         <cfset processed_route_urls = '' />
+        <cfset routePackages = [] />
 
-        <cfloop list="/project,/plugins/test,/moopa" index="iPackage">
+        <cfif NOT (isDefined("application.moopa_packages") AND isArray(application.moopa_packages))>
+            <cfthrow message="Cannot initialize routes: application.moopa_packages is not initialized." />
+        </cfif>
+
+        <cfloop array="#application.moopa_packages#" item="local.package">
+            <cfset local.packageKind = local.package.kind ?: "" />
+            <cfif listFindNoCase("app,shared", local.packageKind)
+                AND ((local.package.kind ?: "") NEQ "app" OR (local.package.app_name ?: local.package.name) EQ application.app_name)>
+                <cfset arrayAppend(routePackages, local.package) />
+            </cfif>
+        </cfloop>
+
+        <cfloop array="#routePackages#" item="routePackage">
+            <cfset iPackage = routePackage.path />
             <cfset packagePath = expandPath(iPackage) />
             <cfset routePath = "#packagePath#/routes" />
             <cfset componentPath = "#iPackage#/routes" />
+            <cfset routeMount = "" />
+
+            <cfif NOT directoryExists(routePath)>
+                <cfcontinue />
+            </cfif>
 
             <cfdirectory action="list" directory="#routePath#" name="qRoutes" recurse="true" filter="*.cfc">
 
@@ -118,26 +201,26 @@ TODO: need to check if old way works for the following and which has precedence:
                 <cfset stRoute.key = "" /> <!--- set shortly via component metadata --->
                 <cfset stRoute.location = "#qRoutes.directory#/#qRoutes.name#" />
                 <cfset stRoute.path = replaceNoCase(stRoute.location,".cfc",'') />
-                <cfset stRoute.url = replaceNoCase(stRoute.path,"#routePath#",'') />
-                <cfset stRoute.componentPath = "#componentPath##stRoute.url#" />
+                <cfset stRoute.localUrl = replaceNoCase(stRoute.path,"#routePath#",'') />
+                <cfset stRoute.url = reReplace("#routeMount##stRoute.localUrl#", "/+", "/", "all") />
+                <cfset stRoute.componentPath = "#componentPath##stRoute.localUrl#" />
+                <cfset stRoute.app_name = application.app_name />
                 <cfset stRoute.docs = {} />
                 <cfset stRoute.endpoints = {} />
                 <cfset stRoute.md = duplicate(getMetaData(createObject("component", "#stRoute.componentPath#"))) />
                 <cfset stRoute['open_to'] = stRoute.md['open_to']?:'security' /> <!--- public,bearer,logged_in,security --->
-                <cfset stRoute['auth_type'] = stRoute.md['auth_type']?:stRoute.md['auth']?:'moopa' />
 
                 <!--- Need to determine if the route is already defined --->
 
                 <cfif !listFindNoCase(processed_route_urls, stRoute.url)>
                     <cfset processed_route_urls = listAppend(processed_route_urls, stRoute.url) />
                 <cfelse>
-                    <cfcontinue />
+                    <cfthrow message="Duplicate route URL '#stRoute.url#' loaded from #stRoute.componentPath#. Package boundaries require unique routes within an app runtime." />
                 </cfif>
 
                 <cfloop array="#stRoute.md.functions#" item="fn">
                     <cfset stRoute.endpoints[fn.name] = fn />
                     <cfset stRoute.endpoints[fn.name]['open_to'] = stRoute.endpoints[fn.name]['open_to']?:stRoute['open_to'] /> <!--- public,bearer,logged_in,security --->
-                    <cfset stRoute.endpoints[fn.name]['auth_type'] = stRoute.endpoints[fn.name]['auth_type']?:stRoute.endpoints[fn.name]['auth']?:stRoute['auth_type'] />
                 </cfloop>
 
 
@@ -153,16 +236,39 @@ TODO: need to check if old way works for the following and which has precedence:
                 <cfset arrayAppend(aCheckNoDuplicateKeys, stRoute.md.key) />
 
                 <cfset stRoute.key = stRoute.md.key /> <!--- Told you --->
+                <cfset stRoute.identity = routeIdentity(stRoute.key, stRoute.app_name) />
+
+                <cfif routePersistenceAvailable
+                    AND NOT structKeyExists(stDBRoutes, stRoute.identity)
+                    AND structKeyExists(stLegacyDBRoutesByKey, stRoute.key)>
+                    <!--- Claim a pre-app-scoped route row for this app to preserve local permissions during the refactor. --->
+                    <cfset stDBRoutes[stRoute.identity] = stLegacyDBRoutesByKey[stRoute.key] />
+                </cfif>
+
+                <cfset stRoute.urlIdentity = routeUrlIdentity(stRoute.url, stRoute.app_name) />
+                <cfif routePersistenceAvailable
+                    AND NOT structKeyExists(stDBRoutes, stRoute.identity)
+                    AND structKeyExists(stDBRoutesByAppUrl, stRoute.urlIdentity)>
+                    <!--- The conventional source route is the same app URL with a new key. Claim the row by URL so re-inits update cleanly instead of violating idx_moo_route_app_name_url. --->
+                    <cfset stDBRoutes[stRoute.identity] = stDBRoutesByAppUrl[stRoute.urlIdentity] />
+                </cfif>
 
 
                 <!--- ------------------------------------- --->
                 <!--- SELF REGISTER IF NOT ALREADY EXISTING --->
                 <!--- ------------------------------------- --->
-                <cfif !structKeyExists(stDBRoutes, stRoute.key)>
+                <cfif NOT routePersistenceAvailable>
+                    <!--- First-run/dev fallback: keep routes in memory without writing moo_route rows. --->
+                    <cfset stRoute.id = stRoute.key />
+                    <cfloop collection="#stRoute.endpoints#" item="function_name">
+                        <cfset stRoute.endpoints[function_name]['id'] = "#stRoute.key#:#function_name#" />
+                    </cfloop>
+                <cfelseif !structKeyExists(stDBRoutes, stRoute.identity)>
                     <cfset save_moo_route = application.lib.db.save(
                         table_name = "moo_route",
                         data = {
                             key="#stRoute.key#",
+                            app_name="#stRoute.app_name#",
                             url="#stRoute.url#",
                             mapping="#stRoute.componentPath#"
                         },
@@ -194,11 +300,15 @@ TODO: need to check if old way works for the following and which has precedence:
 
                 <cfelse>
                     <!--- JUST IN CASE IT HAS CHANGED OR BEEN RE-USED --->
-                    <cfif stDBRoutes[stRoute.key].url NEQ stRoute.url OR stDBRoutes[stRoute.key].mapping NEQ stRoute.componentPath >
+                    <cfif stDBRoutes[stRoute.identity].url NEQ stRoute.url
+                        OR stDBRoutes[stRoute.identity].mapping NEQ stRoute.componentPath
+                        OR (stDBRoutes[stRoute.identity].app_name ?: "") NEQ stRoute.app_name>
                         <cfset save_moo_route = application.lib.db.save(
                             table_name = "moo_route",
                             data = {
-                                id="#stDBRoutes[stRoute.key].id#",
+                                id="#stDBRoutes[stRoute.identity].id#",
+                                key="#stRoute.key#",
+                                app_name="#stRoute.app_name#",
                                 url="#stRoute.url#",
                                 mapping="#stRoute.componentPath#"
                             },
@@ -207,7 +317,7 @@ TODO: need to check if old way works for the following and which has precedence:
                     </cfif>
 
 
-                    <cfset stRoute.id = stDBRoutes[stRoute.key].id />
+                    <cfset stRoute.id = stDBRoutes[stRoute.identity].id />
 
 
                     <!--- NOW WE CHECK TO MAKE SURE THE ENPOINTS ARE CORRENT. WE COMPARE THE stRoute with the stDBRoute --->
@@ -217,7 +327,7 @@ TODO: need to check if old way works for the following and which has precedence:
                     <cfloop collection="#stRoute.endpoints#" item="function_name">
                         <cfset endpoint_found = false />
                         <cfset endpoint_db_id = "" />
-                        <cfloop array="#stDBRoutes[stRoute.key].endpoints#" item="stEndpoint">
+                        <cfloop array="#stDBRoutes[stRoute.identity].endpoints#" item="stEndpoint">
                             <cfif stEndpoint.name EQ function_name>
                                 <cfset endpoint_found = true />
                                 <cfset endpoint_db_id = stEndpoint.id />
@@ -290,6 +400,20 @@ TODO: need to check if old way works for the following and which has precedence:
 
             </cfloop>
         </cfloop>
+
+        <cfif routePersistenceAvailable>
+            <!---
+                Routes are now app-scoped. Any remaining rows without app_name are
+                stale legacy registry rows that were not claimed by this app's
+                current route files, so they must be removed before app_name can
+                be enforced as NOT NULL.
+            --->
+            <cfquery name="qDeleteLegacyUnscopedRoutes">
+                DELETE FROM moo_route
+                WHERE app_name IS NULL
+                   OR btrim(app_name) = ''
+            </cfquery>
+        </cfif>
 
     </cffunction>
 
@@ -450,26 +574,6 @@ TODO: need to check if old way works for the following and which has precedence:
         <cfreturn response>
     </cffunction>
 
-    <cffunction name="isAuthTypeAllowed" access="private" returntype="boolean" output="false">
-        <cfargument name="required_auth_types" required="true" />
-        <cfargument name="profile_auth_type" required="false" default="" />
-
-        <cfset var normalizedRequiredAuthTypes = trim(arguments.required_auth_types ?: "") />
-        <cfset var normalizedProfileAuthType = lCase(trim(arguments.profile_auth_type ?: "")) />
-
-        <cfif !len(normalizedRequiredAuthTypes)>
-            <cfreturn true />
-        </cfif>
-
-        <cfif !len(normalizedProfileAuthType)>
-            <cfreturn false />
-        </cfif>
-
-        <cfreturn listFindNoCase(normalizedRequiredAuthTypes, normalizedProfileAuthType) GT 0 />
-    </cffunction>
-
-
-
     <cffunction name="checkAccess">
 
         <cfargument name="route_data" />
@@ -495,11 +599,6 @@ TODO: need to check if old way works for the following and which has precedence:
                             arguments.route_data.stRoute.md.open_to ?:
                             'security' />
 
-        <cfset required_auth_types = arguments.route_data.stRoute.endpoints[arguments.endpoint]['auth_type'] ?:
-                                    arguments.route_data.stRoute.md.auth_type ?:
-                                    '' />
-
-
         <!--- Public routes are always accessible --->
         <cfif open_to EQ "public">
             <cfreturn true />
@@ -523,17 +622,16 @@ TODO: need to check if old way works for the following and which has precedence:
         </cfif>
 
 
+        <!--- Profiles are app-scoped. A profile from one app cannot access another app runtime. --->
+        <cfif (session.auth.profile.app_name ?: '') NEQ (application.app_name ?: '')>
+            <cfreturn false />
+        </cfif>
+
+
         <!--- sysadmin bypass --->
         <cfif arguments.sysadmin_has_access AND application.lib.auth.isSysAdmin()>
             <cfreturn true />
         </cfif>
-
-
-        <!--- auth_type restriction --->
-        <cfif !isAuthTypeAllowed(required_auth_types, session.auth.profile.auth_type ?: '')>
-            <cfreturn false />
-        </cfif>
-
 
 
         <!--- Logged in only check --->
@@ -760,8 +858,8 @@ TODO: need to check if old way works for the following and which has precedence:
              }
              </style>
 
-            <div class="security-icon" @click="moo_iframe_modal_open('/security/routes/#request.route_id#')">
-                <i class="fal fa-shield-keyhole"></i>
+            <div class="security-icon" @click="moo_iframe_modal_open('/sysadmin/routes/#request.route_id#')">
+                <i class="fa-solid fa-key"></i>
             </div>
 
 

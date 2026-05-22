@@ -192,6 +192,66 @@
     </cffunction>
 
 
+    <cffunction name="hasMoopaProfileTable" access="public" output="false" returntype="boolean">
+        <cftry>
+            <cfquery name="local.qCheck">
+                SELECT 1 FROM moo_profile LIMIT 1
+            </cfquery>
+            <cfreturn true />
+            <cfcatch type="database">
+                <cfreturn false />
+            </cfcatch>
+        </cftry>
+    </cffunction>
+
+
+    <cffunction name="hasSystemProfile" access="public" output="false" returntype="boolean">
+        <cfargument name="app_name" type="string" required="false" default="hub" />
+
+        <cfif NOT hasMoopaProfileTable()>
+            <cfreturn false />
+        </cfif>
+
+        <cfquery name="local.qProfiles">
+            SELECT count(*) AS profile_count
+            FROM moo_profile
+            WHERE app_name = <cfqueryparam cfsqltype="varchar" value="#arguments.app_name#" />
+            AND can_login = true
+        </cfquery>
+
+        <cfreturn val(local.qProfiles.profile_count) GT 0 />
+    </cffunction>
+
+
+    <cffunction name="requiresHubSetup" access="public" output="false" returntype="boolean">
+        <cfset var sysadminEmails = "" />
+        <cfset var sysadminEmail = "" />
+
+        <cfloop list="#server.system.environment.SYSADMIN_EMAIL ?: ''#" item="sysadminEmail">
+            <cfset sysadminEmail = lCase(trim(sysadminEmail)) />
+            <cfif len(sysadminEmail)>
+                <cfset sysadminEmails = listAppend(sysadminEmails, sysadminEmail) />
+            </cfif>
+        </cfloop>
+
+        <cfif NOT hasMoopaProfileTable()>
+            <cfreturn true />
+        </cfif>
+
+        <cfif NOT len(sysadminEmails)>
+            <cfreturn true />
+        </cfif>
+
+        <cfquery name="local.qProfiles">
+            SELECT count(*) AS profile_count
+            FROM moo_profile
+            WHERE app_name = <cfqueryparam cfsqltype="varchar" value="hub" />
+            AND can_login = true
+            AND lower(email) IN (<cfqueryparam cfsqltype="varchar" value="#sysadminEmails#" list="true" />)
+        </cfquery>
+
+        <cfreturn val(local.qProfiles.profile_count) EQ 0 />
+    </cffunction>
 
 
 
@@ -225,20 +285,21 @@
                 returnAsCFML=true
             ) />
 
-        <!--- Only send email in production environment --->
-        <cfif (server.system.environment.APP_ENVIRONMENT?:'production') EQ 'production'>
-            <cfset email_subject = "JOIN 500 ERROR [#dateFormat(now(),'ddd dd-mmm-yyyy')#]"/>
+        <!--- Only send email in production when an error recipient is configured. --->
+        <cfset local.errorEmailTo = server.system.environment.SYSADMIN_EMAIL ?: "" />
+        <cfif (server.system.environment.APP_ENVIRONMENT?:'production') EQ 'production' AND len(trim(local.errorEmailTo))>
+            <cfset email_subject = "MOOPA 500 ERROR [#dateFormat(now(),'ddd dd-mmm-yyyy')#]"/>
 
             <cfsavecontent variable="email_body">
                 <cfoutput>
                 #error_line# <br>
                 #arguments.exception.message?:''# <br>
-                <a href="#server.system.environment.base_url#/moo_error_log">Error Log</a>
+                <a href="#server.system.environment.base_url#/sysadmin/error_log">Error Log</a>
                 </cfoutput>
             </cfsavecontent>
 
             <cfset result = application.lib.postmark.sendEmail(
-                to="matthew@blute.com.au",
+                to="#local.errorEmailTo#",
                 subject="#email_subject#",
                 htmlBody="#email_body#",
                 tag="500 Error"

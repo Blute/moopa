@@ -54,6 +54,13 @@
                         "type": "switch"
                     }
                 },
+                "app_name": {
+                    "type": "varchar",
+                    "searchable": true,
+                    "html": {
+                        "type": "text"
+                    }
+                },
                 "dob":
                 {
                     "label": "Date Of Birth",
@@ -112,30 +119,7 @@
                     "type": "many_to_many",
                     "foreign_key_table": "moo_role"
                 },
-                "auth_type":
-                {
-                    "type": "varchar",
-                    "default": "'moopa'",
-                    "html": {
-                        "type": "text"
-                    }
-                },
-                "external_auth_id": {
-                    "label": "External Auth ID",
-                    "type": "varchar",
-                    "unique": true,
-                    "searchable": true,
-                    "html": {
-                        "placeholder": "user_2abc123..."
-                    }
-                },
-                "external_auth_payload": {
-                    "label": "External Auth Payload",
-                    "type": "jsonb",
-                    "html": {
-                        "hidden": true
-                    }
-                },
+
                 "last_login_at": {
                     "type": "timestamptz",
                     "nullable": true,
@@ -147,10 +131,9 @@
 
             ],
             indexes: [
-                "idx_moo_profile_external_auth_id": {
+                "idx_moo_profile_app_name": {
                     "type": "btree",
-                    "fields": "external_auth_id",
-                    "unique": true
+                    "fields": "app_name"
                 }
             ]
         ]
@@ -167,6 +150,7 @@
         <cfargument name="stay_logged_in" default=true /> <!--- If true, the user will be logged in for 30 days. Default is true. --->
         <cfargument name="user_directory" default="" />
         <cfargument name="authentication_service_user" default="" />
+        <cfargument name="is_sysadmin" type="boolean" default=false />
 
 
         <cfif !len(arguments.profile_id)>
@@ -181,7 +165,7 @@
             <cfset profile_to_login = application.lib.db.read(
                 table_name = "moo_profile",
                 id = arguments.profile_id,
-                field_list = "id,full_name,email,mobile,auth_type,profile_avatar_id,profile_picture_id,can_login,roles",
+                field_list = "id,full_name,email,mobile,app_name,profile_avatar_id,profile_picture_id,can_login,roles",
                 returnAsCFML=true
             ) />
 
@@ -239,7 +223,21 @@
             <!--- Convert the array of role IDs to a comma-separated list --->
             <cfset session.auth.role_id_list = ArrayToList(session.auth.role_id_array)>
 
-            <cfif len(session.auth.profile.email?:'') AND listFindNoCase(server.system.environment.SYSADMIN_email?:'', session.auth.profile.email)>
+            <cfset var sysadmin_email_list = "" />
+            <cfset var sysadmin_email = "" />
+            <cfloop list="#server.system.environment.SYSADMIN_EMAIL ?: ''#" item="sysadmin_email">
+                <cfset sysadmin_email = lCase(trim(sysadmin_email)) />
+                <cfif len(sysadmin_email)>
+                    <cfset sysadmin_email_list = listAppend(sysadmin_email_list, sysadmin_email) />
+                </cfif>
+            </cfloop>
+
+            <cfset var profile_email = lCase(trim(session.auth.profile.email ?: "")) />
+            <cfset var is_hub_profile = lCase(trim(session.auth.profile.app_name ?: "")) EQ "hub" />
+            <cfset var has_configured_sysadmin_email = len(profile_email) AND (listFindNoCase(sysadmin_email_list, profile_email) GT 0) />
+            <cfset var has_trusted_sysadmin_login = arguments.is_sysadmin />
+
+            <cfif is_hub_profile AND (has_trusted_sysadmin_login OR has_configured_sysadmin_email)>
                 <cfset session.auth.is_sysadmin = true />
             </cfif>
 

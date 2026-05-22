@@ -1,4 +1,4 @@
-<cfcomponent key="8659f978-4823-4f1f-bf23-3f9c864b503f">
+<cfcomponent key="8659f978-4823-4f1f-bf23-3f9c864b503f" open_to="security">
 
     <cffunction name="read">
       <cfreturn application.lib.db.read(table_name='moo_route', id=id, field_list="*", returnAsCFML=true)/>
@@ -8,10 +8,11 @@
       <cfquery name="q">
       SELECT COALESCE(jsonb_agg(data)::text, '[]') as data
       FROM (
-          SELECT #application.lib.db.select(table_name="moo_route", field_list="id,key,url,mapping")#,
+          SELECT #application.lib.db.select(table_name="moo_route", field_list="id,key,url,mapping,app_name")#,
                  (SELECT count(*) FROM moo_route_roles WHERE primary_id = moo_route.id) AS role_count,
                  (SELECT count(*) FROM moo_route_profiles WHERE primary_id = moo_route.id) AS profile_count
           FROM moo_route
+          WHERE app_name = <cfqueryparam cfsqltype="varchar" value="#application.app_name#" />
           ORDER BY url
       ) as data
       </cfquery>
@@ -39,120 +40,97 @@
     </cffunction>
 
     <cffunction name="get">
-      <cf_layout_default content_class="w-full max-w-7xl mx-auto">
+      <cf_layout_default>
 
-        <div x-data="routes_tree" x-cloak class="flex flex-col gap-4">
+        <div x-data="routes_tree" x-cloak class="flex flex-col gap-4 lg:gap-5">
           <!-- Header -->
-          <div class="flex flex-col lg:flex-row lg:items-center gap-2">
-            <div>
-              <h1 class="m-0 text-2xl font-semibold">Routes</h1>
-              <p class="text-base-content/60 text-sm">Manage security across all application routes with a clear, navigable tree.</p>
-            </div>
-          </div>
-
-          <!-- Main Content -->
-          <div class="flex flex-col md:flex-row md:items-start gap-4">
-            <!-- Filters Card -->
-            <div class="w-full md:w-80 shrink-0">
-              <div class="card card-border bg-base-100">
-                <!-- Filter Header -->
-                <div class="px-5 py-4 border-b border-base-200">
-                  <h3 class="text-lg font-semibold">Filters</h3>
-                  <p class="text-sm text-base-content/60 mt-1">
-                    <span class="font-semibold text-base-content" x-text="stats.total"></span>
-                    <span x-text="stats.total === 1 ? 'route found' : 'routes found'"></span>
-                  </p>
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+              <div class="flex items-center gap-3">
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
+                  <i class="fa-solid fa-route text-base"></i>
                 </div>
-
-                <!-- Filter Content -->
-                <div class="px-5 py-4 space-y-4">
-                  <!-- Search -->
-                  <div>
-                    <label class="block text-sm font-medium mb-2">Search</label>
-                    <label class="input input-bordered w-full">
-                      <i class="fal fa-search text-base-content/50"></i>
-                      <input type="text" class="grow" placeholder="Search routes..." x-model.debounce="filters.q">
-                      <button
-                        x-show="filters.q"
-                        x-transition
-                        @click="filters.q = ''"
-                        class="text-base-content/40 hover:text-base-content/70"
-                      >
-                        <i class="fal fa-times"></i>
-                      </button>
-                    </label>
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                    <h1 class="text-[1.625rem] font-semibold leading-none tracking-[-0.03em]">Routes</h1>
+                    <span class="text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-base-content/42" x-text="routeSummary()"></span>
                   </div>
-                </div>
-
-                <!-- Filter Footer -->
-                <div class="px-5 py-4 border-t border-base-200 bg-base-200/30 rounded-b-2xl">
-                  <button class="btn btn-outline btn-block" @click="reset_filters()" title="Reset filters">
-                    <i class="fal fa-refresh"></i>
-                    Reset Filters
-                  </button>
+                  <p class="mt-1 max-w-[58ch] text-sm leading-5 text-base-content/62">Manage security for this app's routes and shared routes with a clear, navigable tree.</p>
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- Routes Tree Card -->
-            <div class="flex-1 min-w-0">
-              <div class="card card-border bg-base-100">
-                <!-- Header Row -->
-                <div class="border-b border-base-200 px-3 py-2.5">
-                  <div class="grid items-center gap-2 text-sm font-semibold text-base-content/70" style="grid-template-columns: 1fr 80px 80px 100px;">
-                    <div class="flex items-center gap-2">
-                      <span>Route</span>
-                      <button class="btn btn-ghost btn-xs" @click="toggle_all()">
-                        <i class="fal" :class="is_all_expanded() ? 'fa-compress-alt' : 'fa-expand-alt'"></i>
-                        <span x-text="is_all_expanded() ? 'Collapse' : 'Expand'"></span>
-                      </button>
-                    </div>
-                    <div class="text-end">Roles</div>
-                    <div class="text-end">People</div>
-                    <div class="text-end">Actions</div>
-                  </div>
+          <!-- Routes Tree Card -->
+          <div class="min-w-0 overflow-hidden rounded-lg border border-base-300 bg-base-100 md:flex md:max-h-[calc(100vh-9rem)] md:flex-col">
+            <!-- Toolbar -->
+            <div class="border-b border-base-300 px-4 py-3">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                  <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80">
+                    <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
+                    <input type="search" aria-label="Search routes" placeholder="Search routes" x-model.debounce="filters.q">
+                  </label>
+                  <button type="button" class="btn btn-ghost btn-sm justify-start" @click="reset_filters()" :disabled="!hasActiveFilters()">
+                    Reset
+                  </button>
                 </div>
+                <button class="btn btn-ghost btn-sm gap-2" @click="toggle_all()" :disabled="stats.total === 0">
+                  <i class="fa-solid" :class="is_all_expanded() ? 'fa-compress' : 'fa-expand'"></i>
+                  <span x-text="is_all_expanded() ? 'Collapse all' : 'Expand all'"></span>
+                </button>
+              </div>
+            </div>
 
-                <!-- Loading State -->
-                <template x-if="loading">
-                  <div class="p-6 text-center text-base-content/60">
-                    <span class="loading loading-spinner loading-md"></span>
-                    <p class="mt-2">Loading routes…</p>
-                  </div>
-                </template>
+            <!-- Header Row -->
+            <div class="border-b border-base-300 px-4 py-2.5">
+              <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-[0.8125rem] font-medium text-base-content/58 lg:grid-cols-[minmax(0,1fr)_5rem_5rem_6.25rem]">
+                <div>Route structure</div>
+                <div class="hidden text-end lg:block">Roles</div>
+                <div class="hidden text-end lg:block">People</div>
+                <div class="text-end">Actions</div>
+              </div>
+            </div>
 
-                <!-- Routes List -->
-                <ul class="divide-y divide-base-200">
+            <!-- Loading State -->
+            <template x-if="loading">
+              <div class="p-6 text-center text-base-content/60">
+                <span class="loading loading-spinner loading-md"></span>
+                <p class="mt-2">Loading routes…</p>
+              </div>
+            </template>
+
+            <div class="overflow-visible md:min-h-0 md:flex-1 md:overflow-auto">
+            <!-- Routes List -->
+            <ul class="divide-y divide-base-300">
                   <template x-for="row in flat_tree()" :key="row.node.id">
-                    <li class="hover:bg-base-200/50 transition-colors">
-                      <div class="grid items-center gap-2 px-3 py-2" style="grid-template-columns: 1fr 80px 80px 100px;">
+                    <li class="transition-colors hover:bg-base-200/35">
+                      <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 lg:grid-cols-[minmax(0,1fr)_5rem_5rem_6.25rem]" :class="row.node.route ? 'bg-base-100' : 'bg-base-200/20'">
                         <!-- Route Name & Path -->
-                        <div class="flex items-center min-w-0" :style="`padding-left: ${row.depth * 24}px`">
-                          <template x-if="row.node.children.length">
-                            <button class="btn btn-ghost btn-xs btn-square" @click="toggle(row.node.id)">
-                              <i class="fal" :class="is_expanded(row.node.id) ? 'fa-angle-down' : 'fa-angle-right'"></i>
-                            </button>
-                          </template>
-                          <template x-if="!row.node.children.length">
-                            <span class="w-6 text-center text-base-content/40"><i class="fal fa-file"></i></span>
-                          </template>
-                          <template x-if="row.node.children.length">
-                            <span class="ms-1 text-base-content/60"><i class="fal" :class="is_expanded(row.node.id) ? 'fa-folder-open' : 'fa-folder'"></i></span></span>
-                          </template>
-                          <span class="ms-2 font-medium truncate" x-text="row.node.name"></span>
-                          <span class="ms-2 text-xs text-base-content/50 font-mono truncate cursor-pointer hover:text-primary"
-                                :title="'Click to copy: ' + (row.node.route?.url || '')"
-                                @click.stop="copy_url(row.node.route?.url)"
-                                x-text="row.node.route?.url"></span>
+                        <div class="flex min-w-0 items-center" :style="`padding-left: ${row.depth * 18}px`">
+                          <button x-show="row.node.children.length" type="button" class="btn btn-ghost btn-xs btn-square shrink-0 text-base-content/55" @click="toggle(row.node.id)" :aria-label="`${is_expanded(row.node.id) ? 'Collapse' : 'Expand'} ${row.node.name}`">
+                            <i class="fa-solid" :class="is_expanded(row.node.id) ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+                          </button>
+                          <span x-show="!row.node.children.length" class="w-6 shrink-0"></span>
+                          <span class="mx-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-field border border-base-300 bg-base-100 text-base-content/55" :class="row.node.route ? 'text-base-content/45' : 'text-primary'">
+                            <i class="fa-solid text-sm" :class="row.node.route ? 'fa-file' : (is_expanded(row.node.id) ? 'fa-folder-open' : 'fa-folder')"></i>
+                          </span>
+                          <div class="min-w-0">
+                            <div class="flex min-w-0 items-center gap-2">
+                              <span class="truncate font-medium tracking-[-0.01em]" :class="row.node.route ? 'text-base-content' : 'text-base-content/82'" x-text="route_label(row.node)"></span>
+                              <span x-show="row.node.route && is_shared_route(row.node.route)" class="badge badge-neutral badge-xs hidden uppercase tracking-[0.08em] sm:inline-flex">Shared</span>
+                            </div>
+                            <button x-show="row.node.route" type="button" class="block max-w-full truncate pt-0.5 text-left font-mono text-xs text-base-content/50 hover:text-primary focus:outline-primary/55 focus:outline-offset-2" :title="'Copy ' + (row.node.route?.url || '')" @click.stop="copy_url(row.node.route?.url)" x-text="row.node.route?.url"></button>
+                          </div>
                         </div>
                         <!-- Roles Count -->
-                        <div class="flex items-center justify-end">
+                        <div class="hidden items-center justify-end lg:flex">
                           <template x-if="row.node.route">
                             <span class="badge badge-sm badge-ghost" :title="'Roles'" x-text="row.node.route.role_count||0"></span>
                           </template>
                         </div>
                         <!-- Profiles Count -->
-                        <div class="flex items-center justify-end">
+                        <div class="hidden items-center justify-end lg:flex">
                           <template x-if="row.node.route">
                             <span class="badge badge-sm badge-soft badge-info" :title="'Profiles'" x-text="row.node.route.profile_count||0"></span>
                           </template>
@@ -160,17 +138,35 @@
                         <!-- Actions -->
                         <div class="flex items-center justify-end">
                           <template x-if="row.node.route">
-                            <button class="btn btn-primary btn-soft btn-sm" @click="open_secure(row.node.route)">
-                              <i class="fal fa-shield"></i>
-                              Manage
+                            <button class="btn btn-ghost btn-sm gap-2" @click="open_secure(row.node.route)">
+                              <i class="fa-solid fa-shield-halved text-primary"></i>
+                              <span class="hidden sm:inline">Manage</span>
                             </button>
                           </template>
                         </div>
                       </div>
                     </li>
                   </template>
-                </ul>
+            </ul>
+
+            <template x-if="!loading && flat_tree().length === 0">
+              <div class="px-6 py-12 text-center">
+                <div class="mx-auto flex max-w-md flex-col items-center gap-3 text-base-content/65">
+                  <i class="fa-solid fa-route text-3xl text-base-content/35"></i>
+                  <div>
+                    <p class="font-medium text-base-content">No routes match these filters.</p>
+                    <p class="mt-1 text-sm">Clear filters or search for a different route.</p>
+                  </div>
+                  <button type="button" class="btn btn-sm" @click="reset_filters()">Reset filters</button>
+                </div>
               </div>
+            </template>
+
+            </div>
+
+            <div class="flex flex-col gap-2 border-t border-base-300 bg-base-100/95 px-4 py-1.5 text-[0.6875rem] leading-5 text-base-content/50 sm:flex-row sm:items-center sm:justify-between" x-show="!loading && stats.total > 0">
+              <span><strong class="font-semibold text-base-content" x-text="stats.with_roles"></strong> roles · <strong class="font-semibold text-base-content" x-text="stats.people_total"></strong> people</span>
+              <span><strong class="font-semibold text-base-content" x-text="flat_tree().length"></strong> of <strong class="font-semibold text-base-content" x-text="stats.total"></strong></span>
             </div>
           </div>
 
@@ -179,12 +175,12 @@
             <div class="modal-box max-w-6xl w-11/12 h-[85vh] p-0 flex flex-col">
               <div class="flex items-center justify-between px-5 py-3 border-b border-base-200 bg-base-200/30">
                 <h3 class="font-semibold text-lg flex items-center gap-2">
-                  <i class="fal fa-shield-check text-primary"></i>
+                  <i class="fa-solid fa-check text-primary"></i>
                   Route Security
                 </h3>
                 <form method="dialog">
                   <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close">
-                    <i class="fal fa-times"></i>
+                    <i class="fa-solid fa-xmark"></i>
                   </button>
                 </form>
               </div>
@@ -232,6 +228,15 @@
                   const people_total = this.routes.reduce((a, r) => a + (r.profile_count||0), 0);
                   this.stats = { total, with_roles, people_total };
                 },
+                hasActiveFilters() {
+                  return Object.values(this.filters || {}).some(value => `${value || ''}`.trim().length);
+                },
+                routeSummary() {
+                  const total = this.stats.total || 0;
+                  if (!total) return 'No routes';
+                  if (total === 1) return '1 route';
+                  return `${total} routes`;
+                },
                 build_tree(routes) {
                   const root = [];
                   const path_map = new Map();
@@ -269,6 +274,13 @@
                   return sort_nodes(root);
                 },
                 is_expanded(path) { return this.expanded_paths.has(path) },
+                route_label(node) {
+                  if (node.route && node.name === 'index') return 'Index route';
+                  return node.name;
+                },
+                is_shared_route(route) {
+                  return (route?.mapping || '').startsWith('/shared/routes/');
+                },
                 toggle(path) {
                   if (this.expanded_paths.has(path)) this.expanded_paths.delete(path); else this.expanded_paths.add(path);
                 },
@@ -297,7 +309,8 @@
                   const q = (this.filters.q || '').toLowerCase();
                   const matches = (node) => {
                     if (!q) return true;
-                    const self_match = node.name.toLowerCase().includes(q) || (node.route?.url || '').toLowerCase().includes(q);
+                    const route_search = [node.route?.url, node.route?.app_name, node.route?.mapping].filter(Boolean).join(' ').toLowerCase();
+                    const self_match = node.name.toLowerCase().includes(q) || route_search.includes(q);
                     if (self_match) return true;
                     return node.children.some(matches);
                   };
@@ -328,7 +341,7 @@
                 },
                 open_secure(route) {
                   if (!route?.id) return;
-                  this.security_iframe_src = `/security/routes/${route.id}`;
+                  this.security_iframe_src = `/sysadmin/routes/${route.id}`;
                   this.$refs.securityModal.showModal();
                 }
               }));

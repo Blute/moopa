@@ -17,11 +17,22 @@
         <cfset this.normalizeIndexPattern = "::[a-zA-Z0-9_]*|[()']| |\r?\n" />
 
 
-        <!--- Merge the results --->
-        <cfset structAppend(this.codeSchema, processDirectory('/moopa'))>
-        <cfset structAppend(this.codeSchema, processDirectory('/project'))>
+        <!--- Merge table definitions from conventional packages. --->
+        <cfif NOT (isDefined("application.moopa_packages") AND isArray(application.moopa_packages))>
+            <cfthrow message="Cannot initialize db library: application.moopa_packages is not initialized." />
+        </cfif>
 
-
+        <cfloop array="#application.moopa_packages#" item="local.package">
+            <cfif directoryExists(expandPath("#local.package.path#/tables"))>
+                <cfset local.packageSchema = processDirectory(local.package.path) />
+                <cfloop collection="#local.packageSchema#" item="local.tableName">
+                    <!--- Later conventional packages override earlier table definitions.
+                          This lets shared project tables intentionally replace Moopa core
+                          tables such as moo_profile while keeping convention over configuration. --->
+                    <cfset this.codeSchema[local.tableName] = local.packageSchema[local.tableName] />
+                </cfloop>
+            </cfif>
+        </cfloop>
 
 
         <cfset this.codeSchema = sanitizeCodeSchema(this.codeSchema)>
@@ -1195,6 +1206,15 @@ Delete - delete
                     <cfset field.html = { }>
                 </cfif>
 
+                <!--- Explicit UI metadata must win over schema-derived control defaults.
+                      Legacy and project table definitions commonly use html.type="file",
+                      "email", "tel", etc. If we eagerly default uuid FK fields to combobox,
+                      file fields such as moo_profile.profile_picture_id render as searchable
+                      foreign-key dropdowns and call endpoints that do not exist. --->
+                <cfif !structKeyExists(field.html, "control") AND len(field.html.type ?: "")>
+                    <cfset field.html.control = "control_#replaceNoCase(field.html.type, 'input_', '')#" />
+                </cfif>
+
                 <cfswitch expression="#field.type#">
                     <cfcase value="numeric">
                         <cfset field.html.control = (field.html.control?:'control_number') />
@@ -1253,7 +1273,7 @@ Delete - delete
 
                     <cfcase value="timestamptz">
                         <cfset field.cfsqltype = "timestamp" />
-                        <cfset field.html.control = (field.html.control?:'control_datetime_local') />
+                        <cfset field.html.control = (field.html.control?:'control_datetime') />
                     </cfcase>
 
                     <cfcase value="text">
@@ -1268,7 +1288,7 @@ Delete - delete
 
                     <cfcase value="bool,boolean">
                         <cfset field.cfsqltype = "boolean" />
-                        <cfset field.html.control = (field.html.control?:'control_text') />
+                        <cfset field.html.control = (field.html.control?:'control_switch') />
                     </cfcase>
 
                     <cfcase value="geometry">
@@ -1440,17 +1460,40 @@ Delete - delete
 
 
             <!--- Collect searchable fields for pg_trgm trigram search --->
-            <!--- searchable can be: true, or any truthy value --->
-            <!--- JSONB fields are tracked but skipped when building the search_text column --->
-            <!--- Clear any pre-existing searchable_fields to rebuild from field definitions --->
+            <!--- Table-level searchable_fields is the preferred API; field.searchable remains supported. --->
+            <!--- JSONB fields are tracked but skipped when building the search_text column. --->
+            <cfset declared_searchable_fields = table.searchable_fields ?: "" />
             <cfset table.searchable_fields = "" />
             <cfset searchable_field_configs = {} />
+
+            <cfloop list="#declared_searchable_fields#" item="searchable_field_name">
+                <cfset searchable_field_name = trim(searchable_field_name) />
+                <cfif len(searchable_field_name)>
+                    <cfif NOT structKeyExists(table.fields, searchable_field_name)>
+                        <cfthrow message="Table #table.table_name# searchable_fields references unknown field: #searchable_field_name#" />
+                    </cfif>
+                    <cfif NOT listFindNoCase(table.searchable_fields, searchable_field_name)>
+                        <cfset table.searchable_fields = listAppend(table.searchable_fields, searchable_field_name) />
+                        <cfset searchable_field_configs[searchable_field_name] = { "field_type": table.fields[searchable_field_name].type } />
+                    </cfif>
+                </cfif>
+            </cfloop>
+
             <cfloop collection="#table.fields#" item="field" index="field_name">
-                <cfif structKeyExists(field, "searchable") AND field.searchable NEQ false>
-                    <cfif isSimpleValue(field.searchable) AND len(field.searchable)>
-                        <cfset table.searchable_fields = listAppend(table.searchable_fields, field_name) />
-                        <cfset searchable_field_configs[field_name] = { "field_type": field.type } />
+                <cfif structKeyExists(field, "searchable")>
+                    <cfset include_searchable_field = false />
+
+                    <cfif isBoolean(field.searchable)>
+                        <cfset include_searchable_field = field.searchable />
+                    <cfelseif isSimpleValue(field.searchable)>
+                        <cfset include_searchable_field = len(trim(field.searchable)) GT 0 />
                     <cfelseif isStruct(field.searchable)>
+                        <cfset include_searchable_field = true />
+                    <cfelse>
+                        <cfthrow message="Table #table.table_name# field #field_name# has unsupported searchable metadata." />
+                    </cfif>
+
+                    <cfif include_searchable_field AND NOT listFindNoCase(table.searchable_fields, field_name)>
                         <cfset table.searchable_fields = listAppend(table.searchable_fields, field_name) />
                         <cfset searchable_field_configs[field_name] = { "field_type": field.type } />
                     </cfif>

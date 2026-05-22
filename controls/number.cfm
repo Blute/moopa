@@ -22,34 +22,6 @@
                 <cfif len(attributes.id)>id="#attributes.id#"</cfif>
             >
         </div>
-
-        <cf_once id="control_number_script" position="body">
-            <script defer>
-                document.addEventListener("alpine:init", () => {
-                    Alpine.data("control_number", () => ({
-                        value: 0,
-
-                        formatValue() {
-                            if (this.value === null || this.value === undefined || this.value === '') return '';
-                            return new Intl.NumberFormat('en-US', {
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 6
-                            }).format(this.value);
-                        },
-
-                        changeValue(inputValue) {
-                            if (!inputValue) {
-                                this.value = 0;
-                                return;
-                            }
-                            const sanitized = inputValue.replace(/[^0-9.\-]/g, '');
-                            const parsed = parseFloat(sanitized);
-                            this.value = isNaN(parsed) ? 0 : Math.round(parsed * 10000) / 10000;
-                        }
-                    }));
-                });
-            </script>
-        </cf_once>
     </cfoutput>
 
 <cfelseif thisTag.executionMode EQ "end">
