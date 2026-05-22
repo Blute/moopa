@@ -816,6 +816,162 @@ TODO: need to check if old way works for the following and which has precedence:
 
 
 
+    <cffunction name="getConfiguredSysadminEmailList" access="private" returntype="string" output="false">
+        <cfset var emails = "" />
+        <cfset var email = "" />
+        <cfloop list="#server.system.environment.SYSADMIN_EMAIL ?: ''#" item="email">
+            <cfset email = lCase(trim(email)) />
+            <cfif len(email)>
+                <cfset emails = listAppend(emails, email) />
+            </cfif>
+        </cfloop>
+        <cfif NOT len(emails)>
+            <cfreturn "__moopa_no_configured_sysadmin_email__" />
+        </cfif>
+        <cfreturn emails />
+    </cffunction>
+
+
+    <cffunction name="getEffectiveAccessors" access="public" returntype="struct" output="false">
+        <cfargument name="route" type="string" required="false" default="" />
+        <cfargument name="endpoint" type="string" required="false" default="" />
+        <cfargument name="route_id" type="string" required="false" default="" />
+        <cfargument name="endpoint_id" type="string" required="false" default="" />
+
+        <cfset var resolvedRouteId = arguments.route_id />
+        <cfset var resolvedEndpointId = arguments.endpoint_id />
+        <cfset var routeData = {} />
+        <cfset var result = {} />
+
+        <cfif len(arguments.route)>
+            <cfset routeData = parseRoute(arguments.route) />
+            <cfif structIsEmpty(routeData.stRoute ?: {})>
+                <cfthrow type="moopa.route.notFound" message="Route '#arguments.route#' was not found." />
+            </cfif>
+            <cfset resolvedRouteId = routeData.stRoute.id />
+            <cfif len(arguments.endpoint)>
+                <cfif NOT structKeyExists(routeData.stRoute.endpoints, arguments.endpoint)>
+                    <cfthrow type="moopa.route.endpointNotFound" message="Endpoint '#arguments.endpoint#' was not found for route '#arguments.route#'." />
+                </cfif>
+                <cfset resolvedEndpointId = routeData.stRoute.endpoints[arguments.endpoint].id />
+            </cfif>
+        </cfif>
+
+        <cfif NOT len(resolvedRouteId)>
+            <cfthrow type="moopa.route.missingRoute" message="A route or route_id is required." />
+        </cfif>
+
+        <cfquery name="qRoute" returntype="array">
+            SELECT id::text, url, app_name
+            FROM moo_route
+            WHERE id = <cfqueryparam cfsqltype="other" value="#resolvedRouteId#" />
+        </cfquery>
+        <cfif NOT arrayLen(qRoute)>
+            <cfthrow type="moopa.route.notFound" message="Route '#resolvedRouteId#' was not found." />
+        </cfif>
+
+        <cfquery name="qEndpoint" returntype="array">
+            SELECT id::text, name
+            FROM moo_route_endpoint
+            WHERE route_id = <cfqueryparam cfsqltype="other" value="#resolvedRouteId#" />
+            <cfif len(resolvedEndpointId)>
+                AND id = <cfqueryparam cfsqltype="other" value="#resolvedEndpointId#" />
+            <cfelseif len(arguments.endpoint)>
+                AND name = <cfqueryparam cfsqltype="varchar" value="#arguments.endpoint#" />
+            <cfelse>
+                AND 1 = 0
+            </cfif>
+            LIMIT 1
+        </cfquery>
+
+        <cfif len(arguments.endpoint) AND NOT arrayLen(qEndpoint)>
+            <cfthrow type="moopa.route.endpointNotFound" message="Endpoint '#arguments.endpoint#' was not found." />
+        </cfif>
+        <cfif arrayLen(qEndpoint) AND NOT len(resolvedEndpointId)>
+            <cfset resolvedEndpointId = qEndpoint[1].id />
+        </cfif>
+
+        <cfquery name="qAccess">
+            WITH direct_profiles AS (
+                SELECT DISTINCT p.id, p.full_name, p.email, p.app_name, p.can_login
+                FROM moo_route_permission rp
+                INNER JOIN moo_profile p ON p.id = rp.profile_id
+                WHERE rp.route_id = <cfqueryparam cfsqltype="other" value="#resolvedRouteId#" />
+                  AND rp.is_granted = true
+                  AND p.can_login = true
+                  AND p.app_name = 'hub'
+                  <cfif len(resolvedEndpointId)>
+                    AND (rp.endpoint_id = <cfqueryparam cfsqltype="other" value="#resolvedEndpointId#" /> OR rp.endpoint_id IS NULL)
+                  <cfelse>
+                    AND rp.endpoint_id IS NULL
+                  </cfif>
+                  AND p.id IN (
+                    SELECT foreign_id FROM moo_route_profiles WHERE primary_id = <cfqueryparam cfsqltype="other" value="#resolvedRouteId#" />
+                  )
+            ), role_profiles AS (
+                SELECT DISTINCT r.id AS role_id, r.name AS role_name, p.id, p.full_name, p.email, p.app_name, p.can_login
+                FROM moo_route_permission rp
+                INNER JOIN moo_role r ON r.id = rp.role_id
+                INNER JOIN moo_profile_roles pr ON pr.foreign_id = r.id
+                INNER JOIN moo_profile p ON p.id = pr.primary_id
+                WHERE rp.route_id = <cfqueryparam cfsqltype="other" value="#resolvedRouteId#" />
+                  AND rp.is_granted = true
+                  AND p.can_login = true
+                  AND p.app_name = 'hub'
+                  <cfif len(resolvedEndpointId)>
+                    AND (rp.endpoint_id = <cfqueryparam cfsqltype="other" value="#resolvedEndpointId#" /> OR rp.endpoint_id IS NULL)
+                  <cfelse>
+                    AND rp.endpoint_id IS NULL
+                  </cfif>
+                  AND r.id IN (
+                    SELECT foreign_id FROM moo_route_roles WHERE primary_id = <cfqueryparam cfsqltype="other" value="#resolvedRouteId#" />
+                  )
+            ), sysadmins AS (
+                SELECT DISTINCT p.id, p.full_name, p.email, p.app_name, p.can_login
+                FROM moo_profile p
+                WHERE p.app_name = 'hub'
+                  AND p.can_login = true
+                  AND lower(p.email) IN (<cfqueryparam cfsqltype="varchar" value="#getConfiguredSysadminEmailList()#" list="true" />)
+            ), effective AS (
+                SELECT id, full_name, email, app_name, can_login, 'Direct grant' AS source FROM direct_profiles
+                UNION ALL
+                SELECT id, full_name, email, app_name, can_login, 'Role: ' || role_name AS source FROM role_profiles
+                UNION ALL
+                SELECT id, full_name, email, app_name, can_login, 'Sysadmin' AS source FROM sysadmins
+            )
+            SELECT row_to_json(payload)::text AS data
+            FROM (
+                SELECT
+                    (SELECT row_to_json(r) FROM (SELECT id, url, app_name FROM moo_route WHERE id = <cfqueryparam cfsqltype="other" value="#resolvedRouteId#" />) r) AS route,
+                    <cfif len(resolvedEndpointId)>
+                    (SELECT COALESCE(row_to_json(e), '{}'::json) FROM (SELECT id, name FROM moo_route_endpoint WHERE id = <cfqueryparam cfsqltype="other" value="#resolvedEndpointId#" />) e) AS endpoint,
+                    <cfelse>
+                    '{}'::json AS endpoint,
+                    </cfif>
+                    COALESCE((SELECT json_agg(row_to_json(s) ORDER BY full_name) FROM sysadmins s), '[]'::json) AS sysadmins,
+                    COALESCE((SELECT json_agg(row_to_json(d) ORDER BY full_name) FROM direct_profiles d), '[]'::json) AS direct_profiles,
+                    COALESCE((
+                        SELECT json_agg(row_to_json(role_data) ORDER BY name)
+                        FROM (
+                            SELECT role_id AS id, role_name AS name,
+                                json_agg(json_build_object('id', id, 'full_name', full_name, 'email', email, 'app_name', app_name, 'can_login', can_login) ORDER BY full_name) AS profiles
+                            FROM role_profiles
+                            GROUP BY role_id, role_name
+                        ) role_data
+                    ), '[]'::json) AS roles,
+                    COALESCE((
+                        SELECT json_agg(row_to_json(effective_profile) ORDER BY full_name)
+                        FROM (
+                            SELECT id, full_name, email, app_name, can_login, json_agg(DISTINCT source ORDER BY source) AS sources
+                            FROM effective
+                            GROUP BY id, full_name, email, app_name, can_login
+                        ) effective_profile
+                    ), '[]'::json) AS effective_profiles
+            ) payload
+        </cfquery>
+
+        <cfreturn deserializeJSON(qAccess.data) />
+    </cffunction>
 
 
     <cffunction name="renderMoopaPage" output="true">

@@ -24,6 +24,11 @@
         "route": "/sysadmin/profiles"
       },
       {
+        "icon": "fa-solid fa-user-secret",
+        "title": "Impersonation",
+        "route": "/sysadmin/impersonation"
+      },
+      {
         "icon": "fa-solid fa-triangle-exclamation",
         "title": "Error Log",
         "route": "/sysadmin/error_log"
