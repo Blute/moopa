@@ -33,14 +33,18 @@ The address object stored in the model contains Photon-derived data:
     <cfparam name="attributes.route" default="/address_search" />
     <cfparam name="attributes.endpoint" default="search" />
 
-    <!--- Handle route signing --->
+    <!--- Handle route signing. signedEndpoint returns a JS-object-literal
+          fragment (route:'/x',endpoint:'y',...) using single quotes for
+          values, so it embeds directly inside the double-quoted x-data
+          attribute without escaping. Don't serializeJSON it — wrapping a
+          JS-literal fragment in a JSON string would close the attribute on
+          the first inner double quote and break Alpine. --->
     <cfset signed_search = application.lib.auth.signedEndpoint(route=attributes.route, endpoint=attributes.endpoint) />
-    <cfset search_endpoint = serializeJSON(signed_search) />
 
     <cfoutput>
     <div
         x-data="moopaAddressSearch({
-            search_endpoint: #search_endpoint#
+            search_endpoint: { #signed_search# }
         })"
         x-modelable="address"
         x-model="#attributes.model#"
