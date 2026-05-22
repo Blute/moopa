@@ -517,10 +517,6 @@
         <cfset var needsSetup = false />
         <cfset var hubSetupUrl = "" />
         <cfset var hubBaseUrl = "" />
-        <cfset var currentHost = "" />
-        <cfset var hostWithoutPort = "" />
-        <cfset var hostPort = "" />
-        <cfset var hubHost = "" />
 
         <cfif isHubSetupRoute OR isHubInstallRoute OR NOT structKeyExists(application, "lib") OR NOT structKeyExists(application.lib, "core")>
             <cfreturn />
@@ -537,24 +533,16 @@
             <cfreturn />
         </cfif>
 
-        <cfset hubBaseUrl = server.system.environment.HUB_BASE_URL ?: "" />
+        <cfset hubBaseUrl = trim(server.system.environment.HUB_BASE_URL ?: "") />
 
         <cfif NOT len(hubBaseUrl)>
             <cfif currentApp EQ "hub">
                 <cfset hubBaseUrl = "" />
             <cfelse>
-                <cfset currentHost = cgi.HTTP_HOST ?: "" />
-                <cfset hostWithoutPort = listFirst(currentHost, ":") />
-                <cfif listLen(currentHost, ":") GT 1>
-                    <cfset hostPort = ":" & listLast(currentHost, ":") />
-                </cfif>
-                <cfif listLen(hostWithoutPort, ".") GT 1>
-                    <cfset hubHost = "hub." & listRest(hostWithoutPort, ".") />
-                    <cfset hubBaseUrl = "http://#hubHost##hostPort#" />
-                <cfelse>
-                    <cfset hubBaseUrl = "" />
-                </cfif>
+                <cfthrow type="moopa.configuration.missingHubBaseUrl" message="HUB_BASE_URL is required to redirect non-hub apps to Hub setup." />
             </cfif>
+        <cfelseif NOT reFindNoCase("^https?://", hubBaseUrl)>
+            <cfthrow type="moopa.configuration.invalidHubBaseUrl" message="HUB_BASE_URL must be an absolute http(s) URL." />
         </cfif>
 
         <cfset hubSetupUrl = reReplace(hubBaseUrl, "/+$", "", "one") & "/setup/" />
