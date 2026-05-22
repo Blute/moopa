@@ -166,7 +166,7 @@
                 table_name = "moo_profile",
                 id = arguments.profile_id,
                 field_list = "id,full_name,email,mobile,app_name,profile_avatar_id,profile_picture_id,can_login,roles",
-                returnAsCFML=true
+                returnFormat="cfml"
             ) />
 
             <cfif !profile_to_login.can_login>
@@ -199,7 +199,7 @@
                         device_id = "#new_device_id#",
                         expiration = "#expireTime#"
                     },
-                    returnAsCFML=true
+                    returnFormat="cfml"
                 ) />
 
                 <cfcookie name="deviceid" value="#new_device_id#" expires="#expireTime#" httponly="true" secure="true" samesite="Lax">

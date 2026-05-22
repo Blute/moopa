@@ -57,9 +57,9 @@
                     thumbnail: new_thumbnail,
                     path : new_path
                 },
-                returnAsCFML:true
+                returnFormat = "cfml"
             ) />
-            <cfset res.file = application.lib.db.read( table_name : 'moo_file', id : new_file.id, returnAsCFML=true ) />
+            <cfset res.file = application.lib.db.read( table_name : 'moo_file', id : new_file.id, returnFormat="cfml" ) />
 
 
             <cfset res.presignedURL = s3generatePresignedUrl(
@@ -74,7 +74,7 @@
         </cfif>
 
 
-        <cfset new_file = application.lib.db.read( table_name : 'moo_file', id : arguments.data.file_id, returnAsCFML:true ) />
+        <cfset new_file = application.lib.db.read( table_name : 'moo_file', id : arguments.data.file_id, returnFormat = "cfml" ) />
 
         <cfset file_extension = lCase(listLast(new_file.name,".")) />
 
@@ -95,10 +95,10 @@
                         id : arguments.data.file_id,
                         thumbnail: thumbnail_url
                     },
-                    returnAsCFML:true
+                    returnFormat = "cfml"
                 ) />
 
-            <cfset new_file = application.lib.db.read( table_name : 'moo_file', id : arguments.data.file_id, returnAsCFML:true ) />
+            <cfset new_file = application.lib.db.read( table_name : 'moo_file', id : arguments.data.file_id, returnFormat = "cfml" ) />
         </cfif>
 
 

@@ -236,14 +236,14 @@ FROM (
 <cfset application.lib.db.save(table_name="my_table", data=myData) />
 ```
 
-**db.read() FK expansion gotcha:** `db.read(returnAsCFML=true)` in default `condensed` mode expands FK fields (e.g. `sell_tender_id`) into structs `{id, label}` instead of plain UUID strings. If you then use that value in a `cfqueryparam`, you get "Can't cast Complex Object Type Struct to String". Use `sql_type="simple"` when you need plain ID values:
+**db.read() FK expansion gotcha:** `db.read(returnFormat="cfml")` in default `condensed` mode expands FK fields (e.g. `sell_tender_id`) into structs `{id, label}` instead of plain UUID strings. If you then use that value in a `cfqueryparam`, you get "Can't cast Complex Object Type Struct to String". Use `sql_type="simple"` when you need plain ID values:
 
 ```cfml
 <!--- GOOD: Plain FK values --->
-<cfset var record = application.lib.db.read(table_name="my_table", id=myId, sql_type="simple", returnAsCFML=true) />
+<cfset var record = application.lib.db.read(table_name="my_table", id=myId, sql_type="simple", returnFormat="cfml") />
 
 <!--- BAD: FK fields come back as structs --->
-<cfset var record = application.lib.db.read(table_name="my_table", id=myId, returnAsCFML=true) />
+<cfset var record = application.lib.db.read(table_name="my_table", id=myId, returnFormat="cfml") />
 ```
 
 ## Reading JSONB Columns Back via cfquery

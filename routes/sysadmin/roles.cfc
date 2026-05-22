@@ -2,7 +2,7 @@
 
 
     <cffunction name="read">
-        <cfreturn application.lib.db.read(table_name='moo_role', id=request.data.id, field_list="*", returnAsCFML=true) />
+        <cfreturn application.lib.db.read(table_name='moo_role', id=request.data.id, field_list="*", returnFormat="cfml") />
     </cffunction>
 
 

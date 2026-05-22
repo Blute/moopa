@@ -7,7 +7,7 @@
 
 
     <cffunction name="read">
-        <cfreturn application.lib.db.read(table_name='moo_profile', id=id, field_list="*", returnAsCFML=true) />
+        <cfreturn application.lib.db.read(table_name='moo_profile', id=id, field_list="*", returnFormat="cfml") />
     </cffunction>
 
 
@@ -147,7 +147,7 @@
             data = {
                 app_name = application.app_name ?: "hub"
             },
-            returnAsCFML = true
+            returnFormat = "cfml"
         ) />
     </cffunction>
 

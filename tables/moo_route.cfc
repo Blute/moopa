@@ -272,7 +272,7 @@ TODO: need to check if old way works for the following and which has precedence:
                             url="#stRoute.url#",
                             mapping="#stRoute.componentPath#"
                         },
-                        returnAsCFML="true"
+                        returnFormat="cfml"
                     ) />
 
 
@@ -288,7 +288,7 @@ TODO: need to check if old way works for the following and which has precedence:
                                 route_id="#stRoute.id#",
                                 name="#function_name#"
                             },
-                            returnAsCFML="true"
+                            returnFormat="cfml"
                         ) />
 
 
@@ -312,7 +312,7 @@ TODO: need to check if old way works for the following and which has precedence:
                                 url="#stRoute.url#",
                                 mapping="#stRoute.componentPath#"
                             },
-                            returnAsCFML="true"
+                            returnFormat="cfml"
                         ) />
                     </cfif>
 
@@ -342,7 +342,7 @@ TODO: need to check if old way works for the following and which has precedence:
                                     route_id="#stRoute.id#",
                                     name="#function_name#"
                                 },
-                                returnAsCFML="true"
+                                returnFormat="cfml"
                             ) />
 
                             <cfset endpoint_db_id = save_moo_route_endpoint.id />
@@ -717,7 +717,11 @@ TODO: need to check if old way works for the following and which has precedence:
         <cfargument name="endpoint" type="string" required="false" default="" hint="The endpoint name (e.g. 'get')">
         <cfargument name="route_id" type="string" required="false" default="" hint="Alternative: direct route UUID">
         <cfargument name="endpoint_id" type="string" required="false" default="" hint="Alternative: direct endpoint UUID">
-        <cfargument name="returnAsCFML" type="boolean" required="false" default="true">
+        <cfargument name="returnFormat" type="string" required="false" default="cfml">
+
+        <cfif NOT listFindNoCase("json,cfml", arguments.returnFormat)>
+            <cfthrow type="moopa.mooRoute.invalidReturnFormat" message="Invalid returnFormat '#arguments.returnFormat#'. Use 'json' or 'cfml'." />
+        </cfif>
 
         <!--- Resolve route and endpoint IDs if path is provided --->
         <cfset var resolved_route_id = arguments.route_id>
@@ -803,7 +807,7 @@ TODO: need to check if old way works for the following and which has precedence:
             ) as profile_data
         </cfquery>
 
-        <cfif arguments.returnAsCFML>
+        <cfif lCase(trim(arguments.returnFormat)) EQ "cfml">
             <cfreturn deserializeJSON(qProfiles.profiles)>
         </cfif>
 

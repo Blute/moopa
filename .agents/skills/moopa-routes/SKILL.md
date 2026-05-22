@@ -469,7 +469,7 @@ Different shape from the CRUD example: the logged-in user edits their *own* reco
             table_name = "moo_profile",
             id = profileId,
             field_list = "id,full_name,email,mobile,auth_type,profile_avatar_id,profile_picture_id,can_login,roles",
-            returnAsCFML = true
+            returnFormat = "cfml"
         ) />
 
         <cfreturn { success: true } />
@@ -569,7 +569,7 @@ async searchItems(term) {
     <cfset var newRecord = application.lib.db.save(
         table_name = "my_table",
         data = request.data,
-        returnAsCFML = true
+        returnFormat = "cfml"
     ) />
     <cfreturn {
         "success": true,

@@ -20,7 +20,7 @@
     <cffunction name="load">
         <cfset assertRouteInCurrentApp(arguments.route_id) />
         <cfset stResult = {} />
-        <cfset stResult.current_route = application.lib.db.read(table_name='moo_route', id="#arguments.route_id#", field_list="*", returnAsCFML=true) />
+        <cfset stResult.current_route = application.lib.db.read(table_name='moo_route', id="#arguments.route_id#", field_list="*", returnFormat="cfml") />
         <cfset stResult.route_open_to = application.stAllRoutes[arguments.route_id].open_to />
         <cfset stResult.endpoint_access = {} />
 

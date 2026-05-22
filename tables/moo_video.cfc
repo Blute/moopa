@@ -235,11 +235,11 @@
                     stream_error: ""
                 }
             },
-            returnAsCFML = true
+            returnFormat = "cfml"
         ) />
 
         <cfreturn {
-            video: buildVideoResponse(application.lib.db.read(table_name = "moo_video", id = new_video.id, returnAsCFML = true)),
+            video: buildVideoResponse(application.lib.db.read(table_name = "moo_video", id = new_video.id, returnFormat = "cfml")),
             video_id: new_video.id,
             presignedURL: s3generatePresignedUrl(
                 bucket= '#server.system.environment.S3_bucket#',
@@ -255,7 +255,7 @@
         <cfargument name="source" type="string" required="false" default="rea_agent_tender_submission" />
 
         <cfset var video_id = getVideoId(arguments.data.video_id ?: arguments.data.id ?: arguments.data.video ?: "") />
-        <cfset var video_record = application.lib.db.read(table_name = "moo_video", id = video_id, returnAsCFML = true) />
+        <cfset var video_record = application.lib.db.read(table_name = "moo_video", id = video_id, returnFormat = "cfml") />
         <cfset var metadata = getVideoMetadata(video_record) />
         <cfset var presigned_get = s3generatePresignedUrl(
             bucket= '#server.system.environment.S3_bucket#',
@@ -294,7 +294,7 @@
             }
         ) />
 
-        <cfset video_record = application.lib.db.read(table_name = "moo_video", id = video_id, returnAsCFML = true) />
+        <cfset video_record = application.lib.db.read(table_name = "moo_video", id = video_id, returnFormat = "cfml") />
         <cfreturn buildVideoResponse(video_record) />
     </cffunction>
 
@@ -318,7 +318,7 @@
         </cfloop>
 
         <cfloop array="#clean_ids#" index="pending_id">
-            <cfset video_record = application.lib.db.read(table_name = "moo_video", id = pending_id, returnAsCFML = true) />
+            <cfset video_record = application.lib.db.read(table_name = "moo_video", id = pending_id, returnFormat = "cfml") />
             <cfset metadata = getVideoMetadata(video_record) />
 
             <cfif NOT len(trim(video_record.cloudflare_stream_id ?: ""))>
@@ -337,7 +337,7 @@
 
             <cfset application.lib.db.save(table_name = "moo_video", data = { id: video_record.id, metadata: metadata }) />
 
-            <cfset video_record = application.lib.db.read(table_name = "moo_video", id = video_record.id, returnAsCFML = true) />
+            <cfset video_record = application.lib.db.read(table_name = "moo_video", id = video_record.id, returnFormat = "cfml") />
             <cfset arrayAppend(output_records, buildVideoResponse(video_record)) />
         </cfloop>
 
@@ -348,7 +348,7 @@
         <cfargument name="video_id" type="any" required="true" />
 
         <cfset var clean_video_id = getVideoId(arguments.video_id) />
-        <cfset var video_record = application.lib.db.read(table_name = "moo_video", id = clean_video_id, returnAsCFML = true) />
+        <cfset var video_record = application.lib.db.read(table_name = "moo_video", id = clean_video_id, returnFormat = "cfml") />
         <cfset var metadata = getVideoMetadata(video_record) />
         <cfset var stream_id = trim(video_record.cloudflare_stream_id ?: "") />
         <cfset var cloudflare_delete = {} />

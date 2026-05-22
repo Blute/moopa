@@ -96,7 +96,7 @@ Delete - delete
         <cfargument name="operation" type="string" hint="Create/Read/Update/Delete" />
         <cfargument name="table_name" type="string" />
         <cfargument name="data" type="struct" default="#structNew()#" />
-        <cfargument name="returnAsCFML" type="boolean" required="false" default=false />
+        <cfargument name="returnFormat" type="string" required="false" default="json" />
 
         <cfset var res = "" />
 
@@ -146,11 +146,12 @@ Delete - delete
     <cffunction name="getNewObject">
         <cfargument name="table_name" type="string" />
         <cfargument name="data" type="struct" default="#structNew()#" />
-        <cfargument name="returnAsCFML" type="boolean" required="false" default=false />
+        <cfargument name="returnFormat" type="string" required="false" default="json" />
         <cfargument name="create" type="boolean" required="false" default=false />
 
 
         <!--- Initialize variables --->
+        <cfset var shouldReturnJSON = isJSONReturnFormat(arguments.returnFormat) />
         <cfset var dynamicSQL = "'is_new_record',true">
         <cfset var defaultValueList = "">
 
@@ -228,11 +229,11 @@ Delete - delete
         <cfset structAppend(stDefaultObject, arguments.data, true) />
 
         <cfif arguments.create>
-            <cfset new_object = save(table_name=arguments.table_name, data=stDefaultObject, returnAsCFML=true) />
-            <cfset stDefaultObject = read(table_name=arguments.table_name, id=new_object.id, returnAsCFML=true) />
+            <cfset new_object = save(table_name=arguments.table_name, data=stDefaultObject, returnFormat="cfml") />
+            <cfset stDefaultObject = read(table_name=arguments.table_name, id=new_object.id, returnFormat="cfml") />
         </cfif>
 
-        <cfif !arguments.returnAsCFML>
+        <cfif shouldReturnJSON>
             <cfreturn serializeJSON(stDefaultObject) />
         </cfif>
 
@@ -362,17 +363,18 @@ Delete - delete
     </cffunction>
 
 
-    <cffunction name="read" returntype="any" hint="Returns a JSON object or a CFML array for the matching id">
+    <cffunction name="read" returntype="any" hint="Returns a JSON object string or CFML struct for the matching id">
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="false" default="" />
         <cfargument name="data" type="struct" required="false" default="#structNew()#" />
         <cfargument name="field_list" type="string" default="" hint="List of fields to include" />
         <cfargument name="exclude_list" type="string" default="" hint="List of fields to exclude" />
         <cfargument name="sql_type" type="string" default="condensed" hint="Simple, expanded, condensed" />
-        <cfargument name="returnAsCFML" type="boolean" required="false" default=false />
+        <cfargument name="returnFormat" type="string" required="false" default="json" />
         <cfargument name="include_sensitive" type="boolean" required="false" default=false hint="Include fields marked sensitive: true" />
 
-        <cfset res = {} />
+        <cfset var shouldReturnJSON = isJSONReturnFormat(arguments.returnFormat) />
+        <cfset var res = {} />
 
         <cfif !structKeyExists(this.codeSchema, arguments.table_name)>
             <cfthrow message="Invalid Table Name" />
@@ -409,17 +411,17 @@ Delete - delete
         </cfif>
 
 
-        <cfif arguments.returnAsCFML>
-            <cftry>
-            <cfreturn deserializeJSON(res) />
-                <cfcatch type="any">
-                    <cfdump var="#cfcatch#">
-                    <cfdump var="#qResult#"><cfabort>
-                </cfcatch>
-            </cftry>
-        <cfelse>
+        <cfif shouldReturnJSON>
             <cfreturn res />
         </cfif>
+
+        <cftry>
+            <cfreturn deserializeJSON(res) />
+            <cfcatch type="any">
+                <cfdump var="#cfcatch#">
+                <cfdump var="#qResult#"><cfabort>
+            </cfcatch>
+        </cftry>
     </cffunction>
 
 
@@ -434,7 +436,9 @@ Delete - delete
         <cfargument name="offset" type="numeric" required="false" />
         <cfargument name="limit" type="string" required="false" default=250 />
         <cfargument name="select_append" type="string" required="false" default="" hint="Additional SELECT expressions to append (e.g. subqueries, computed fields)" />
-        <cfargument name="returnAsCFML" type="boolean" required="false" default=false />
+        <cfargument name="returnFormat" type="string" required="false" default="json" />
+
+        <cfset var shouldReturnJSON = isJSONReturnFormat(arguments.returnFormat) />
 
         <cfif !structKeyExists(this.codeSchema, arguments.table_name)>
             <cfthrow message="Invalid Table Name" />
@@ -522,19 +526,19 @@ Delete - delete
         <cfif arraylen(arguments.ids) GT 1>
             <cfset orderedRecordset = sortRecordsetByIds(qData.recordset, arguments.ids) />
 
-            <cfif arguments.returnAsCFML>
-                <cfreturn orderedRecordset />
-            <cfelse>
+            <cfif shouldReturnJSON>
                 <cfreturn serializeJSON(orderedRecordset) />
             </cfif>
 
+            <cfreturn orderedRecordset />
+
         <cfelse>
 
-            <cfif arguments.returnAsCFML>
-                <cfreturn deserializeJSON(qData.recordset) />
-            <cfelse>
+            <cfif shouldReturnJSON>
                 <cfreturn qData.recordset />
             </cfif>
+
+            <cfreturn deserializeJSON(qData.recordset) />
         </cfif>
     </cffunction>
 
@@ -608,7 +612,9 @@ Delete - delete
         <cfargument name="table_name" required="true" />
         <cfargument name="id" type="string" required="false" default="" />
         <cfargument name="data" type="struct" required="false" default="#structNew()#" />
-        <cfargument name="returnAsCFML" type="boolean" required="false" default=false />
+        <cfargument name="returnFormat" type="string" required="false" default="json" />
+
+        <cfset var shouldReturnJSON = isJSONReturnFormat(arguments.returnFormat) />
 
         <cfif len(arguments.data.id?:'')>
             <cfset idValue = arguments.data.id />
@@ -626,11 +632,11 @@ Delete - delete
 
         <!--- Note: pg_trgm search uses the search_text generated column which is automatically updated --->
 
-        <cfif arguments.returnAsCFML>
-            <cfreturn result />
-        <cfelse>
+        <cfif shouldReturnJSON>
             <cfreturn serializeJSON(result) />
         </cfif>
+
+        <cfreturn result />
     </cffunction>
 
 
@@ -643,9 +649,10 @@ Delete - delete
     <cffunction name="save" returntype="any" hint="create/insert based on data.id.">
         <cfargument name="table_name" required="true" />
         <cfargument name="data" default="#structNew()#"/>
-        <cfargument name="returnAsCFML" type="boolean" required="false" default=false />
+        <cfargument name="returnFormat" type="string" required="false" default="json" />
         <cfargument name="index_record" type="boolean" default=true />
 
+        <cfset var shouldReturnJSON = isJSONReturnFormat(arguments.returnFormat) />
         <cfset var result = {
             id : (arguments.data.id?:''),
             sql_statements : []
@@ -975,18 +982,11 @@ Delete - delete
             </cfif>
         </cfloop>
 
-        <!--- Note: pg_trgm search uses the search_text generated column which is automatically updated --->
-
-        <!--- PURCHASE LOGGING --->
-        <cfif arguments.table_name EQ "purchase">
-            <cfset application.lib.db.getService("purchase_log").log_now( purchase_id=result.id, reason="save" ) />
-        </cfif>
-
-        <cfif arguments.returnAsCFML>
-            <cfreturn result />
-        <cfelse>
+        <cfif shouldReturnJSON>
             <cfreturn serializeJSON(result) />
         </cfif>
+
+        <cfreturn result />
 
     </cffunction>
 
@@ -994,6 +994,19 @@ Delete - delete
 
 
     <!--- HELPER FUNCTIONS --->
+
+    <cffunction name="isJSONReturnFormat" access="private" returntype="boolean" output="false" hint="Validates the db returnFormat argument and returns true when JSON should be returned.">
+        <cfargument name="returnFormat" type="string" required="true" />
+
+        <cfset var normalizedReturnFormat = lCase(trim(arguments.returnFormat)) />
+
+        <cfif NOT listFindNoCase("json,cfml", normalizedReturnFormat)>
+            <cfthrow type="moopa.db.invalidReturnFormat" message="Invalid returnFormat '#arguments.returnFormat#'. Use 'json' or 'cfml'." />
+        </cfif>
+
+        <cfreturn normalizedReturnFormat EQ "json" />
+    </cffunction>
+
 
     <cffunction name="formatLabelFromFieldName" access="private">
         <cfargument name="field_name" />

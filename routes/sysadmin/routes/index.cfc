@@ -1,7 +1,7 @@
 <cfcomponent key="8659f978-4823-4f1f-bf23-3f9c864b503f" open_to="security">
 
     <cffunction name="read">
-      <cfreturn application.lib.db.read(table_name='moo_route', id=id, field_list="*", returnAsCFML=true)/>
+      <cfreturn application.lib.db.read(table_name='moo_route', id=id, field_list="*", returnFormat="cfml")/>
     </cffunction>
 
     <cffunction name="search">

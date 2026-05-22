@@ -282,7 +282,7 @@
                     url_scope = "#serializeJSON(url?:{})#",
                     session_scope = "#serializeJSON(session?:{})#"
                 },
-                returnAsCFML=true
+                returnFormat="cfml"
             ) />
 
         <!--- Only send email in production when an error recipient is configured. --->

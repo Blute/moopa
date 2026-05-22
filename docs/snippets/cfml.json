@@ -300,7 +300,7 @@
             "<cfcomponent key=\"${1:key}\">",
             "",
             "    <cffunction name=\"read\">",
-            "        <cfreturn application.lib.db.read(table_name='${2:table_name}', id=\"#url.id#\", field_list=\"*\", returnAsCFML=false) />",
+            "        <cfreturn application.lib.db.read(table_name='${2:table_name}', id=\"#url.id#\", field_list=\"*\") />",
             "    </cffunction>",
             "",
             "    <cffunction name=\"search\">",
