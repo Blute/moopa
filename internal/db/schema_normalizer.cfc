@@ -31,11 +31,31 @@
         <cfargument name="codeSchemaInput" type="struct" required="true">
         <cfargument name="searchableTables" type="struct" required="true">
 
-        <cfset codeSchemaOutput = {}>
+        <cfset var codeSchemaOutput = {}>
 
         <cfloop collection="#arguments.codeSchemaInput#" item="table" index="table_key">
+            <cfset normalizeTableDefaults(table, table_key) />
+            <cfset addSystemFields(table) />
+            <cfset normalizeFields(table, codeSchemaOutput) />
+            <cfset addSearchMetadata(table, arguments.searchableTables) />
+            <cfset buildFieldLists(table) />
+            <cfset normalizeIndexes(table) />
+
+            <cfset codeSchemaOutput[table_key] = table />
+        </cfloop>
+
+        <cfset addRelationshipProjectionMetadata(arguments.codeSchemaInput) />
+
+        <cfreturn codeSchemaOutput>
+    </cffunction>
+
+    <cffunction name="normalizeTableDefaults" access="private" returntype="void" output="false" hint="Apply table-level defaults before fields are normalized.">
+        <cfargument name="table" type="struct" required="true">
+        <cfargument name="tableKey" type="string" required="true">
+
+
             <cfif not structKeyExists(table, "table_name")>
-              <cfset table.table_name = table_key>
+              <cfset table.table_name = arguments.tableKey>
             </cfif>
             <cfif not structKeyExists(table, "title")>
               <cfset table.title = table.table_name>
@@ -79,11 +99,11 @@
           <cfif not structKeyExists(table, "foreign_keys")>
             <cfset table.foreign_keys = {}>
           </cfif>
+    </cffunction>
 
+    <cffunction name="addSystemFields" access="private" returntype="void" output="false" hint="Inject framework system fields when a table does not define them explicitly.">
+        <cfargument name="table" type="struct" required="true">
 
-
-
-          <!--- ADD SYSTEM FIELDS --->
 
             <cfif !structKeyExists(table.fields,'id')>
                 <cfset table.fields['id'] = {
@@ -157,9 +177,11 @@
                                                         }
                                                     }  />
             </cfif>
+    </cffunction>
 
-
-
+    <cffunction name="normalizeFields" access="private" returntype="void" output="false" hint="Normalize field metadata and synthesize many-to-many bridge table definitions.">
+        <cfargument name="table" type="struct" required="true">
+        <cfargument name="codeSchemaOutput" type="struct" required="true">
 
             <cfloop collection="#table.fields#" item="field" index="field_name">
 
@@ -459,8 +481,11 @@
 
 
             </cfloop>
+    </cffunction>
 
-
+    <cffunction name="addSearchMetadata" access="private" returntype="void" output="false" hint="Collect searchable fields and add search_text generated-column metadata.">
+        <cfargument name="table" type="struct" required="true">
+        <cfargument name="searchableTables" type="struct" required="true">
 
             <!--- Collect searchable fields for pg_trgm trigram search --->
             <!--- Table-level searchable_fields is the preferred API; field.searchable remains supported. --->
@@ -566,8 +591,12 @@
                 </cfif>
 
             </cfif>
+    </cffunction>
 
-            <!--- Build condensed/sensitive field lists for FK/M2M/relation SQL generation --->
+    <cffunction name="buildFieldLists" access="private" returntype="void" output="false" hint="Build cached condensed and sensitive field lists used by projection generation.">
+        <cfargument name="table" type="struct" required="true">
+
+          <!--- Build condensed/sensitive field lists for FK/M2M/relation SQL generation --->
             <cfset table._condensed_fields = "" />
             <cfset table._sensitive_fields = "" />
             <cfloop collection="#table.fields#" item="f" index="fn">
@@ -582,8 +611,12 @@
             <cfif len(table._condensed_fields) AND !listFindNoCase(table._condensed_fields, "id")>
                 <cfset table._condensed_fields = listPrepend(table._condensed_fields, "id") />
             </cfif>
+    </cffunction>
 
-            <cfloop collection="#table.indexes#" item="index" index="index_name">
+    <cffunction name="normalizeIndexes" access="private" returntype="void" output="false" hint="Apply index defaults after field-derived indexes are generated.">
+        <cfargument name="table" type="struct" required="true">
+
+          <cfloop collection="#table.indexes#" item="index" index="index_name">
                 <cfif !len(index.name?:'')>
                     <cfset index.name = index_name />
                 </cfif>
@@ -595,12 +628,11 @@
                 </cfif>
 
             </cfloop>
+    </cffunction>
 
+    <cffunction name="addRelationshipProjectionMetadata" access="private" returntype="void" output="false" hint="Populate expanded and condensed SQL projections that require all tables to be normalized.">
+        <cfargument name="codeSchemaInput" type="struct" required="true">
 
-
-            <cfset codeSchemaOutput[table_key] = table />
-
-        </cfloop>
 
         <!--- We need to populate all the many_to_many fields with their sql_select_simple not that all the primary tables are built so that we know all the fields that have been sanitized --->
         <cfloop collection="#arguments.codeSchemaInput#" item="table" index="table_key">
@@ -815,8 +847,6 @@
             </cfloop>
         </cfloop>
 
-
-        <cfreturn codeSchemaOutput>
     </cffunction>
 
 </cfcomponent>
