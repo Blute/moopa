@@ -672,10 +672,23 @@
     <cffunction name="addRelationshipProjectionMetadata" access="private" returntype="void" output="false" hint="Populate expanded and condensed SQL projections that require all tables to be normalized.">
         <cfargument name="codeSchemaInput" type="struct" required="true">
 
-
-        <!--- We need to populate all the many_to_many fields with their sql_select_simple not that all the primary tables are built so that we know all the fields that have been sanitized --->
+        <!--- Relationship projections require all primary tables to be normalized first. --->
         <cfloop collection="#arguments.codeSchemaInput#" item="table" index="table_key">
             <cfloop collection="#table.fields#" item="field" index="field_name">
+                <cfset addManyToManyProjectionMetadata(arguments.codeSchemaInput, table, field, field_name) />
+                <cfset addUuidForeignKeyProjectionMetadata(arguments.codeSchemaInput, table, field, field_name) />
+                <cfset addRelationProjectionMetadata(arguments.codeSchemaInput, table, field, field_name) />
+            </cfloop>
+        </cfloop>
+
+    </cffunction>
+
+    <cffunction name="addManyToManyProjectionMetadata" access="private" returntype="void" output="false" hint="Build expanded and condensed projections for many-to-many fields.">
+        <cfargument name="codeSchemaInput" type="struct" required="true">
+        <cfargument name="table" type="struct" required="true">
+        <cfargument name="field" type="struct" required="true">
+        <cfargument name="field_name" type="string" required="true">
+
 
 
 
@@ -737,6 +750,14 @@
                     </cfsavecontent>
 
                 </cfif>
+    </cffunction>
+
+    <cffunction name="addUuidForeignKeyProjectionMetadata" access="private" returntype="void" output="false" hint="Build expanded and condensed projections for UUID foreign-key fields.">
+        <cfargument name="codeSchemaInput" type="struct" required="true">
+        <cfargument name="table" type="struct" required="true">
+        <cfargument name="field" type="struct" required="true">
+        <cfargument name="field_name" type="string" required="true">
+
 
                 <!---  --->
                 <cfif field.type EQ "uuid">
@@ -808,6 +829,14 @@
 
                     </cfif>
                 </cfif>
+    </cffunction>
+
+    <cffunction name="addRelationProjectionMetadata" access="private" returntype="void" output="false" hint="Build expanded and condensed projections for relation fields.">
+        <cfargument name="codeSchemaInput" type="struct" required="true">
+        <cfargument name="table" type="struct" required="true">
+        <cfargument name="field" type="struct" required="true">
+        <cfargument name="field_name" type="string" required="true">
+
 
                 <cfif field.type EQ "relation">
 
@@ -883,9 +912,8 @@
                     </cfif>
                 </cfif>
 
-            </cfloop>
-        </cfloop>
 
     </cffunction>
+
 
 </cfcomponent>
