@@ -232,7 +232,12 @@
                 </cfif>
             </cfloop>
 
-            <cfif arguments.is_sysadmin OR (len(session.auth.profile.email?:'') AND listFindNoCase(sysadmin_email_list, session.auth.profile.email))>
+            <cfset var profile_email = lCase(trim(session.auth.profile.email ?: "")) />
+            <cfset var is_hub_profile = lCase(trim(session.auth.profile.app_name ?: "")) EQ "hub" />
+            <cfset var has_configured_sysadmin_email = len(profile_email) AND (listFindNoCase(sysadmin_email_list, profile_email) GT 0) />
+            <cfset var has_trusted_sysadmin_login = arguments.is_sysadmin />
+
+            <cfif is_hub_profile AND (has_trusted_sysadmin_login OR has_configured_sysadmin_email)>
                 <cfset session.auth.is_sysadmin = true />
             </cfif>
 
