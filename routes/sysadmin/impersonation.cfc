@@ -399,7 +399,7 @@
                 <dialog x-ref="targetModal" class="modal">
                     <div class="modal-box max-w-2xl">
                         <h3 class="text-lg font-semibold">Create impersonation link</h3>
-                        <p class="mt-1 text-sm text-base-content/60">Search for a login-enabled non-sysadmin profile. The link is copied to your clipboard and expires in 5 minutes.</p>
+                        <p class="mt-1 text-sm text-base-content/60">Search for the user you want to impersonate. Hub profiles are allowed, except configured sysadmins. The link is copied to your clipboard and expires in 5 minutes.</p>
                         <label class="input input-bordered mt-4 flex items-center gap-2">
                             <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
                             <input class="grow" placeholder="Search name or email" x-model="target_search" @input.debounce.300ms="searchTargets()">
