@@ -622,15 +622,15 @@ TODO: need to check if old way works for the following and which has precedence:
         </cfif>
 
 
-        <!--- sysadmin bypass --->
-        <cfif arguments.sysadmin_has_access AND application.lib.auth.isSysAdmin()>
-            <cfreturn true />
-        </cfif>
-
-
         <!--- Profiles are app-scoped. A profile from one app cannot access another app runtime. --->
         <cfif (session.auth.profile.app_name ?: '') NEQ (application.app_name ?: '')>
             <cfreturn false />
+        </cfif>
+
+
+        <!--- sysadmin bypass --->
+        <cfif arguments.sysadmin_has_access AND application.lib.auth.isSysAdmin()>
+            <cfreturn true />
         </cfif>
 
 
