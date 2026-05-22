@@ -560,11 +560,17 @@
 
     <cffunction name="_setupLibs" access="private" returntype="void" output="true">
 
-        <!--- lib.db first because schema/deploy and later services depend on it. --->
+        <!--- lib.db first because later libs and services depend on the shared table metadata/runtime data API. --->
         <cfset application.lib["db"] = CreateObject("component", "/moopa/lib/db").init() />
 
+        <cfset _loadCfcDirectory(application.lib, "lib", "library", "db") />
+
         <cfif len(server.system.environment.deploy_key?:"") AND len(url.deploy?:"") AND url.deploy EQ server.system.environment.deploy_key>
-            <cfset local.statements = application.lib.db.compareDatabaseSchema(application.lib.db.codeSchema) />
+            <cfif (application.app_name ?: "") NEQ "hub" OR NOT structKeyExists(application.lib, "schemaSync")>
+                <cfthrow type="moopa.schemaSync.unavailable" message="Schema deployment is only available from the Hub app." />
+            </cfif>
+
+            <cfset local.statements = application.lib.schemaSync.compareDatabaseSchema(application.lib.db.codeSchema) />
             <cfif arrayLen(local.statements)>
                 <cfloop array="#local.statements#" item="local.statement">
                     <div>#local.statement.statement#;</div>
@@ -575,8 +581,6 @@
                 <cfabort>
             </cfif>
         </cfif>
-
-        <cfset _loadCfcDirectory(application.lib, "lib", "library", "db") />
 
     </cffunction>
 

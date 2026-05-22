@@ -2,7 +2,7 @@
 
     <cffunction name="get">
 
-        <cfset statements = application.lib.db.compareDatabaseSchema(application.lib.db.codeSchema) />
+        <cfset statements = application.lib.schemaSync.compareDatabaseSchema(application.lib.db.codeSchema) />
         <cfset reinitUrl = (url.route ?: "/sysadmin/schema/") & "?init=" & randRange(1, 1000) />
 
         <cf_layout_default title="Schema">
