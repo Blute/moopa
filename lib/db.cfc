@@ -9,6 +9,7 @@
         <cfset this.searchable_tables = {} />
 
         <cfset variables.returnFormatter = CreateObject("component", "/moopa/internal/db/return_formatter").init() />
+        <cfset variables.projectionBuilder = CreateObject("component", "/moopa/internal/db/projection_builder").init() />
         <cfset variables.recordReader = CreateObject("component", "/moopa/internal/db/record_reader").init(
             returnFormatter = variables.returnFormatter
         ) />
@@ -257,81 +258,14 @@ Delete - delete
         <cfargument name="sql_table_name" type="string" default="#arguments.table_name#" />
         <cfargument name="include_sensitive" type="boolean" default="false" hint="Include fields marked sensitive: true" />
 
-        <cfif arguments.field_list EQ "*">
-            <cfset field_list_to_loop = structKeyList(this.codeSchema[arguments.table_name].fields) />
-        <cfelseif len(trim(arguments.field_list))>
-            <cfset field_list_to_loop = arguments.field_list />
-        <cfelse>
-            <!--- Default behavior: all fields except created_by and last_updated_by --->
-            <cfset var allFields = structKeyList(this.codeSchema[arguments.table_name].fields) />
-            <cfset field_list_to_loop = listDeleteAt(allFields, listFindNoCase(allFields, "created_by")) />
-            <cfset field_list_to_loop = listDeleteAt(field_list_to_loop, listFindNoCase(field_list_to_loop, "last_updated_by")) />
-        </cfif>
-
-        <!--- Exclude specified fields if exclude_list is not empty --->
-        <cfif len(trim(arguments.exclude_list))>
-            <cfloop list="#arguments.exclude_list#" index="exclude_field">
-                <cfset pos = listFind(field_list_to_loop, exclude_field) />
-                <cfif pos GT 0>
-                    <cfset field_list_to_loop = listDeleteAt(field_list_to_loop, pos) />
-                </cfif>
-            </cfloop>
-        </cfif>
-
-        <!--- Exclude sensitive fields unless explicitly included in field_list or include_sensitive=true --->
-        <cfset var explicit_field_list = len(trim(arguments.field_list)) AND arguments.field_list NEQ "*" />
-        <cfif !arguments.include_sensitive AND !explicit_field_list>
-            <cfset var sensitive_fields = this.codeSchema[arguments.table_name]._sensitive_fields ?: "" />
-            <cfif len(sensitive_fields)>
-                <cfloop list="#sensitive_fields#" item="sensitive_field">
-                    <cfset pos = listFindNoCase(field_list_to_loop, sensitive_field) />
-                    <cfif pos GT 0>
-                        <cfset field_list_to_loop = listDeleteAt(field_list_to_loop, pos) />
-                    </cfif>
-                </cfloop>
-            </cfif>
-        </cfif>
-
-        <cfset return_select_fields = "" />
-
-        <cftry>
-            <cfloop list="#field_list_to_loop#" item="field_name">
-                <cfset field_sql = "" />
-                <cfswitch expression="#arguments.sql_type#">
-                    <cfcase value="simple">
-                        <cfif len(trim(this.codeSchema[arguments.table_name].fields[field_name].sql_select_simple ?: ''))>
-                            <cfset field_sql = this.codeSchema[arguments.table_name].fields[field_name].sql_select_simple>
-                        </cfif>
-                    </cfcase>
-                    <cfcase value="expanded">
-                        <cfif len(trim(this.codeSchema[arguments.table_name].fields[field_name].sql_select_expanded ?: ''))>
-                            <cfset field_sql = this.codeSchema[arguments.table_name].fields[field_name].sql_select_expanded>
-                        </cfif>
-                    </cfcase>
-                    <cfcase value="condensed">
-                        <cfif len(trim(this.codeSchema[arguments.table_name].fields[field_name].sql_select_condensed ?: ''))>
-                            <cfset field_sql = this.codeSchema[arguments.table_name].fields[field_name].sql_select_condensed>
-                        </cfif>
-                    </cfcase>
-                </cfswitch>
-
-                <cfif len(trim(field_sql))>
-                    <cfif arguments.sql_table_name NEQ arguments.table_name>
-                        <!--- I need to convert #arguments.table_name#.id to #arguments.sql_table_name#.id --->
-                        <cfset field_sql = replaceNoCase(trim(field_sql), "#arguments.table_name#.", "#arguments.sql_table_name#.", "one ")>
-                    </cfif>
-                    <cfset return_select_fields = listAppend(return_select_fields, field_sql) />
-                </cfif>
-            </cfloop>
-
-            <cfcatch type="any">
-                <cfdump var="#cfcatch#" expand="true">
-                <cfdump var="#this.codeSchema[arguments.table_name].fields#" expand="true">
-                <cfabort>
-            </cfcatch>
-        </cftry>
-
-        <cfreturn "#return_select_fields#" />
+        <cfreturn variables.projectionBuilder.select(
+            tableDef = this.codeSchema[arguments.table_name],
+            field_list = arguments.field_list,
+            exclude_list = arguments.exclude_list,
+            sql_type = arguments.sql_type,
+            sql_table_name = arguments.sql_table_name,
+            include_sensitive = arguments.include_sensitive
+        ) />
     </cffunction>
 
 
@@ -339,13 +273,7 @@ Delete - delete
     <cffunction name="orderby" hint="Returns the default sql order by clause for a table">
         <cfargument name="table_name" required="true" type="string" />
 
-        <cfset order_by = "" />
-
-        <cfif len(trim(this.codeSchema[arguments.table_name].order_by))>
-            <cfset order_by = this.codeSchema[arguments.table_name].order_by />
-        </cfif>
-
-        <cfreturn "ORDER BY #order_by#" />
+        <cfreturn variables.projectionBuilder.orderBy(this.codeSchema[arguments.table_name]) />
     </cffunction>
 
 
