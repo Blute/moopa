@@ -12,6 +12,26 @@
         <cfreturn this />
     </cffunction>
 
+    <cffunction name="delete" access="public" returntype="any" output="false" hint="Delete one record by id.">
+        <cfargument name="table_name" type="string" required="true" />
+        <cfargument name="id" type="string" required="false" default="" />
+        <cfargument name="data" type="struct" required="false" default="#structNew()#" />
+        <cfargument name="returnFormat" type="string" required="false" default="json" />
+
+        <cfset var idValue = resolveId(arguments.id, arguments.data) />
+        <cfset var result = {} />
+
+        <cfquery name="local.q" result="result">
+            DELETE
+            FROM #arguments.table_name#
+            WHERE id = <cfqueryparam cfsqltype="other" value="#idValue#" />
+        </cfquery>
+
+        <!--- Note: pg_trgm search uses the search_text generated column which is automatically updated. --->
+
+        <cfreturn variables.returnFormatter.formatCFML(result, arguments.returnFormat) />
+    </cffunction>
+
     <cffunction name="save" access="public" returntype="any" output="false" hint="Create or update one record and persist any many-to-many fields.">
         <cfargument name="stModel" type="struct" required="true" />
         <cfargument name="data" default="#structNew()#" />
@@ -40,6 +60,21 @@
         </cfloop>
 
         <cfreturn variables.returnFormatter.formatCFML(result, arguments.returnFormat) />
+    </cffunction>
+
+    <cffunction name="resolveId" access="private" returntype="string" output="false" hint="Resolve id from explicit argument or request-style data payload.">
+        <cfargument name="id" type="string" required="false" default="" />
+        <cfargument name="data" type="struct" required="false" default="#structNew()#" />
+
+        <cfif len(arguments.data.id ?: "")>
+            <cfreturn arguments.data.id />
+        </cfif>
+
+        <cfif len(arguments.id)>
+            <cfreturn arguments.id />
+        </cfif>
+
+        <cfthrow message="No ID provided" />
     </cffunction>
 
     <cffunction name="shouldUpdateRecord" access="private" returntype="boolean" output="false" hint="Preserve db.save's id-based update heuristic unless the payload explicitly marks a new record.">

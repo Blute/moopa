@@ -475,23 +475,12 @@ Delete - delete
         <cfargument name="data" type="struct" required="false" default="#structNew()#" />
         <cfargument name="returnFormat" type="string" required="false" default="json" />
 
-        <cfif len(arguments.data.id?:'')>
-            <cfset idValue = arguments.data.id />
-        <cfelseif len(arguments.id)>
-            <cfset idValue = arguments.id />
-        <cfelse>
-            <cfthrow message="No ID provided" />
-        </cfif>
-
-        <cfquery name="q" result="result">
-            DELETE
-            FROM #arguments.table_name#
-            WHERE id = <cfqueryparam cfsqltype="other" value="#idValue#" />
-        </cfquery>
-
-        <!--- Note: pg_trgm search uses the search_text generated column which is automatically updated --->
-
-        <cfreturn variables.returnFormatter.formatCFML(result, arguments.returnFormat) />
+        <cfreturn variables.recordWriter.delete(
+            table_name = arguments.table_name,
+            id = arguments.id,
+            data = arguments.data,
+            returnFormat = arguments.returnFormat
+        ) />
     </cffunction>
 
 
