@@ -10,6 +10,7 @@
 
         <cfset variables.returnFormatter = CreateObject("component", "/moopa/internal/db/return_formatter").init() />
         <cfset variables.schemaLoader = CreateObject("component", "/moopa/internal/db/schema_loader").init() />
+        <cfset variables.newObjectFactory = CreateObject("component", "/moopa/internal/db/new_object_factory").init() />
         <cfset variables.projectionBuilder = CreateObject("component", "/moopa/internal/db/projection_builder").init() />
         <cfset variables.recordReader = CreateObject("component", "/moopa/internal/db/record_reader").init(
             returnFormatter = variables.returnFormatter
@@ -112,83 +113,11 @@ Delete - delete
         <cfargument name="returnFormat" type="string" required="false" default="json" />
         <cfargument name="create" type="boolean" required="false" default=false />
 
-
-        <!--- Initialize variables --->
-        <cfset var dynamicSQL = "'is_new_record',true">
-        <cfset var defaultValueList = "">
-
-        <cfset var table = this.codeSchema[arguments.table_name] />
-        <cfset var stDefaultObject = {} />
-
-
-        <cfloop collection="#table.fields#" item="field" index="i">
-            <cfif !(field.is_system?:false)>
-                <cfswitch expression="#field.type#">
-                    <cfcase value="int2,int4,int8">
-                        <cfset stDefaultObject[field.name] = 0 />
-                    </cfcase>
-                    <cfcase value="bool">
-                        <cfset stDefaultObject[field.name] = false />
-                    </cfcase>
-                    <cfcase value="many_to_many">
-                        <cfset stDefaultObject[field.name] = [] />
-                    </cfcase>
-                    <cfcase value="relation">
-                        <cfset stDefaultObject[field.name] = [] />
-                    </cfcase>
-                    <cfdefaultcase>
-                        <cfset stDefaultObject[field.name] = "" />
-                    </cfdefaultcase>
-                </cfswitch>
-
-                <cftry>
-                    <cfif len(field.default)>
-                        <cfset stDefaultObject[field.name] = evaluate(item.default) />
-                    </cfif>
-                    <cfcatch type="any">
-                        <!--- IGNORE --->
-                    </cfcatch>
-                </cftry>
-            </cfif>
-        </cfloop>
-
-
-        <cfloop collection="#table.fields#" item="field" index="i">
-            <cfif len(field.default?:'')  AND !(field.is_system?:false)>
-
-                <cfset defaultValue = field.default>
-
-                <cfif field.type EQ "date">
-                    <cfset defaultValue = "#defaultValue#::date">
-                </cfif>
-
-                <cfif field.type EQ "uuid">
-                    <cfset defaultValue = "#defaultValue#::text">
-                </cfif>
-                <cfif field.type EQ "jsonb">
-                    <cfset defaultValue = "#defaultValue#::jsonb">
-                </cfif>
-                <!--- SELECT jsonb_build_object('lease_terms', '[]'::jsonb, 'title', 'test') as json_object --->
-                <!--- Build the dynamic SQL statement --->
-                <cfset dynamicSQL = listAppend(dynamicSQL, "'#field.name#', #defaultValue#" )>
-            </cfif>
-        </cfloop>
-
-        <cfif len(trim(dynamicSQL))>
-            <!--- Output the final SQL statement --->
-
-            <cfquery name="qNewDBObject">
-                <!--- Constructed SQL statement --->
-                SELECT jsonb_build_object(#PreserveSingleQuotes(dynamicSQL)#) as json_object
-            </cfquery>
-
-            <cfloop collection="#deserializeJSON(qNewDBObject.json_object)#" item="column_value" index="column_name">
-                <cfset stDefaultObject[column_name] = column_value />
-            </cfloop>
-        </cfif>
-
-
-        <cfset structAppend(stDefaultObject, arguments.data, true) />
+        <cfset var stDefaultObject = variables.newObjectFactory.build(
+            tableDef = this.codeSchema[arguments.table_name],
+            data = arguments.data
+        ) />
+        <cfset var new_object = {} />
 
         <cfif arguments.create>
             <cfset new_object = save(table_name=arguments.table_name, data=stDefaultObject, returnFormat="cfml") />
