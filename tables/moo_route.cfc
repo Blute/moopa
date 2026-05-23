@@ -2,6 +2,8 @@
 
     <cffunction name="init">
 
+        <cfset variables.registryRowMerger = CreateObject("component", "/moopa/internal/routing/registry_row_merger").init() />
+
         <cfset this.definition =
         {
             "title": "Route",
@@ -95,9 +97,32 @@
             <cfthrow message="Route URL identity requires an app_name." />
         </cfif>
 
-        <cfreturn "#lcase(trim(arguments.app_name))#:#lcase(trim(arguments.url))#" />
+        <cfreturn "#lcase(trim(arguments.app_name))#:#lcase(canonicalizeRouteUrl(arguments.url))#" />
     </cffunction>
 
+
+    <cffunction name="canonicalizeRouteUrl" access="private" returntype="string" output="false">
+        <cfargument name="url" type="string" required="true" />
+
+        <cfset var routeUrl = replace(trim(arguments.url), chr(92), "/", "all") />
+        <cfset routeUrl = reReplace(routeUrl, "\.cfc$", "", "one") />
+        <cfset routeUrl = reReplace("/#routeUrl#", "/+", "/", "all") />
+        <cfset routeUrl = reReplace(routeUrl, "/+$", "", "one") />
+
+        <cfif NOT len(routeUrl)>
+            <cfset routeUrl = "/" />
+        </cfif>
+
+        <cfif routeUrl EQ "/index">
+            <cfreturn "/" />
+        </cfif>
+
+        <cfif right(routeUrl, 6) EQ "/index">
+            <cfset routeUrl = left(routeUrl, len(routeUrl) - 6) />
+        </cfif>
+
+        <cfreturn routeUrl />
+    </cffunction>
 
 
     <cffunction name="initializeRoutesIntoApplicationScope">
@@ -107,7 +132,6 @@
         <cfset application.stDynamicRoutes = {} />
         <cfset application.stStaticRoutes = {} />
         <cfset application.stAllRoutes = {} />
-        <cfset application.routes = {} />
 
         <cfset aCheckNoDuplicateKeys = [] />
 
@@ -160,7 +184,7 @@
         <!--- ------------------ --->
         <!--- PROCESS ALL ROUTES --->
         <!--- ------------------ --->
-        <cfset processed_route_urls = '' />
+        <cfset processed_route_urls = {} />
         <cfset routePackages = [] />
 
         <cfif NOT (isDefined("application.moopa_packages") AND isArray(application.moopa_packages))>
@@ -202,7 +226,7 @@ TODO: need to check if old way works for the following and which has precedence:
                 <cfset stRoute.location = "#qRoutes.directory#/#qRoutes.name#" />
                 <cfset stRoute.path = replaceNoCase(stRoute.location,".cfc",'') />
                 <cfset stRoute.localUrl = replaceNoCase(stRoute.path,"#routePath#",'') />
-                <cfset stRoute.url = reReplace("#routeMount##stRoute.localUrl#", "/+", "/", "all") />
+                <cfset stRoute.url = canonicalizeRouteUrl("#routeMount##stRoute.localUrl#") />
                 <cfset stRoute.componentPath = "#componentPath##stRoute.localUrl#" />
                 <cfset stRoute.app_name = application.app_name />
                 <cfset stRoute.docs = {} />
@@ -212,13 +236,17 @@ TODO: need to check if old way works for the following and which has precedence:
 
                 <!--- Need to determine if the route is already defined --->
 
-                <cfif !listFindNoCase(processed_route_urls, stRoute.url)>
-                    <cfset processed_route_urls = listAppend(processed_route_urls, stRoute.url) />
+                <cfset processed_route_url_key = lCase(stRoute.url) />
+                <cfif !structKeyExists(processed_route_urls, processed_route_url_key)>
+                    <cfset processed_route_urls[processed_route_url_key] = stRoute.componentPath />
                 <cfelse>
-                    <cfthrow message="Duplicate route URL '#stRoute.url#' loaded from #stRoute.componentPath#. Package boundaries require unique routes within an app runtime." />
+                    <cfthrow message="Duplicate route URL '#stRoute.url#' loaded from #stRoute.componentPath#; already loaded from #processed_route_urls[processed_route_url_key]#. Package boundaries require unique canonical routes within an app runtime." />
                 </cfif>
 
                 <cfloop array="#stRoute.md.functions#" item="fn">
+                    <cfif lCase(fn.access ?: "public") EQ "private">
+                        <cfcontinue />
+                    </cfif>
                     <cfset stRoute.endpoints[fn.name] = fn />
                     <cfset stRoute.endpoints[fn.name]['open_to'] = stRoute.endpoints[fn.name]['open_to']?:stRoute['open_to'] /> <!--- public,bearer,logged_in,security --->
                 </cfloop>
@@ -246,6 +274,24 @@ TODO: need to check if old way works for the following and which has precedence:
                 </cfif>
 
                 <cfset stRoute.urlIdentity = routeUrlIdentity(stRoute.url, stRoute.app_name) />
+                <cfif routePersistenceAvailable
+                    AND structKeyExists(stDBRoutes, stRoute.identity)
+                    AND structKeyExists(stDBRoutesByAppUrl, stRoute.urlIdentity)
+                    AND stDBRoutes[stRoute.identity].id NEQ stDBRoutesByAppUrl[stRoute.urlIdentity].id>
+                    <!--- Canonical URL normalization can reveal stale duplicate registry rows such as /login and /login/index. Merge before updating to avoid unique-key conflicts and permission loss. --->
+                    <cfset variables.registryRowMerger.merge(
+                        target_route_id = stDBRoutes[stRoute.identity].id,
+                        duplicate_route_id = stDBRoutesByAppUrl[stRoute.urlIdentity].id
+                    ) />
+                    <cfset stDBRoutesByAppUrl[stRoute.urlIdentity] = stDBRoutes[stRoute.identity] />
+                </cfif>
+                <cfif routePersistenceAvailable AND structKeyExists(stDBRoutes, stRoute.identity)>
+                    <cfset variables.registryRowMerger.mergeConflictsForUrl(
+                        target_route_id = stDBRoutes[stRoute.identity].id,
+                        app_name = stRoute.app_name,
+                        url = stRoute.url
+                    ) />
+                </cfif>
                 <cfif routePersistenceAvailable
                     AND NOT structKeyExists(stDBRoutes, stRoute.identity)
                     AND structKeyExists(stDBRoutesByAppUrl, stRoute.urlIdentity)>
@@ -354,6 +400,16 @@ TODO: need to check if old way works for the following and which has precedence:
                         <cfset stRoute.endpoints[function_name]['id'] = endpoint_db_id />
                     </cfloop>
 
+                    <cfloop array="#stDBRoutes[stRoute.identity].endpoints#" item="stEndpoint">
+                        <cfif NOT structKeyExists(stRoute.endpoints, stEndpoint.name)>
+                            <cfset application.lib.db.delete(
+                                table_name = "moo_route_endpoint",
+                                id = stEndpoint.id,
+                                returnFormat = "cfml"
+                            ) />
+                        </cfif>
+                    </cfloop>
+
 
                 </cfif>
 
@@ -365,8 +421,6 @@ TODO: need to check if old way works for the following and which has precedence:
                     </cfif>
 
                     <cfset route_string = stRoute.url />
-                    <cfset route_string = replaceNoCase(route_string, "/index", "") />
-                    <cfset route_string = replaceNoCase(route_string, ".cfc", "") />
                     <cfset route_parts = [] />
                     <cfset route_groups = [] />
                     <cfloop list="#route_string#" delimiters="/" item="iPart">
@@ -391,9 +445,6 @@ TODO: need to check if old way works for the following and which has precedence:
 
                     <cfset application.stStaticRoutes[stRoute.key] = stRoute />
                 </cfif>
-
-                <!--- Setup route component in application.routes --->
-                <cfset setupRouteComponentInApplication(stRoute) />
 
                 <cfset application.stAllRoutes[stRoute.id] = stRoute />
 
@@ -431,26 +482,16 @@ TODO: need to check if old way works for the following and which has precedence:
             }
         } />
         <!--- Set the route to parse from the attributes.route value --->
-        <cfset routeToParse = trim(arguments.route) />
+        <cfset routeToParse = canonicalizeRouteUrl(arguments.route) />
 
         <!--- Check if a route is provided, if not, abort and show an error message --->
         <cfif !len(routeToParse)>
             <cfabort showerror="MUST INCLUDE A route" />
         </cfif>
 
-        <!--- Remove the trailing slash from the routeToParse, if present --->
-        <cfif right(routeToParse,1) EQ "/">
-            <cfset routeToParse = routeToParse.RemoveChars(len(routeToParse),1) />
-        </cfif>
-
-
-
-
-
-
         <!--- Loop through the collection of static routes to find a match --->
         <cfloop collection="#application.stStaticRoutes#" item="static_key">
-            <cfif application.stStaticRoutes[static_key]['url'] EQ "#routeToParse#" OR application.stStaticRoutes[static_key]['url'] EQ "#routeToParse#/index">
+            <cfif application.stStaticRoutes[static_key]['url'] EQ routeToParse>
                 <cfset result.stRoute = application.stStaticRoutes[static_key] />
 
                 <cfbreak>
@@ -496,48 +537,6 @@ TODO: need to check if old way works for the following and which has precedence:
 
     </cffunction>
 
-
-
-    <cffunction name="extractDocumentationMetadata" access="private" returntype="struct" output="false">
-        <cfargument name="filePath" type="string" required="true">
-
-        <cfset var fileContent = "">
-        <cfset var commentBlockStart = 0>
-        <cfset var commentBlocks = []>
-        <cfset var commentBlock = "">
-        <cfset var lines = []>
-        <cfset var metadata = {}>
-        <cfset var currentKey = "">
-
-        <!--- Read file content --->
-        <cffile action="read" file="#arguments.filePath#" variable="fileContent">
-
-        <!--- Find the position of the first comment block containing at least one metadata key (@@) --->
-        <cfset commentBlockStart = reFind("<!-{3}([\w\W\s\S]*?@@[\w\W\s\S]*?)-{3}>", fileContent)>
-
-        <!--- If a comment block is found, extract it using reMatch --->
-        <cfif commentBlockStart gt 0>
-            <cfset commentBlocks = reMatch("<!-{3}([\w\W\s\S]*?@@[\w\W\s\S]*?)-{3}>", fileContent)>
-            <cfset commentBlock = commentBlocks[1]>
-            <cfset commentBlock = reReplaceNoCase(commentBlock, "<!-{3}|-{3}>", "", "all")>
-            <cfset lines = listToArray(commentBlock, chr(10))>
-
-            <!--- Iterate over the lines and extract metadata keys and values --->
-            <cfloop index="i" from="1" to="#arrayLen(lines)#">
-                <cfset var line = trim(lines[i])>
-
-                <cfif left(line, 2) eq "@@">
-                    <cfset currentKey = trim(listFirst(line, ":"))>
-                    <cfset currentKey = reReplaceNoCase(currentKey, "@@", "", "one")>
-                    <cfset metadata[currentKey] = trim(listRest(line, ":"))>
-                <cfelseif structKeyExists(metadata, currentKey) and currentKey neq "" and line neq "">
-                    <cfset metadata[currentKey] &= " " & line>
-                </cfif>
-            </cfloop>
-        </cfif>
-
-        <cfreturn metadata>
-    </cffunction>
 
 
     <cffunction name="checkBearerToken">
@@ -667,14 +666,14 @@ TODO: need to check if old way works for the following and which has precedence:
             <cfquery name="qSecurityCheck">
             select *
             from moo_route_permission
-            where moo_route_permission.route_id = '#arguments.route_data.stRoute.id#'
+            where moo_route_permission.route_id = <cfqueryparam cfsqltype="other" value="#arguments.route_data.stRoute.id#" />
             AND moo_route_permission.is_granted = true
             AND (
-                moo_route_permission.endpoint_id = '#arguments.route_data.stRoute.endpoints[arguments.endpoint].id#'
+                moo_route_permission.endpoint_id = <cfqueryparam cfsqltype="other" value="#arguments.route_data.stRoute.endpoints[arguments.endpoint].id#" />
                 OR moo_route_permission.endpoint_id is null
             )
             AND (
-                moo_route_permission.profile_id = '#session.auth.profile.id#'
+                moo_route_permission.profile_id = <cfqueryparam cfsqltype="other" value="#session.auth.profile.id#" />
                 <cfif arrayLen(session.auth.role_id_array)>
                     OR moo_route_permission.role_id IN (<cfqueryparam cfsqltype="other" list=true value="#session.auth.role_id_array#" />)
                 </cfif>
@@ -683,12 +682,12 @@ TODO: need to check if old way works for the following and which has precedence:
                 moo_route_permission.role_id IN (
                     SELECT foreign_id
                     FROM moo_route_roles
-                    WHERE primary_id = '#arguments.route_data.stRoute.id#'
+                    WHERE primary_id = <cfqueryparam cfsqltype="other" value="#arguments.route_data.stRoute.id#" />
                 )
                 OR moo_route_permission.profile_id IN (
                     SELECT foreign_id
                     FROM moo_route_profiles
-                    WHERE primary_id = '#arguments.route_data.stRoute.id#'
+                    WHERE primary_id = <cfqueryparam cfsqltype="other" value="#arguments.route_data.stRoute.id#" />
                 )
             )
             </cfquery>
@@ -974,124 +973,5 @@ TODO: need to check if old way works for the following and which has precedence:
     </cffunction>
 
 
-    <cffunction name="renderMoopaPage" output="true">
-        <!--- MOOPA PAGE JS --->
-
-        <script>
-            document.addEventListener("alpine:init", () => {
-                Alpine.data("moopa_page", () => ({
-                    isFileUploading: false,
-                    moo_iframe_modal_src: '',
-                    moo_iframe_modal_show: false,
-
-                    moo_iframe_modal_open(src) {
-                        console.log("moo_iframe_modal_open");
-                        this.moo_iframe_modal_show = true;
-                        this.moo_iframe_modal_src = src;
-                    },
-                    moo_iframe_modal_close() {
-                        console.log("moo_iframe_modal_close");
-                        this.moo_iframe_modal_show = false;
-                    },
-                    moo_iframe_modal_close_this() {
-                        console.log("moo_iframe_modal_close_this");
-                        // this will close the modal from the parent window from within the iframe
-                        window.parent.dispatchEvent(new CustomEvent('moo_iframe_modal_close'));
-                    },
-
-
-                }))
-            })
-            </script>
-    </cffunction>
-
-    <cffunction name="renderSecurityModal" output="true">
-
-        <cfif application.lib.auth.isSysAdmin() OR application.lib.auth.hasARole("Hub Admin")>
-            <style>
-             .security-icon {
-                 position: fixed;
-                 bottom: 2px; /* Adjust based on desired spacing from the bottom */
-                 right: 5px; /* Adjust based on desired spacing from the right */
-                 cursor: pointer;
-                 z-index: 1100; /* Ensure it floats above other content, including modals */
-             }
-             </style>
-
-            <div class="security-icon" @click="moo_iframe_modal_open('/sysadmin/routes/#request.route_id#')">
-                <i class="fa-solid fa-key"></i>
-            </div>
-
-
-         </cfif>
-    </cffunction>
-
-
-    <!--- --------------------------------------------------------------------------------------------------
-        This function is used to setup the route components in the application scope.
-        This has to be complicated because we need to handle the fact that routes can be defined in the routes.cfc file in a few different ways
-        and we need to make sure we do not overwrite existing routes under the same path.
-    -------------------------------------------------------------------------------------------------- --->
-    <cffunction name="setupRouteComponentInApplication">
-        <cfargument name="stRoute" required="true" />
-
-        <cfset local.routeStructPath = rereplace(arguments.stRoute.url, "^\\/|\\/index$", "", "all") />
-        <cfset local.routeStructPathParts = listToArray(local.routeStructPath, "/") />
-
-        <cfset local.currentStruct = application.routes />
-        <cfset local.finalKey = "" />
-        <cfset local.isIndexRoute = (right(arguments.stRoute.url, 6) EQ "/index" OR arguments.stRoute.url EQ "/index" OR arguments.stRoute.url EQ "") />
-
-        <cfloop index="local.i" from="1" to="#arrayLen(local.routeStructPathParts)#">
-            <cfset local.pathPart = local.routeStructPathParts[local.i] />
-            <cfset local.structKey = rereplace(local.pathPart, "\[|\]", "", "all") /> <!--- Remove brackets --->
-
-            <cfif len(local.structKey)>
-                <cfif local.i EQ arrayLen(local.routeStructPathParts)> <!--- Last part --->
-                    <cfset local.finalKey = local.structKey />
-                <cfelse>
-                    <!--- Ensure intermediate path exists and is a struct --->
-                    <cfif !structKeyExists(local.currentStruct, local.structKey) OR !isStruct(local.currentStruct[local.structKey])>
-                        <!--- If it exists but isn't a struct (likely overwritten by an index route processed earlier), force it back to a struct --->
-                        <cfset local.currentStruct[local.structKey] = {} />
-                    </cfif>
-                    <cfset local.currentStruct = local.currentStruct[local.structKey] />
-                </cfif>
-            </cfif>
-        </cfloop>
-
-        <!--- Instantiate the component --->
-        <cfset local.componentInstance = CreateObject('component', "#arguments.stRoute.componentPath#") />
-
-        <!--- Handle assignment --->
-        <cfif len(local.finalKey)> <!--- Not the root route --->
-            <cfif local.isIndexRoute>
-                <!--- Assign index component. Check if target key exists and is a struct (created by children) --->
-                <cfif structKeyExists(local.currentStruct, local.finalKey) AND isStruct(local.currentStruct[local.finalKey])>
-                     <!--- Assign to _index to avoid overwriting --->
-                     <cfset local.currentStruct[local.finalKey]['_index'] = local.componentInstance />
-                <cfelse>
-                     <!--- Target doesn't exist or isn't a struct, assign directly --->
-                     <cfset local.currentStruct[local.finalKey] = local.componentInstance />
-                </cfif>
-            <cfelse>
-                 <!--- Not an index route, assign directly. Check for conflicts. --->
-                 <cfif structKeyExists(local.currentStruct, local.finalKey) AND isStruct(local.currentStruct[local.finalKey])>
-                      <cfthrow message="Routing conflict: Component '#arguments.stRoute.componentPath#' conflicts with existing structure at '#local.finalKey#'" />
-                     <!--- Decide how to handle: throw error, log, or ignore? For now, log error. --->
-                      <!--- Potentially assign to a different key? Or maybe this indicates a route definition error --->
-                 <cfelse>
-                      <cfset local.currentStruct[local.finalKey] = local.componentInstance />
-                 </cfif>
-            </cfif>
-        <cfelseif local.isIndexRoute> <!--- Must be the root index route --->
-             <!--- Check if root index already exists as struct (unlikely but possible) --->
-             <cfif structKeyExists(application.routes, 'index') AND isStruct(application.routes['index'])>
-                  <cfset application.routes['index']['_index'] = local.componentInstance />
-             <cfelse>
-                 <cfset application.routes['index'] = local.componentInstance />
-             </cfif>
-        </cfif>
-    </cffunction>
 
 </cfcomponent>
