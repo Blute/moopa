@@ -2,43 +2,15 @@
 
     <cffunction name="init" access="public" returntype="any" output="false">
         <cfargument name="routeUrl" required="true" />
+        <cfargument name="routeIdentity" required="true" />
         <cfargument name="registryRowMerger" required="true" />
 
         <cfset variables.routeUrl = arguments.routeUrl />
+        <cfset variables.routeIdentity = arguments.routeIdentity />
         <cfset variables.registryRowMerger = arguments.registryRowMerger />
 
         <cfreturn this />
     </cffunction>
-
-
-    <cffunction name="routeIdentity" access="private" returntype="string" output="false">
-        <cfargument name="key" type="string" required="true" />
-        <cfargument name="app_name" type="string" required="true" />
-
-        <cfif NOT len(trim(arguments.key))>
-            <cfthrow message="Route identity requires a route key." />
-        </cfif>
-        <cfif NOT len(trim(arguments.app_name))>
-            <cfthrow message="Route identity requires an app_name." />
-        </cfif>
-
-        <cfreturn "#lcase(trim(arguments.app_name))#:#lcase(trim(arguments.key))#" />
-    </cffunction>
-
-    <cffunction name="routeUrlIdentity" access="private" returntype="string" output="false">
-        <cfargument name="url" type="string" required="true" />
-        <cfargument name="app_name" type="string" required="true" />
-
-        <cfif NOT len(trim(arguments.url))>
-            <cfthrow message="Route URL identity requires a route URL." />
-        </cfif>
-        <cfif NOT len(trim(arguments.app_name))>
-            <cfthrow message="Route URL identity requires an app_name." />
-        </cfif>
-
-        <cfreturn "#lcase(trim(arguments.app_name))#:#lcase(variables.routeUrl.canonicalize(arguments.url))#" />
-    </cffunction>
-
 
 
     <cffunction name="initializeRoutesIntoApplicationScope">
@@ -86,8 +58,8 @@
 
         <cfloop array="#aDBRoutes#" item="route">
             <cfif len(route.app_name ?: "")>
-                <cfset stDBRoutes[routeIdentity(route.key, route.app_name)] = route />
-                <cfset stDBRoutesByAppUrl[routeUrlIdentity(route.url, route.app_name)] = route />
+                <cfset stDBRoutes[variables.routeIdentity.byKey(route.key, route.app_name)] = route />
+                <cfset stDBRoutesByAppUrl[variables.routeIdentity.byUrl(route.url, route.app_name)] = route />
             <cfelse>
                 <!--- Legacy rows created before routes were app-scoped. The active app can claim them on re-init. --->
                 <cfset stLegacyDBRoutesByKey[route.key] = route />
@@ -180,7 +152,7 @@ TODO: need to check if old way works for the following and which has precedence:
                 <cfset arrayAppend(aCheckNoDuplicateKeys, stRoute.md.key) />
 
                 <cfset stRoute.key = stRoute.md.key /> <!--- Told you --->
-                <cfset stRoute.identity = routeIdentity(stRoute.key, stRoute.app_name) />
+                <cfset stRoute.identity = variables.routeIdentity.byKey(stRoute.key, stRoute.app_name) />
 
                 <cfif routePersistenceAvailable
                     AND NOT structKeyExists(stDBRoutes, stRoute.identity)
@@ -189,7 +161,7 @@ TODO: need to check if old way works for the following and which has precedence:
                     <cfset stDBRoutes[stRoute.identity] = stLegacyDBRoutesByKey[stRoute.key] />
                 </cfif>
 
-                <cfset stRoute.urlIdentity = routeUrlIdentity(stRoute.url, stRoute.app_name) />
+                <cfset stRoute.urlIdentity = variables.routeIdentity.byUrl(stRoute.url, stRoute.app_name) />
                 <cfif routePersistenceAvailable
                     AND structKeyExists(stDBRoutes, stRoute.identity)
                     AND structKeyExists(stDBRoutesByAppUrl, stRoute.urlIdentity)
