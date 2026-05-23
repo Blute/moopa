@@ -5,24 +5,6 @@
     </cffunction>
 
 
-    <cffunction name="mergeConflictsForUrl" access="public" returntype="void" output="false">
-        <cfargument name="target_route_id" type="string" required="true" />
-        <cfargument name="app_name" type="string" required="true" />
-        <cfargument name="url" type="string" required="true" />
-
-        <cfquery name="local.qConflictingRoutes">
-            SELECT id::text AS id
-            FROM moo_route
-            WHERE app_name = <cfqueryparam cfsqltype="varchar" value="#arguments.app_name#" />
-              AND url = <cfqueryparam cfsqltype="varchar" value="#arguments.url#" />
-              AND id <> <cfqueryparam cfsqltype="other" value="#arguments.target_route_id#" />
-        </cfquery>
-
-        <cfloop query="local.qConflictingRoutes">
-            <cfset merge(arguments.target_route_id, local.qConflictingRoutes.id) />
-        </cfloop>
-    </cffunction>
-
 
     <cffunction name="merge" access="public" returntype="void" output="false">
         <cfargument name="target_route_id" type="string" required="true" />

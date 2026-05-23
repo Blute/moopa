@@ -15,11 +15,13 @@
         <cfset var registry = {
             routesByIdentity = {},
             routesByUrlIdentity = {},
+            routesByUrlIdentityList = {},
             legacyRoutesByKey = {},
             persistenceAvailable = true
         } />
         <cfset var aDBRoutes = [] />
         <cfset var route = {} />
+        <cfset var urlIdentity = "" />
 
         <cftry>
             <cfquery name="local.qDBRoutes">
@@ -45,8 +47,15 @@
 
         <cfloop array="#aDBRoutes#" item="route">
             <cfif len(route.app_name ?: "")>
+                <cfset urlIdentity = variables.routeIdentity.byUrl(route.url, route.app_name) />
                 <cfset registry.routesByIdentity[variables.routeIdentity.byKey(route.key, route.app_name)] = route />
-                <cfset registry.routesByUrlIdentity[variables.routeIdentity.byUrl(route.url, route.app_name)] = route />
+                <cfif NOT structKeyExists(registry.routesByUrlIdentity, urlIdentity)>
+                    <cfset registry.routesByUrlIdentity[urlIdentity] = route />
+                </cfif>
+                <cfif NOT structKeyExists(registry.routesByUrlIdentityList, urlIdentity)>
+                    <cfset registry.routesByUrlIdentityList[urlIdentity] = [] />
+                </cfif>
+                <cfset arrayAppend(registry.routesByUrlIdentityList[urlIdentity], route) />
             <cfelse>
                 <!--- Legacy rows created before routes were app-scoped. The active app can claim them on re-init. --->
                 <cfset registry.legacyRoutesByKey[route.key] = route />
@@ -71,24 +80,8 @@
         </cfif>
 
         <cfset arguments.stRoute.urlIdentity = variables.routeIdentity.byUrl(arguments.stRoute.url, arguments.stRoute.app_name) />
-        <cfif arguments.registry.persistenceAvailable
-            AND structKeyExists(arguments.registry.routesByIdentity, arguments.stRoute.identity)
-            AND structKeyExists(arguments.registry.routesByUrlIdentity, arguments.stRoute.urlIdentity)
-            AND arguments.registry.routesByIdentity[arguments.stRoute.identity].id NEQ arguments.registry.routesByUrlIdentity[arguments.stRoute.urlIdentity].id>
-            <!--- Canonical URL normalization can reveal stale duplicate registry rows such as /login and /login/index. Merge before updating to avoid unique-key conflicts and permission loss. --->
-            <cfset variables.registryRowMerger.merge(
-                target_route_id = arguments.registry.routesByIdentity[arguments.stRoute.identity].id,
-                duplicate_route_id = arguments.registry.routesByUrlIdentity[arguments.stRoute.urlIdentity].id
-            ) />
-            <cfset arguments.registry.routesByUrlIdentity[arguments.stRoute.urlIdentity] = arguments.registry.routesByIdentity[arguments.stRoute.identity] />
-        </cfif>
-
         <cfif arguments.registry.persistenceAvailable AND structKeyExists(arguments.registry.routesByIdentity, arguments.stRoute.identity)>
-            <cfset variables.registryRowMerger.mergeConflictsForUrl(
-                target_route_id = arguments.registry.routesByIdentity[arguments.stRoute.identity].id,
-                app_name = arguments.stRoute.app_name,
-                url = arguments.stRoute.url
-            ) />
+            <cfset mergeLoadedUrlDuplicates(arguments.stRoute, arguments.registry) />
         </cfif>
 
         <cfif arguments.registry.persistenceAvailable
@@ -99,6 +92,34 @@
         </cfif>
 
         <cfreturn arguments.stRoute />
+    </cffunction>
+
+
+    <cffunction name="mergeLoadedUrlDuplicates" access="private" returntype="void" output="false">
+        <cfargument name="stRoute" type="struct" required="true" />
+        <cfargument name="registry" type="struct" required="true" />
+        <cfset var targetRoute = arguments.registry.routesByIdentity[arguments.stRoute.identity] />
+        <cfset var routeWithSameUrl = {} />
+        <cfset var retainedRoutes = [targetRoute] />
+
+        <cfif NOT structKeyExists(arguments.registry.routesByUrlIdentityList, arguments.stRoute.urlIdentity)>
+            <cfset arguments.registry.routesByUrlIdentity[arguments.stRoute.urlIdentity] = targetRoute />
+            <cfset arguments.registry.routesByUrlIdentityList[arguments.stRoute.urlIdentity] = retainedRoutes />
+            <cfreturn />
+        </cfif>
+
+        <cfloop array="#arguments.registry.routesByUrlIdentityList[arguments.stRoute.urlIdentity]#" item="routeWithSameUrl">
+            <cfif routeWithSameUrl.id NEQ targetRoute.id>
+                <!--- Canonical URL normalization can reveal stale duplicate registry rows such as /login and /login/index. Merge before updating to avoid unique-key conflicts and permission loss. --->
+                <cfset variables.registryRowMerger.merge(
+                    target_route_id = targetRoute.id,
+                    duplicate_route_id = routeWithSameUrl.id
+                ) />
+            </cfif>
+        </cfloop>
+
+        <cfset arguments.registry.routesByUrlIdentity[arguments.stRoute.urlIdentity] = targetRoute />
+        <cfset arguments.registry.routesByUrlIdentityList[arguments.stRoute.urlIdentity] = retainedRoutes />
     </cffunction>
 
 
