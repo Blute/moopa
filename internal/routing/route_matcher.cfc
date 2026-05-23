@@ -10,7 +10,7 @@
     <cffunction name="parseRoute" access="public" returntype="struct" output="false">
         <cfargument name="route" required="true" hint="Usually from url.route" />
         <cfargument name="staticRoutes" type="struct" required="true" />
-        <cfargument name="dynamicRoutes" type="struct" required="true" />
+        <cfargument name="dynamicRoutes" type="any" required="true" />
 
         <cfset var result = {
             stRoute : {},
@@ -21,6 +21,7 @@
         <cfset var routeToParse = variables.routeUrl.canonicalize(arguments.route) />
         <cfset var static_key = "" />
         <cfset var dynamic_key = "" />
+        <cfset var dynamicRouteList = normalizeDynamicRoutes(arguments.dynamicRoutes) />
         <cfset var current_route = {} />
         <cfset var matcher = "" />
         <cfset var oRegex = "" />
@@ -41,8 +42,7 @@
         <cfif structIsEmpty(result.stRoute)>
             <cfset oRegex = createObject("java", "java.util.regex.Pattern") />
 
-            <cfloop collection="#arguments.dynamicRoutes#" item="dynamic_key">
-                <cfset current_route = arguments.dynamicRoutes[dynamic_key] />
+            <cfloop array="#dynamicRouteList#" item="current_route">
                 <cfset matcher = oRegex
                     .compile(javaCast("string", current_route.pattern))
                     .matcher(javaCast("string", routeToParse)) />
@@ -59,6 +59,27 @@
         </cfif>
 
         <cfreturn result />
+    </cffunction>
+
+
+    <cffunction name="normalizeDynamicRoutes" access="private" returntype="array" output="false">
+        <cfargument name="dynamicRoutes" type="any" required="true" />
+        <cfset var routeList = [] />
+        <cfset var routeKey = "" />
+
+        <cfif isArray(arguments.dynamicRoutes)>
+            <cfreturn arguments.dynamicRoutes />
+        </cfif>
+
+        <cfloop collection="#arguments.dynamicRoutes#" item="routeKey">
+            <cfset arrayAppend(routeList, arguments.dynamicRoutes[routeKey]) />
+        </cfloop>
+
+        <cfset arraySort(routeList, function(leftRoute, rightRoute) {
+            return compareNoCase(leftRoute.url, rightRoute.url);
+        }) />
+
+        <cfreturn routeList />
     </cffunction>
 
 </cfcomponent>

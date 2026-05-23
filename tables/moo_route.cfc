@@ -97,7 +97,7 @@
         <cfreturn variables.routeMatcher.parseRoute(
             route = arguments.route,
             staticRoutes = application.stStaticRoutes,
-            dynamicRoutes = application.stDynamicRoutes
+            dynamicRoutes = application.aDynamicRoutes ?: application.stDynamicRoutes
         ) />
     </cffunction>
 

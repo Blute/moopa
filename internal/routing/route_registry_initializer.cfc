@@ -16,6 +16,7 @@
 
 
         <cfset application.stDynamicRoutes = {} />
+        <cfset application.aDynamicRoutes = [] />
         <cfset application.stStaticRoutes = {} />
         <cfset application.stAllRoutes = {} />
 
@@ -98,6 +99,7 @@ TODO: need to check if old way works for the following and which has precedence:
                     </cfif>
 
                     <cfset application.stDynamicRoutes[stRoute.key] = stRoute />
+                    <cfset arrayAppend(application.aDynamicRoutes, stRoute) />
                 <cfelse>
 
                     <cfif structKeyExists(application.stStaticRoutes, stRoute.md.key)>
@@ -112,6 +114,10 @@ TODO: need to check if old way works for the following and which has precedence:
 
             </cfloop>
         </cfloop>
+
+        <cfset arraySort(application.aDynamicRoutes, function(leftRoute, rightRoute) {
+            return compareNoCase(leftRoute.url, rightRoute.url);
+        }) />
 
         <cfset variables.routeRegistryStore.deleteLegacyUnscopedRoutes(routeRegistry.persistenceAvailable) />
 
