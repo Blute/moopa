@@ -2,6 +2,8 @@
 
     <cffunction name="init">
 
+        <cfset variables.routeUrl = CreateObject("component", "/moopa/internal/routing/route_url").init() />
+        <cfset variables.routeMatcher = CreateObject("component", "/moopa/internal/routing/route_matcher").init(variables.routeUrl) />
         <cfset variables.registryRowMerger = CreateObject("component", "/moopa/internal/routing/registry_row_merger").init() />
         <cfset variables.accessPolicy = CreateObject("component", "/moopa/internal/routing/access_policy").init() />
 
@@ -105,24 +107,7 @@
     <cffunction name="canonicalizeRouteUrl" access="private" returntype="string" output="false">
         <cfargument name="url" type="string" required="true" />
 
-        <cfset var routeUrl = replace(trim(arguments.url), chr(92), "/", "all") />
-        <cfset routeUrl = reReplace(routeUrl, "\.cfc$", "", "one") />
-        <cfset routeUrl = reReplace("/#routeUrl#", "/+", "/", "all") />
-        <cfset routeUrl = reReplace(routeUrl, "/+$", "", "one") />
-
-        <cfif NOT len(routeUrl)>
-            <cfset routeUrl = "/" />
-        </cfif>
-
-        <cfif routeUrl EQ "/index">
-            <cfreturn "/" />
-        </cfif>
-
-        <cfif right(routeUrl, 6) EQ "/index">
-            <cfset routeUrl = left(routeUrl, len(routeUrl) - 6) />
-        </cfif>
-
-        <cfreturn routeUrl />
+        <cfreturn variables.routeUrl.canonicalize(arguments.url) />
     </cffunction>
 
 
@@ -471,71 +456,14 @@ TODO: need to check if old way works for the following and which has precedence:
 
 
 
-    <cffunction name="parseRoute">
-
+    <cffunction name="parseRoute" returntype="struct" output="false">
         <cfargument name="route" hint="Usually from url.route" />
 
-        <!--- Initialize the return struct --->
-        <cfset result = {
-            stRoute : {},
-            params : {
-                route : arguments.route
-            }
-        } />
-        <!--- Set the route to parse from the attributes.route value --->
-        <cfset routeToParse = canonicalizeRouteUrl(arguments.route) />
-
-        <!--- Check if a route is provided, if not, abort and show an error message --->
-        <cfif !len(routeToParse)>
-            <cfabort showerror="MUST INCLUDE A route" />
-        </cfif>
-
-        <!--- Loop through the collection of static routes to find a match --->
-        <cfloop collection="#application.stStaticRoutes#" item="static_key">
-            <cfif application.stStaticRoutes[static_key]['url'] EQ routeToParse>
-                <cfset result.stRoute = application.stStaticRoutes[static_key] />
-
-                <cfbreak>
-            </cfif>
-        </cfloop>
-
-
-        <!--- If no static route is found, proceed to search for a dynamic route --->
-        <cfif structIsEmpty(result.stRoute)>
-            <!--- Create a regex pattern object --->
-            <cfset oRegex = createObject( "java", "java.util.regex.Pattern" ) />
-
-            <!--- Loop through the collection of dynamic routes to find a match --->
-            <cfloop collection="#application.stDynamicRoutes#" item="dynamic_key">
-
-                <!--- Get the current dynamic route from the application scope --->
-                <cfset current_route = application.stDynamicRoutes[dynamic_key] />
-
-                <!--- Compile the regex pattern and match it against the routeToParse --->
-                <cfset matcher = oRegex
-                                    .compile( javaCast( "string", "#current_route.pattern#" ) )
-                                    .matcher( javaCast( "string", '#routeToParse#' ) ) />
-
-                <!--- If a match is found, proceed to process the groups and store the matched route --->
-                <cfif matcher.find()>
-
-                    <!--- Loop through the groups, and store the matched values in the URL scope --->
-                    <cfloop array="#current_route.groups#" item="group" index="i">
-                        <cfset result.params[group] = matcher.group( i ) />
-                    </cfloop>
-
-                    <!--- Store the matched dynamic route in the stRoute struct --->
-                    <cfset result.stRoute = application.stDynamicRoutes[dynamic_key] />
-                    <cfbreak>
-                </cfif>
-
-            </cfloop>
-
-        </cfif>
-
-
-        <cfreturn result />
-
+        <cfreturn variables.routeMatcher.parseRoute(
+            route = arguments.route,
+            staticRoutes = application.stStaticRoutes,
+            dynamicRoutes = application.stDynamicRoutes
+        ) />
     </cffunction>
 
 
