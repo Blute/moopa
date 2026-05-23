@@ -7,11 +7,13 @@
         <cfset variables.routeMatcher = CreateObject("component", "/moopa/internal/routing/route_matcher").init(variables.routeUrl) />
         <cfset variables.routeDescriptorBuilder = CreateObject("component", "/moopa/internal/routing/route_descriptor_builder").init(variables.routeUrl) />
         <cfset variables.registryRowMerger = CreateObject("component", "/moopa/internal/routing/registry_row_merger").init() />
-        <cfset variables.routeRegistryInitializer = CreateObject("component", "/moopa/internal/routing/route_registry_initializer").init(
-            routeUrl = variables.routeUrl,
+        <cfset variables.routeRegistryStore = CreateObject("component", "/moopa/internal/routing/route_registry_store").init(
             routeIdentity = variables.routeIdentity,
-            routeDescriptorBuilder = variables.routeDescriptorBuilder,
             registryRowMerger = variables.registryRowMerger
+        ) />
+        <cfset variables.routeRegistryInitializer = CreateObject("component", "/moopa/internal/routing/route_registry_initializer").init(
+            routeDescriptorBuilder = variables.routeDescriptorBuilder,
+            routeRegistryStore = variables.routeRegistryStore
         ) />
         <cfset variables.accessPolicy = CreateObject("component", "/moopa/internal/routing/access_policy").init() />
 
