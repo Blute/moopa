@@ -3,10 +3,12 @@
     <cffunction name="init" access="public" returntype="any" output="false">
         <cfargument name="routeUrl" required="true" />
         <cfargument name="routeIdentity" required="true" />
+        <cfargument name="routeDescriptorBuilder" required="true" />
         <cfargument name="registryRowMerger" required="true" />
 
         <cfset variables.routeUrl = arguments.routeUrl />
         <cfset variables.routeIdentity = arguments.routeIdentity />
+        <cfset variables.routeDescriptorBuilder = arguments.routeDescriptorBuilder />
         <cfset variables.registryRowMerger = arguments.registryRowMerger />
 
         <cfreturn this />
@@ -109,18 +111,13 @@ TODO: need to check if old way works for the following and which has precedence:
  --->
 
             <cfloop query="qRoutes">
-                <cfset stRoute = {} />
-                <cfset stRoute.key = "" /> <!--- set shortly via component metadata --->
-                <cfset stRoute.location = "#qRoutes.directory#/#qRoutes.name#" />
-                <cfset stRoute.path = replaceNoCase(stRoute.location,".cfc",'') />
-                <cfset stRoute.localUrl = replaceNoCase(stRoute.path,"#routePath#",'') />
-                <cfset stRoute.url = variables.routeUrl.canonicalize("#routeMount##stRoute.localUrl#") />
-                <cfset stRoute.componentPath = "#componentPath##stRoute.localUrl#" />
-                <cfset stRoute.app_name = application.app_name />
-                <cfset stRoute.docs = {} />
-                <cfset stRoute.endpoints = {} />
-                <cfset stRoute.md = duplicate(getMetaData(createObject("component", "#stRoute.componentPath#"))) />
-                <cfset stRoute['open_to'] = stRoute.md['open_to']?:'security' /> <!--- public,bearer,logged_in,security --->
+                <cfset stRoute = variables.routeDescriptorBuilder.build(
+                    location = "#qRoutes.directory#/#qRoutes.name#",
+                    routePath = routePath,
+                    componentPath = componentPath,
+                    routeMount = routeMount,
+                    appName = application.app_name
+                ) />
 
                 <!--- Need to determine if the route is already defined --->
 
@@ -131,27 +128,12 @@ TODO: need to check if old way works for the following and which has precedence:
                     <cfthrow message="Duplicate route URL '#stRoute.url#' loaded from #stRoute.componentPath#; already loaded from #processed_route_urls[processed_route_url_key]#. Package boundaries require unique canonical routes within an app runtime." />
                 </cfif>
 
-                <cfloop array="#stRoute.md.functions#" item="fn">
-                    <cfif lCase(fn.access ?: "public") EQ "private">
-                        <cfcontinue />
-                    </cfif>
-                    <cfset stRoute.endpoints[fn.name] = fn />
-                    <cfset stRoute.endpoints[fn.name]['open_to'] = stRoute.endpoints[fn.name]['open_to']?:stRoute['open_to'] /> <!--- public,bearer,logged_in,security --->
-                </cfloop>
-
-
-                <cfif !len(stRoute.md.key?:'')>
-                    <cfthrow message="No Key Defined for #stRoute.url#" />
-                </cfif>
-
-
                 <cfif ArrayFind(aCheckNoDuplicateKeys, stRoute.md.key)>
                     <cfthrow message="Key In Use. No duplicate keys allowed (#stRoute.md.key#)" />
                 </cfif>
 
                 <cfset arrayAppend(aCheckNoDuplicateKeys, stRoute.md.key) />
 
-                <cfset stRoute.key = stRoute.md.key /> <!--- Told you --->
                 <cfset stRoute.identity = variables.routeIdentity.byKey(stRoute.key, stRoute.app_name) />
 
                 <cfif routePersistenceAvailable
@@ -308,22 +290,6 @@ TODO: need to check if old way works for the following and which has precedence:
                         <cfthrow message="Trying to process [#stRoute.path#] but a Route with the key [#stRoute.md.key#] already exists" />
                     </cfif>
 
-                    <cfset route_string = stRoute.url />
-                    <cfset route_parts = [] />
-                    <cfset route_groups = [] />
-                    <cfloop list="#route_string#" delimiters="/" item="iPart">
-                        <cfif left(iPart,1) EQ "[" AND right(iPart,1) EQ "]">
-                            <cfset arrayAppend(route_parts,'([0-9A-Za-z\s\-_]+)') />
-                            <cfset arrayAppend(route_groups, mid(iPart,2,len(iPart)-2) )/>
-                        <cfelse>
-                            <cfset arrayAppend(route_parts,'#iPart#') />
-                        </cfif>
-                    </cfloop>
-                    <cfset iPattern = route_parts.toList("\/") />
-                    <cfset iPattern = "^\/#iPattern#$" />
-                    <cfset stRoute.pattern = iPattern />
-                    <cfset stRoute.parts = route_parts />
-                    <cfset stRoute.groups = route_groups />
                     <cfset application.stDynamicRoutes[stRoute.key] = stRoute />
                 <cfelse>
 
