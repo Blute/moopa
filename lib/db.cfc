@@ -9,6 +9,9 @@
         <cfset this.searchable_tables = {} />
 
         <cfset variables.returnFormatter = CreateObject("component", "/moopa/internal/db/return_formatter").init() />
+        <cfset variables.recordReader = CreateObject("component", "/moopa/internal/db/record_reader").init(
+            returnFormatter = variables.returnFormatter
+        ) />
         <cfset variables.writeMapper = CreateObject("component", "/moopa/internal/db/write_mapper").init() />
         <cfset variables.relationshipWriter = CreateObject("component", "/moopa/internal/db/relationship_writer").init() />
         <cfset variables.recordWriter = CreateObject("component", "/moopa/internal/db/record_writer").init(
@@ -378,7 +381,7 @@ Delete - delete
         <cfargument name="returnFormat" type="string" required="false" default="json" />
         <cfargument name="include_sensitive" type="boolean" required="false" default=false hint="Include fields marked sensitive: true" />
 
-        <cfset var res = {} />
+        <cfset var idValue = "" />
 
         <cfif !structKeyExists(this.codeSchema, arguments.table_name)>
             <cfthrow message="Invalid Table Name" />
@@ -392,30 +395,13 @@ Delete - delete
             <cfthrow message="No ID provided" />
         </cfif>
 
-        <cftry>
-            <cfquery name="qData" result="qResult">
-                SELECT COALESCE(row_to_json(data)::text, '{}') as recordset
-                FROM (
-                    SELECT #select(table_name=arguments.table_name, field_list="#arguments.field_list#", exclude_list="#arguments.exclude_list#", sql_type="#arguments.sql_type#", include_sensitive=arguments.include_sensitive)#
-                    FROM #arguments.table_name#
-                    WHERE id = <cfqueryparam cfsqltype="other" value="#local.idValue#" />
-                    #orderby(table_name=arguments.table_name)#
-                ) AS data
-            </cfquery>
-            <cfcatch type="any">
-                <cfdump var="#cfcatch#" expand="true">
-                <cfabort>
-            </cfcatch>
-        </cftry>
-
-        <cfif len(qData.recordset)>
-            <cfset res = qData.recordset />
-        <cfelse>
-            <cfset res = "{}" />
-        </cfif>
-
-
-        <cfreturn variables.returnFormatter.formatJSONText(res, arguments.returnFormat) />
+        <cfreturn variables.recordReader.read(
+            table_name = arguments.table_name,
+            idValue = idValue,
+            selectFields = select(table_name=arguments.table_name, field_list=arguments.field_list, exclude_list=arguments.exclude_list, sql_type=arguments.sql_type, include_sensitive=arguments.include_sensitive),
+            orderBy = orderby(table_name=arguments.table_name),
+            returnFormat = arguments.returnFormat
+        ) />
     </cffunction>
 
 
@@ -432,98 +418,32 @@ Delete - delete
         <cfargument name="select_append" type="string" required="false" default="" hint="Additional SELECT expressions to append (e.g. subqueries, computed fields)" />
         <cfargument name="returnFormat" type="string" required="false" default="json" />
 
+        <cfset var searchArgs = {} />
+
         <cfif !structKeyExists(this.codeSchema, arguments.table_name)>
             <cfthrow message="Invalid Table Name" />
         </cfif>
 
+        <cfset searchArgs = {
+            tableDef = this.codeSchema[arguments.table_name],
+            searchableTables = this.searchable_tables,
+            selectFields = select(table_name=arguments.table_name, field_list=arguments.field_list),
+            orderBy = orderby(table_name=arguments.table_name),
+            field_list = arguments.field_list,
+            q = arguments.q,
+            where = arguments.where,
+            ids = arguments.ids,
+            exclude_ids = arguments.exclude_ids,
+            limit = arguments.limit,
+            select_append = arguments.select_append,
+            returnFormat = arguments.returnFormat
+        } />
 
-
-        <cfquery name="qData">
-            SELECT COALESCE(array_to_json(array_agg(row_to_json(data)))::text, '[]') AS recordset
-            FROM (
-                SELECT #select(table_name=arguments.table_name, field_list="#arguments.field_list#")#
-                    <cfif len(arguments.select_append)>
-                        , #preserveSingleQuotes(arguments.select_append)#
-                    </cfif>
-                FROM #arguments.table_name#
-                WHERE 1 = 1
-
-
-                <!--- Process where conditions inside the query --->
-                <cfloop collection="#arguments.where#" item="field">
-                    <cfset local.value = arguments.where[field] />
-
-                    <cfif isStruct(local.value) AND structKeyExists(local.value, "operator")>
-                        <cfset local.operator = local.value.operator />
-                        <cfset local.sqlType = structKeyExists(local.value, "type") ? local.value.type : getFieldDef(table_name='#arguments.table_name#', field_name='#field#').cfsqltype />
-
-                        <cfswitch expression="#local.operator#">
-                            <cfcase value="IN">
-                                AND #field# IN (<cfqueryparam cfsqltype="#local.sqlType#" value="#local.value.value#" list="true" />)
-                            </cfcase>
-                            <cfcase value="LIKE">
-                                AND #field# LIKE <cfqueryparam cfsqltype="#local.sqlType#" value="%#local.value.value#%" />
-                            </cfcase>
-                            <cfcase value="<,>,<=,>=,<>">
-                                AND #field# #local.operator# <cfqueryparam cfsqltype="#local.sqlType#" value="#local.value.value#" />
-                            </cfcase>
-                            <cfdefaultcase>
-                                AND #field# = <cfqueryparam cfsqltype="#local.sqlType#" value="#local.value.value#" />
-                            </cfdefaultcase>
-                        </cfswitch>
-                    <cfelse>
-                        AND #field# = <cfqueryparam cfsqltype="#getFieldDef(table_name='#arguments.table_name#', field_name='#field#').cfsqltype#" value="#local.value#" />
-                    </cfif>
-                </cfloop>
-
-
-                <cfif len(arguments.q)>
-                    <cfif structKeyExists(this.searchable_tables, arguments.table_name)>
-
-                        <!--- Use pg_trgm trigram similarity search on search_text column --->
-                        <!--- The <% operator finds rows where query has word similarity to search_text --->
-                        AND <cfqueryparam cfsqltype="varchar" value="#arguments.q#" /> <% search_text
-
-                    <cfelse>
-
-                        AND label ILIKE <cfqueryparam cfsqltype="varchar" value="%#arguments.q#%" />
-                    </cfif>
-
-                </cfif>
-
-
-                <cfif arraylen(arguments.ids)>
-                    AND id in (<cfqueryparam cfsqltype="other" list="true" value="#arguments.ids#" />)
-                </cfif>
-
-                <cfif len(arguments.exclude_ids)>
-                    AND id NOT IN (<cfqueryparam cfsqltype="other" list="true" value="#arguments.exclude_ids#" />)
-                </cfif>
-
-                <!--- Order by word_similarity score when searching, otherwise use default order --->
-                <cfif len(arguments.q) AND structKeyExists(this.searchable_tables, arguments.table_name)>
-                    ORDER BY word_similarity(<cfqueryparam cfsqltype="varchar" value="#arguments.q#" />, search_text) DESC
-                <cfelse>
-                    #orderby(table_name=arguments.table_name)#
-                </cfif>
-
-                <cfif structKeyExists(arguments, "offset")>
-                    OFFSET <cfqueryparam cfsqltype="numeric" value="#arguments.offset#" />
-                </cfif>
-
-                LIMIT <cfqueryparam cfsqltype="numeric" value="#arguments.limit#" />
-            ) AS data
-        </cfquery>
-
-        <cfif arraylen(arguments.ids) GT 1>
-            <cfset orderedRecordset = sortRecordsetByIds(qData.recordset, arguments.ids) />
-
-            <cfreturn variables.returnFormatter.formatCFML(orderedRecordset, arguments.returnFormat) />
-
-        <cfelse>
-
-            <cfreturn variables.returnFormatter.formatJSONText(qData.recordset, arguments.returnFormat) />
+        <cfif structKeyExists(arguments, "offset")>
+            <cfset searchArgs.offset = arguments.offset />
         </cfif>
+
+        <cfreturn variables.recordReader.search(argumentCollection = searchArgs) />
     </cffunction>
 
     <cffunction name="idsInSearchTerm" hint="Returns array of IDs matching the search term using pg_trgm trigram similarity">
@@ -531,30 +451,12 @@ Delete - delete
         <cfargument name="term" required="true" />
         <cfargument name="limit" required="false" default="20">
 
-        <cfset search_ids = [] />
-
-        <cfif structKeyExists(this.searchable_tables, arguments.table_name) AND len(arguments.term)>
-
-            <!--- Use pg_trgm trigram similarity on search_text column --->
-            <cfquery name="qSearchIds">
-                SELECT id
-                FROM #arguments.table_name#
-                WHERE <cfqueryparam cfsqltype="varchar" value="#arguments.term#" /> <% search_text
-                ORDER BY word_similarity(<cfqueryparam cfsqltype="varchar" value="#arguments.term#" />, search_text) DESC
-                LIMIT <cfqueryparam cfsqltype="numeric" value="#arguments.limit#" />
-            </cfquery>
-
-            <cfloop query="qSearchIds">
-                <cfset arrayAppend(search_ids, qSearchIds.id) />
-            </cfloop>
-        </cfif>
-
-        <cfif !arrayLen(search_ids)>
-            <cfset search_ids = ['607ceee8-2cc0-4f9a-bed8-9f2f3affc575']>
-        </cfif>
-
-        <cfreturn search_ids />
-
+        <cfreturn variables.recordReader.idsInSearchTerm(
+            table_name = arguments.table_name,
+            term = arguments.term,
+            limit = arguments.limit,
+            searchableTables = this.searchable_tables
+        ) />
     </cffunction>
 
 
@@ -563,32 +465,7 @@ Delete - delete
         <cfargument name="recordset" required="true" />
         <cfargument name="ids" required="true" type="array" />
 
-        <!--- We need to sort the results based on the search response --->
-
-        <cfif isJSON(arguments.recordset)>
-            <cfset unorderedRecordset = deserializeJSON(arguments.recordset) />
-        <cfelse>
-            <cfset unorderedRecordset = arguments.recordset />
-        </cfif>
-
-        <cfif !arraylen(arguments.ids?:[])>
-            <cfreturn unorderedRecordset />
-        </cfif>
-
-
-        <cfset orderedRecordset = []>
-
-        <cfloop array="#arguments.ids#" item="id">
-            <cfloop array="#unorderedRecordset#" item="record">
-                <cfif record.id EQ id>
-                    <cfset ArrayAppend(orderedRecordset, record)>
-                    <cfbreak>
-                </cfif>
-            </cfloop>
-        </cfloop>
-        <cfreturn orderedRecordset />
-
-
+        <cfreturn variables.recordReader.sortRecordsetByIds(arguments.recordset, arguments.ids) />
     </cffunction>
 
 
