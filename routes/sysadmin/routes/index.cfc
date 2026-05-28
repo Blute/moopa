@@ -175,7 +175,7 @@
             <div class="modal-box max-w-6xl w-11/12 h-[85vh] p-0 flex flex-col">
               <div class="flex items-center justify-between px-5 py-3 border-b border-base-200 bg-base-200/30">
                 <h3 class="font-semibold text-lg flex items-center gap-2">
-                  <i class="fa-solid fa-check text-primary"></i>
+                  <i class="fa-solid fa-shield-halved text-primary"></i>
                   Route Security
                 </h3>
                 <form method="dialog">

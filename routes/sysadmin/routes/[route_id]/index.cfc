@@ -88,12 +88,12 @@
                     moo_profile.id::text AS profile_id,
                     COALESCE(NULLIF(moo_profile.full_name, ''), NULLIF(moo_profile.preferred_name, ''), moo_profile.email, moo_profile.id::text) AS label,
                     moo_profile.email,
+                    moo_profile.can_login,
                     'Direct profile' AS source
                 FROM moo_route_permission
                 INNER JOIN moo_profile ON moo_profile.id = moo_route_permission.profile_id
                 WHERE moo_route_permission.route_id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
                   AND moo_route_permission.is_granted = true
-                  AND moo_profile.can_login = true
                   AND moo_profile.app_name = <cfqueryparam cfsqltype="varchar" value="#application.app_name#" />
                   AND moo_route_permission.profile_id IN (
                       SELECT foreign_id
@@ -105,6 +105,7 @@
                     moo_profile.id::text AS profile_id,
                     COALESCE(NULLIF(moo_profile.full_name, ''), NULLIF(moo_profile.preferred_name, ''), moo_profile.email, moo_profile.id::text) AS label,
                     moo_profile.email,
+                    moo_profile.can_login,
                     'Role: ' || moo_role.name AS source
                 FROM moo_route_permission
                 INNER JOIN moo_role ON moo_role.id = moo_route_permission.role_id
@@ -112,7 +113,6 @@
                 INNER JOIN moo_profile on moo_profile.id = moo_profile_roles.primary_id
                 WHERE moo_route_permission.route_id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
                   AND moo_route_permission.is_granted = true
-                  AND moo_profile.can_login = true
                   AND moo_profile.app_name = <cfqueryparam cfsqltype="varchar" value="#application.app_name#" />
                   AND moo_route_permission.role_id IN (
                       SELECT foreign_id
@@ -124,6 +124,7 @@
                     moo_profile.id::text AS profile_id,
                     COALESCE(NULLIF(moo_profile.full_name, ''), NULLIF(moo_profile.preferred_name, ''), moo_profile.email, moo_profile.id::text) AS label,
                     moo_profile.email,
+                    moo_profile.can_login,
                     'Sysadmin' AS source
                 FROM moo_profile
                 WHERE moo_profile.app_name = <cfqueryparam cfsqltype="varchar" value="#application.app_name#" />
@@ -131,11 +132,11 @@
                   AND moo_profile.can_login = true
                   AND lower(moo_profile.email) IN (<cfqueryparam cfsqltype="varchar" value="#sysadminEmails#" list="true" />)
             ), effective AS (
-                SELECT profile_id, label, email, source FROM direct_profiles
+                SELECT profile_id, label, email, can_login, source FROM direct_profiles
                 UNION ALL
-                SELECT profile_id, label, email, source FROM role_profiles
+                SELECT profile_id, label, email, can_login, source FROM role_profiles
                 UNION ALL
-                SELECT profile_id, label, email, source FROM sysadmins
+                SELECT profile_id, label, email, can_login, source FROM sysadmins
             )
             SELECT COALESCE(jsonb_agg(accessor ORDER BY label)::text, '[]') AS data
             FROM (
@@ -143,6 +144,7 @@
                     profile_id,
                     label,
                     email,
+                    bool_or(can_login) AS can_login,
                     jsonb_agg(DISTINCT source ORDER BY source) AS sources
                 FROM effective
                 GROUP BY profile_id, label, email
@@ -154,6 +156,8 @@
 
 
     <cffunction name="load">
+        <cfargument name="route_id" type="string" required="true" />
+
         <cfset assertRouteInCurrentApp(arguments.route_id) />
         <cfset var accessSubjects = getRouteAccessSubjects(arguments.route_id) />
         <cfset stResult = {} />
@@ -233,6 +237,8 @@
     </cffunction>
 
     <cffunction name="toggleProfileAccess">
+        <cfargument name="route_id" type="string" required="true" />
+
         <cfset assertRouteInCurrentApp(arguments.route_id) />
 
         <cfquery name="qCheckExists">
@@ -267,6 +273,8 @@
     </cffunction>
 
     <cffunction name="toggleRoleAccess">
+        <cfargument name="route_id" type="string" required="true" />
+
         <cfset assertRouteInCurrentApp(arguments.route_id) />
 
         <cfquery name="qCheckExists">
@@ -363,22 +371,6 @@
 
         <div x-data="xxx" class="p-6">
 
-            <!--- Route Info Bar --->
-            <div class="flex flex-wrap items-center justify-between gap-4 mb-6" x-cloak>
-                <div class="flex flex-wrap items-center gap-2">
-                    <code class="text-lg font-mono bg-base-200 px-3 py-1 rounded" x-text="current_route.url"></code>
-                    <span x-show="route_open_to === 'public'" class="badge badge-success">Open to Public</span>
-                    <span x-show="route_open_to === 'bearer'" class="badge badge-success">Open with Bearer Token</span>
-                    <span x-show="route_open_to === 'logged_in'" class="badge badge-success">Open when Logged In</span>
-                </div>
-                <cfif session.auth.is_sysadmin?:false>
-                    <button type="button" class="btn btn-sm btn-primary gap-2" @click="edit_route" x-show="!showEditRoute">
-                        <i class="fa-solid fa-pen-to-square"></i>
-                        Edit Access
-                    </button>
-                </cfif>
-            </div>
-
             <cfif session.auth.is_sysadmin?:false>
                 <div x-cloak x-show="showEditRoute" x-transition class="mb-6">
                     <div class="card card-border bg-base-100 max-w-2xl">
@@ -396,18 +388,26 @@
                 </div>
             </cfif>
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6" x-show="!showEditRoute" x-transition x-cloak>
+            <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-3" x-show="!showEditRoute" x-transition x-cloak>
 
                 <!--- Permissions Matrix Card --->
                 <div class="lg:col-span-2">
                     <div class="card card-border bg-base-100">
                         <div class="card-body p-0">
-                            <div class="px-5 pt-5 pb-3 border-b border-base-200">
-                                <h3 class="font-semibold flex items-center gap-2">
-                                    <i class="fa-solid fa-check text-primary"></i>
-                                    Endpoint Permissions
-                                </h3>
-                                <p class="text-sm text-base-content/60 mt-1">Click to toggle access for profiles and roles</p>
+                            <div class="flex flex-col gap-3 border-b border-base-200 px-5 pb-4 pt-5 sm:flex-row sm:items-start sm:justify-between">
+                                <div class="min-w-0">
+                                    <h3 class="flex items-center gap-2 font-semibold">
+                                        <i class="fa-solid fa-check text-primary"></i>
+                                        Permission Matrix
+                                    </h3>
+                                    <p class="mt-1 max-w-[64ch] text-sm leading-5 text-base-content/55">Grant route-wide or endpoint-specific access for the profiles and roles shown as columns.</p>
+                                </div>
+                                <cfif session.auth.is_sysadmin?:false>
+                                    <button type="button" class="btn btn-sm btn-primary shrink-0 gap-2" @click="edit_route">
+                                        <i class="fa-solid fa-pen-to-square"></i>
+                                        Edit Access
+                                    </button>
+                                </cfif>
                             </div>
 
                             <template x-if="access_subjects.length > 0">
@@ -415,7 +415,11 @@
                                     <table class="table w-full">
                                         <thead>
                                             <tr class="bg-base-200/50">
-                                                <th class="text-center" style="height: 110px;">&nbsp;</th>
+                                                <th class="min-w-56 align-bottom">
+                                                    <div class="flex min-h-[6.75rem] flex-col justify-end gap-2 py-1">
+                                                        <p class="max-w-48 text-xs font-normal leading-4 text-base-content/50">Rows show the route or endpoint each tick grants.</p>
+                                                    </div>
+                                                </th>
                                                 <template x-for="subject in access_subjects" :key="subjectKey(subject)">
                                                     <th class="text-sm">
                                                         <div class="rotated-th">
@@ -427,7 +431,17 @@
                                         </thead>
                                         <tbody>
                                             <tr class="bg-base-100">
-                                                <th class="font-semibold text-sm">ALL ACCESS</th>
+                                                <th class="min-w-56">
+                                                    <div class="py-1">
+                                                        <div class="flex flex-wrap items-center gap-2">
+                                                            <code class="rounded bg-base-200 px-2 py-0.5 font-mono text-sm font-semibold text-base-content" x-text="current_route.url"></code>
+                                                            <span x-show="route_open_to === 'public'" class="badge badge-success badge-sm">Public</span>
+                                                            <span x-show="route_open_to === 'bearer'" class="badge badge-success badge-sm">Bearer</span>
+                                                            <span x-show="route_open_to === 'logged_in'" class="badge badge-success badge-sm">Logged in</span>
+                                                        </div>
+                                                        <p class="mt-0.5 font-mono text-xs font-normal text-base-content/45" x-show="routeSourcePath()" x-text="routeSourcePath()"></p>
+                                                    </div>
+                                                </th>
                                                 <template x-for="subject in access_subjects" :key="subjectKey(subject)">
                                                     <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleSubjectAccess(subject)">
                                                         <i class="fa-solid text-xl" :class="isSubjectAccessSet(subject) ? 'fa-check text-success' : 'fa-check opacity-20'"></i>
@@ -437,7 +451,11 @@
 
                                             <template x-for="endpoint in current_route.endpoints" :key="endpoint.id">
                                                 <tr>
-                                                    <th x-text="endpoint.name" class="font-medium text-sm text-base-content/80"></th>
+                                                    <th class="min-w-56">
+                                                        <div class="py-1">
+                                                            <p class="text-sm font-medium text-base-content/80" x-text="endpointLabel(endpoint)"></p>
+                                                        </div>
+                                                    </th>
                                                     <template x-for="subject in access_subjects" :key="subjectKey(subject)">
                                                         <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleSubjectAccess(subject, endpoint.id)">
                                                             <div x-show="isSubjectAccessSet(subject)">
@@ -472,12 +490,12 @@
                         <div class="card-body">
                             <h3 class="font-semibold flex items-center gap-2 mb-3">
                                 <i class="fa-solid fa-users text-secondary"></i>
-                                Effective Access
+                                Profiles With Access
                             </h3>
 
-                            <template x-if="who_has_access.length > 0">
-                                <div class="space-y-2 max-h-80 overflow-y-auto">
-                                    <template x-for="person in who_has_access" :key="person.profile_id">
+                            <template x-if="activeAccessors().length > 0">
+                                <div class="space-y-2 max-h-72 overflow-y-auto">
+                                    <template x-for="person in activeAccessors()" :key="person.profile_id">
                                         <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200/50 transition-colors">
                                             <div class="avatar avatar-placeholder">
                                                 <div class="bg-neutral text-neutral-content w-8 rounded-full flex items-center justify-center">
@@ -493,10 +511,40 @@
                                 </div>
                             </template>
 
+                            <template x-if="activeAccessors().length === 0 && inactiveAccessors().length > 0">
+                                <div class="py-2 text-sm text-base-content/55">
+                                    No login-enabled profiles have access.
+                                </div>
+                            </template>
+
+                            <template x-if="inactiveAccessors().length > 0">
+                                <div class="mt-4 border-t border-base-200 pt-3">
+                                    <div class="mb-2 flex items-center justify-between gap-2">
+                                        <p class="text-xs font-semibold uppercase tracking-[0.08em] text-base-content/45">Login disabled</p>
+                                        <span class="badge badge-ghost badge-xs" x-text="inactiveAccessors().length"></span>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <template x-for="person in inactiveAccessors()" :key="person.profile_id">
+                                            <div class="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-base-200/45">
+                                                <div class="avatar avatar-placeholder shrink-0">
+                                                    <div class="bg-base-300 text-base-content/70 w-6 rounded-full flex items-center justify-center">
+                                                        <span class="text-[0.625rem] font-semibold" x-text="profileInitials(person)"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="min-w-0 flex-1">
+                                                    <p class="truncate font-medium text-base-content/75" x-text="person.label"></p>
+                                                    <p class="truncate text-base-content/45" x-text="accessSources(person)"></p>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+
                             <template x-if="who_has_access.length === 0">
                                 <div class="text-center py-4 text-base-content/50">
                                     <i class="fa-solid fa-user-slash text-lg mb-2 block"></i>
-                                    <p class="text-sm">No users have effective access</p>
+                                    <p class="text-sm">No profiles have access</p>
                                 </div>
                             </template>
                         </div>
@@ -530,6 +578,30 @@
 
                     accessSources(person) {
                         return person.sources.join(', ');
+                    },
+
+                    activeAccessors() {
+                        return this.who_has_access.filter((person) => person.can_login !== false);
+                    },
+
+                    inactiveAccessors() {
+                        return this.who_has_access.filter((person) => person.can_login === false);
+                    },
+
+                    routeSourcePath() {
+                        const mapping = this.current_route?.mapping || '';
+                        if (!mapping) return '';
+                        return mapping.endsWith('.cfc') ? mapping : `${mapping}.cfc`;
+                    },
+
+                    endpointName(endpoint) {
+                        return String(endpoint?.name || '').trim();
+                    },
+
+                    endpointLabel(endpoint) {
+                        const name = this.endpointName(endpoint);
+
+                        return name || 'get';
                     },
 
                     profileInitials(person) {
