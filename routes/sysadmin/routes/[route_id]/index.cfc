@@ -17,12 +17,152 @@
     </cffunction>
 
 
+    <cffunction name="getRouteAccessSubjects" access="private" returntype="struct" output="false">
+        <cfargument name="route_id" type="string" required="true" />
+
+        <cfset var qSubjects = "" />
+
+        <cfquery name="qSubjects">
+            WITH profile_subjects AS (
+                SELECT
+                    moo_route_profiles.sequence,
+                    moo_profile.id::text AS id,
+                    'profile' AS type,
+                    COALESCE(NULLIF(moo_profile.full_name, ''), NULLIF(moo_profile.preferred_name, ''), moo_profile.email, moo_profile.id::text) AS label,
+                    moo_profile.full_name,
+                    moo_profile.preferred_name,
+                    moo_profile.email
+                FROM moo_route_profiles
+                INNER JOIN moo_profile ON moo_profile.id = moo_route_profiles.foreign_id
+                WHERE moo_route_profiles.primary_id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
+            ), role_subjects AS (
+                SELECT
+                    moo_route_roles.sequence,
+                    moo_role.id::text AS id,
+                    'role' AS type,
+                    moo_role.name AS label,
+                    moo_role.name
+                FROM moo_route_roles
+                INNER JOIN moo_role ON moo_role.id = moo_route_roles.foreign_id
+                WHERE moo_route_roles.primary_id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
+            ), subjects AS (
+                SELECT 1 AS sort_group, sequence, id, type, label FROM profile_subjects
+                UNION ALL
+                SELECT 2 AS sort_group, sequence, id, type, label FROM role_subjects
+            )
+            SELECT row_to_json(payload)::text AS data
+            FROM (
+                SELECT
+                    COALESCE((
+                        SELECT jsonb_agg(to_jsonb(profile_subjects) - 'sequence' ORDER BY sequence)
+                        FROM profile_subjects
+                    ), '[]'::jsonb) AS profiles,
+                    COALESCE((
+                        SELECT jsonb_agg(to_jsonb(role_subjects) - 'sequence' ORDER BY sequence)
+                        FROM role_subjects
+                    ), '[]'::jsonb) AS roles,
+                    COALESCE((
+                        SELECT jsonb_agg(to_jsonb(subjects) - 'sort_group' - 'sequence' ORDER BY sort_group, sequence)
+                        FROM subjects
+                    ), '[]'::jsonb) AS subjects
+            ) payload
+        </cfquery>
+
+        <cfreturn deserializeJSON(qSubjects.data) />
+    </cffunction>
+
+
+    <cffunction name="getRouteEffectiveAccessors" access="private" returntype="array" output="false">
+        <cfargument name="route_id" type="string" required="true" />
+
+        <cfset var qAccessors = "" />
+        <cfset var sysadminEmails = application.lib.auth_local_password.getSysadminEmails() />
+
+        <cfif NOT len(sysadminEmails)>
+            <cfset sysadminEmails = "__moopa_no_configured_sysadmin_email__" />
+        </cfif>
+
+        <cfquery name="qAccessors">
+            WITH direct_profiles AS (
+                SELECT DISTINCT
+                    moo_profile.id::text AS profile_id,
+                    COALESCE(NULLIF(moo_profile.full_name, ''), NULLIF(moo_profile.preferred_name, ''), moo_profile.email, moo_profile.id::text) AS label,
+                    moo_profile.email,
+                    'Direct profile' AS source
+                FROM moo_route_permission
+                INNER JOIN moo_profile ON moo_profile.id = moo_route_permission.profile_id
+                WHERE moo_route_permission.route_id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
+                  AND moo_route_permission.is_granted = true
+                  AND moo_profile.can_login = true
+                  AND moo_profile.app_name = <cfqueryparam cfsqltype="varchar" value="#application.app_name#" />
+                  AND moo_route_permission.profile_id IN (
+                      SELECT foreign_id
+                      FROM moo_route_profiles
+                      WHERE primary_id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
+                  )
+            ), role_profiles AS (
+                SELECT DISTINCT
+                    moo_profile.id::text AS profile_id,
+                    COALESCE(NULLIF(moo_profile.full_name, ''), NULLIF(moo_profile.preferred_name, ''), moo_profile.email, moo_profile.id::text) AS label,
+                    moo_profile.email,
+                    'Role: ' || moo_role.name AS source
+                FROM moo_route_permission
+                INNER JOIN moo_role ON moo_role.id = moo_route_permission.role_id
+                INNER JOIN moo_profile_roles on moo_profile_roles.foreign_id = moo_role.id
+                INNER JOIN moo_profile on moo_profile.id = moo_profile_roles.primary_id
+                WHERE moo_route_permission.route_id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
+                  AND moo_route_permission.is_granted = true
+                  AND moo_profile.can_login = true
+                  AND moo_profile.app_name = <cfqueryparam cfsqltype="varchar" value="#application.app_name#" />
+                  AND moo_route_permission.role_id IN (
+                      SELECT foreign_id
+                      FROM moo_route_roles
+                      WHERE primary_id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
+                  )
+            ), sysadmins AS (
+                SELECT DISTINCT
+                    moo_profile.id::text AS profile_id,
+                    COALESCE(NULLIF(moo_profile.full_name, ''), NULLIF(moo_profile.preferred_name, ''), moo_profile.email, moo_profile.id::text) AS label,
+                    moo_profile.email,
+                    'Sysadmin' AS source
+                FROM moo_profile
+                WHERE moo_profile.app_name = <cfqueryparam cfsqltype="varchar" value="#application.app_name#" />
+                  AND <cfqueryparam cfsqltype="varchar" value="#application.app_name#" /> = 'hub'
+                  AND moo_profile.can_login = true
+                  AND lower(moo_profile.email) IN (<cfqueryparam cfsqltype="varchar" value="#sysadminEmails#" list="true" />)
+            ), effective AS (
+                SELECT profile_id, label, email, source FROM direct_profiles
+                UNION ALL
+                SELECT profile_id, label, email, source FROM role_profiles
+                UNION ALL
+                SELECT profile_id, label, email, source FROM sysadmins
+            )
+            SELECT COALESCE(jsonb_agg(accessor ORDER BY label)::text, '[]') AS data
+            FROM (
+                SELECT
+                    profile_id,
+                    label,
+                    email,
+                    jsonb_agg(DISTINCT source ORDER BY source) AS sources
+                FROM effective
+                GROUP BY profile_id, label, email
+            ) accessor
+        </cfquery>
+
+        <cfreturn deserializeJSON(qAccessors.data) />
+    </cffunction>
+
+
     <cffunction name="load">
         <cfset assertRouteInCurrentApp(arguments.route_id) />
+        <cfset var accessSubjects = getRouteAccessSubjects(arguments.route_id) />
         <cfset stResult = {} />
         <cfset stResult.current_route = application.lib.db.read(table_name='moo_route', id="#arguments.route_id#", field_list="*", returnFormat="cfml") />
         <cfset stResult.route_open_to = application.stAllRoutes[arguments.route_id].open_to />
         <cfset stResult.endpoint_access = {} />
+        <cfset stResult.current_route.profiles = accessSubjects.profiles />
+        <cfset stResult.current_route.roles = accessSubjects.roles />
+        <cfset stResult.access_subjects = accessSubjects.subjects />
 
 
         <!--- Initialize endpoint access --->
@@ -85,37 +225,7 @@
             </cfif>
         </cfloop>
 
-
-        <cfquery name="who_has_access">
-        SELECT COALESCE(jsonb_agg(data)::text, '[]') as data
-        FROM (
-            SELECT moo_role.name as role, moo_profile.full_name as profile
-            FROM moo_route_permission
-            LEFT JOIN moo_role ON moo_role.id = moo_route_permission.role_id
-            LEFT JOIN moo_profile_roles on moo_profile_roles.foreign_id = moo_role.id
-            LEFT JOIN moo_profile on moo_profile.id = moo_profile_roles.primary_id
-            WHERE moo_route_permission.route_id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
-            AND moo_route_permission.is_granted
-
-            AND (
-                moo_route_permission.role_id IN (
-                    SELECT foreign_id
-                    FROM moo_route_roles
-                    WHERE primary_id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
-                )
-                OR moo_route_permission.profile_id IN (
-                    SELECT foreign_id
-                    FROM moo_route_profiles
-                    WHERE primary_id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
-                )
-            )
-
-            AND moo_profile.id is not null
-            ORDER BY moo_profile.full_name
-        ) as data
-        </cfquery>
-
-        <cfset stResult.who_has_access = deserializeJSON(who_has_access.data) />
+        <cfset stResult.who_has_access = getRouteEffectiveAccessors(arguments.route_id) />
 
 
         <cfreturn stResult />
@@ -300,23 +410,16 @@
                                 <p class="text-sm text-base-content/60 mt-1">Click to toggle access for profiles and roles</p>
                             </div>
 
-                            <template x-if="(current_route.profiles?.length > 0) || (current_route.roles?.length > 0)">
+                            <template x-if="access_subjects.length > 0">
                                 <div class="overflow-x-auto">
                                     <table class="table w-full">
                                         <thead>
                                             <tr class="bg-base-200/50">
                                                 <th class="text-center" style="height: 110px;">&nbsp;</th>
-                                                <template x-for="profile in current_route.profiles" :key="profile.id">
+                                                <template x-for="subject in access_subjects" :key="subjectKey(subject)">
                                                     <th class="text-sm">
                                                         <div class="rotated-th">
-                                                            <span class="rotated-th__label" x-text="profile.full_name"></span>
-                                                        </div>
-                                                    </th>
-                                                </template>
-                                                <template x-for="role in current_route.roles" :key="role.id">
-                                                    <th class="text-sm">
-                                                        <div class="rotated-th">
-                                                            <span class="rotated-th__label font-semibold text-primary" x-text="role.label"></span>
+                                                            <span class="rotated-th__label font-semibold" x-text="subject.label"></span>
                                                         </div>
                                                     </th>
                                                 </template>
@@ -325,14 +428,9 @@
                                         <tbody>
                                             <tr class="bg-base-100">
                                                 <th class="font-semibold text-sm">ALL ACCESS</th>
-                                                <template x-for="profile in current_route.profiles" :key="profile.id">
-                                                    <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleProfileAccess(profile.id)">
-                                                        <i class="fa-solid text-xl" :class="isProfileAccessSet(profile.id) ? 'fa-check text-success' : 'fa-check opacity-20'"></i>
-                                                    </td>
-                                                </template>
-                                                <template x-for="role in current_route.roles" :key="role.id">
-                                                    <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleRoleAccess(role.id)">
-                                                        <i class="fa-solid text-xl" :class="isRoleAccessSet(role.id) ? 'fa-check text-success' : 'fa-check opacity-20'"></i>
+                                                <template x-for="subject in access_subjects" :key="subjectKey(subject)">
+                                                    <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleSubjectAccess(subject)">
+                                                        <i class="fa-solid text-xl" :class="isSubjectAccessSet(subject) ? 'fa-check text-success' : 'fa-check opacity-20'"></i>
                                                     </td>
                                                 </template>
                                             </tr>
@@ -340,23 +438,13 @@
                                             <template x-for="endpoint in current_route.endpoints" :key="endpoint.id">
                                                 <tr>
                                                     <th x-text="endpoint.name" class="font-medium text-sm text-base-content/80"></th>
-                                                    <template x-for="profile in current_route.profiles" :key="profile.id">
-                                                        <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleProfileAccess(profile.id, endpoint.id)">
-                                                            <div x-show="isProfileAccessSet(profile.id)">
+                                                    <template x-for="subject in access_subjects" :key="subjectKey(subject)">
+                                                        <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleSubjectAccess(subject, endpoint.id)">
+                                                            <div x-show="isSubjectAccessSet(subject)">
                                                                 <i class="fa-solid text-xl fa-check text-success/50"></i>
                                                             </div>
-                                                            <div x-show="!isProfileAccessSet(profile.id)">
-                                                                <i class="fa-solid text-xl" :class="isProfileAccessSet(profile.id, endpoint.id) ? 'fa-check text-success' : 'fa-xmark text-error/60'"></i>
-                                                            </div>
-                                                        </td>
-                                                    </template>
-                                                    <template x-for="role in current_route.roles" :key="role.id">
-                                                        <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleRoleAccess(role.id, endpoint.id)">
-                                                            <div x-show="isRoleAccessSet(role.id)">
-                                                                <i class="fa-solid text-xl fa-check text-success/50"></i>
-                                                            </div>
-                                                            <div x-show="!isRoleAccessSet(role.id)">
-                                                                <i class="fa-solid text-xl" :class="isRoleAccessSet(role.id, endpoint.id) ? 'fa-check text-success' : 'fa-xmark text-error/60'"></i>
+                                                            <div x-show="!isSubjectAccessSet(subject)">
+                                                                <i class="fa-solid text-xl" :class="isSubjectAccessSet(subject, endpoint.id) ? 'fa-check text-success' : 'fa-xmark text-error/60'"></i>
                                                             </div>
                                                         </td>
                                                     </template>
@@ -367,7 +455,7 @@
                                 </div>
                             </template>
 
-                            <template x-if="!current_route.profiles?.length && !current_route.roles?.length">
+                            <template x-if="access_subjects.length === 0">
                                 <div class="p-8 text-center text-base-content/50">
                                     <i class="fa-solid fa-user-shield text-2xl mb-3 block"></i>
                                     <p>No profiles or roles assigned to this route</p>
@@ -378,27 +466,27 @@
                     </div>
                 </div>
 
-                <!--- Who Has Access Sidebar --->
+                <!--- Effective Access Sidebar --->
                 <div class="lg:col-span-1">
                     <div class="card card-border bg-base-100 sticky top-4">
                         <div class="card-body">
                             <h3 class="font-semibold flex items-center gap-2 mb-3">
                                 <i class="fa-solid fa-users text-secondary"></i>
-                                Who Has Access
+                                Effective Access
                             </h3>
 
                             <template x-if="who_has_access.length > 0">
                                 <div class="space-y-2 max-h-80 overflow-y-auto">
-                                    <template x-for="person in who_has_access" :key="person.profile + person.role">
+                                    <template x-for="person in who_has_access" :key="person.profile_id">
                                         <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200/50 transition-colors">
                                             <div class="avatar avatar-placeholder">
                                                 <div class="bg-neutral text-neutral-content w-8 rounded-full flex items-center justify-center">
-                                                    <span class="text-xs font-semibold" x-text="person.profile?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()"></span>
+                                                    <span class="text-xs font-semibold" x-text="profileInitials(person)"></span>
                                                 </div>
                                             </div>
                                             <div class="min-w-0 flex-1">
-                                                <p class="text-sm font-medium truncate" x-text="person.profile"></p>
-                                                <p class="text-xs text-base-content/60 truncate">via <span class="font-medium" x-text="person.role"></span></p>
+                                                <p class="text-sm font-medium truncate" x-text="person.label"></p>
+                                                <p class="text-xs text-base-content/60 truncate">via <span class="font-medium" x-text="accessSources(person)"></span></p>
                                             </div>
                                         </div>
                                     </template>
@@ -408,7 +496,7 @@
                             <template x-if="who_has_access.length === 0">
                                 <div class="text-center py-4 text-base-content/50">
                                     <i class="fa-solid fa-user-slash text-lg mb-2 block"></i>
-                                    <p class="text-sm">No users have access via roles</p>
+                                    <p class="text-sm">No users have effective access</p>
                                 </div>
                             </template>
                         </div>
@@ -432,8 +520,30 @@
                     current_route: {},
                     route_to_edit: {},
                     endpoint_access: {},
+                    access_subjects: [],
                     who_has_access:[],
                     route_open_to: 'security',
+
+                    subjectKey(subject) {
+                        return `${subject.type}:${subject.id}`;
+                    },
+
+                    accessSources(person) {
+                        return person.sources.join(', ');
+                    },
+
+                    profileInitials(person) {
+                        const name = person.label;
+                        const initials = name
+                            .split(/\s+/)
+                            .filter(Boolean)
+                            .map((part) => part[0])
+                            .join('')
+                            .slice(0, 2)
+                            .toUpperCase();
+
+                        return initials || '?';
+                    },
 
                     edit_route() {
                         this.route_to_edit = JSON.parse(JSON.stringify(this.current_route))
@@ -454,45 +564,27 @@
                         this.showEditRoute = false;
                     },
 
-                    // Function to check if a profile has access to an endpoint
-                    isProfileAccessSet(profileId, endpointId) {
-                        // Safely check if the profileId exists in the endpoint_access object
-                        const profileAccess = this.endpoint_access[profileId];
-                        if (profileAccess) {
-                            // If endpointId is not passed, only check for full route access
+                    isSubjectAccessSet(subject, endpointId) {
+                        const subjectAccess = this.endpoint_access[subject.id];
+                        if (subjectAccess) {
                             if (typeof endpointId === 'undefined' || endpointId === null) {
-
-                                return profileAccess._full_route_access_ === true;
+                                return subjectAccess._full_route_access_ === true;
                             }
 
-                            // If endpointId is passed, check for specific endpoint access
-                            const hasEndpointAccess = profileAccess.endpoints && profileAccess.endpoints[endpointId] === true;
-                            return hasEndpointAccess;
+                            return subjectAccess.endpoints && subjectAccess.endpoints[endpointId] === true;
                         }
 
-                        // Return false if profileId doesn't exist or doesn't have the required access
                         return false;
                     },
 
-                    // Function to check if a profile has access to an endpoint
-                    isRoleAccessSet(roleId, endpointId) {
-                        // Safely check if the profileId exists in the endpoint_access object
-                        const roleAccess = this.endpoint_access[roleId];
-                        if (roleAccess) {
-                             // If endpointId is not passed, only check for full route access
-                            if (typeof endpointId === 'undefined' || endpointId === null) {
-
-                                return roleAccess._full_route_access_ === true;
-                            }
-
-                            // If endpointId is passed, check for specific endpoint access
-                            const hasEndpointAccess = roleAccess.endpoints && roleAccess.endpoints[endpointId] === true;
-                            return hasEndpointAccess;
+                    async toggleSubjectAccess(subject, endpointId) {
+                        if (subject.type === 'profile') {
+                            await this.toggleProfileAccess(subject.id, endpointId);
+                        } else if (subject.type === 'role') {
+                            await this.toggleRoleAccess(subject.id, endpointId);
+                        } else {
+                            throw new Error(`Unknown access subject type: ${subject.type}`);
                         }
-
-                        // Return false if profileId doesn't exist or doesn't have access to the endpointId
-                        return false;
-
                     },
 
                     async toggleProfileAccess(profileId, endpointId) {
@@ -537,6 +629,7 @@
                         this.route_to_edit = {};
                         this.current_route = data.current_route;
                         this.endpoint_access = data.endpoint_access;
+                        this.access_subjects = data.access_subjects;
                         this.route_open_to = data.route_open_to;
                         this.who_has_access = data.who_has_access;
                     },
