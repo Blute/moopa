@@ -413,11 +413,13 @@ Any route that renders a form with an editable file field needs a per-field uplo
 ```cfml
 <!--- Pattern: uploadFileToServerWithProgress.<field_id> --->
 <cffunction name="uploadFileToServerWithProgress.profile_picture_id">
-    <cfreturn application.lib.db.getService(table_name="moo_file").uploadFileToServerWithProgress(data="#request.data#") />
+    <cfreturn application.lib.db.getService(table_name="moo_file").uploadFileToServerWithProgress(data=request.data) />
 </cffunction>
 ```
 
 The function name suffix (`profile_picture_id`) must match the field id used in the form — Alpine's file control posts to `endpoint: 'uploadFileToServerWithProgress.<field_id>'` so a single route can host several upload fields without colliding.
+
+> **Use `"#...#"` only when you're building a string — otherwise pass the value bare.** Write `data=request.data`, not `data="#request.data#"`. The wrapper is for interpolation or concatenation (`"%#term#%"`, `"/moo_file/#id#/file.jpg"`); around a single variable it does nothing, and for a struct/array/query it's a stringification footgun that survives only by CFML's single-`#...#` type pass-through — one stray character and it breaks the `type="struct"` contract.
 
 The implementation lives in `code/moopa/tables/moo_file.cfc` `uploadFileToServerWithProgress`. It runs in two legs (presign + finalise), signs the resulting thumbnail via `application.lib.cloudflare.signed_asset_url(..., kind='i', ...)`, and writes the signed URL into `moo_file.thumbnail`. Don't write your own version of this; keep upload/signing behaviour centralised in the framework service.
 
@@ -430,7 +432,7 @@ Different shape from the CRUD example: the logged-in user edits their *own* reco
 
     <!--- Upload handler for the user's profile picture --->
     <cffunction name="uploadFileToServerWithProgress.profile_picture_id">
-        <cfreturn application.lib.db.getService(table_name="moo_file").uploadFileToServerWithProgress(data="#request.data#") />
+        <cfreturn application.lib.db.getService(table_name="moo_file").uploadFileToServerWithProgress(data=request.data) />
     </cffunction>
 
     <!--- Load — uses session.auth.profile.id, not request.data.id --->
