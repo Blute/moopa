@@ -378,6 +378,7 @@ function handleVideoStream({ env, objectKey, method, url }) {
   const passthroughParams = new URLSearchParams(url.searchParams);
   passthroughParams.delete("sig");
   passthroughParams.delete("exp");
+  passthroughParams.delete("kid");
 
   const query = passthroughParams.toString();
   const target = query
