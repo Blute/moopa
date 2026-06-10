@@ -312,6 +312,19 @@
                         <cfset field.sql_select_simple = "">
                     </cfcase>
 
+                    <cfcase value="vector">
+                        <!--- pgvector embedding column. Excluded from row projections —
+                              embeddings are written/read by dedicated similarity queries only. --->
+                        <cfset field.cfsqltype = "other" />
+                        <cfset field.html.control = (field.html.control?:'') />
+                        <cfif not structKeyExists(field, "dimensions")>
+                            <cfthrow message="Vector field #field_name# on #table.table_name# requires a 'dimensions' property (e.g. 1536)">
+                        </cfif>
+                        <!--- getColumnDef appends (max_length) after the type, yielding vector(N) --->
+                        <cfset field.max_length = field.dimensions />
+                        <cfset field.sql_select_simple = "">
+                    </cfcase>
+
                     <cfcase value="date">
                         <cfset field.cfsqltype = "date" />
                         <cfset field.html.control = (field.html.control?:'control_date') />
