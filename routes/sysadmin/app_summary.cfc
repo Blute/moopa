@@ -338,6 +338,10 @@
         <cfset var packageKind = arguments.package.kind ?: "" />
 
         <cfif arguments.capability EQ "routes" OR arguments.capability EQ "navs">
+            <cfif packageKind EQ "core">
+                <cfreturn sysadminRoutesEnabled() />
+            </cfif>
+
             <cfreturn (listFindNoCase("app,shared", packageKind) GT 0) AND (packageKind NEQ "app" OR (arguments.package.app_name ?: arguments.package.name) EQ (application.app_name ?: "")) />
         </cfif>
 
@@ -346,6 +350,12 @@
         </cfif>
 
         <cfreturn false />
+    </cffunction>
+
+    <cffunction name="sysadminRoutesEnabled" access="private" returntype="boolean" output="false">
+        <cfset var enabled = trim(server.system.environment.MOOPA_ENABLE_SYSADMIN ?: "") />
+
+        <cfreturn listFindNoCase("true,yes,1,on", enabled) GT 0 />
     </cffunction>
 
     <cffunction name="appSetting" access="private" returntype="string" output="false">

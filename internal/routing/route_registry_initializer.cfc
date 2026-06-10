@@ -28,22 +28,23 @@
         <!--- ------------------ --->
         <!--- PROCESS ALL ROUTES --->
         <!--- ------------------ --->
-        <cfset processed_route_urls = {} />
         <cfset routePackages = [] />
+        <cfset routeCandidates = {} />
+        <cfset routeCandidateKeys = [] />
+        <cfset application.route_overrides = [] />
 
         <cfif NOT (isDefined("application.moopa_packages") AND isArray(application.moopa_packages))>
             <cfthrow message="Cannot initialize routes: application.moopa_packages is not initialized." />
         </cfif>
 
         <cfloop array="#application.moopa_packages#" item="local.package">
-            <cfset local.packageKind = local.package.kind ?: "" />
-            <cfif listFindNoCase("app,shared", local.packageKind)
-                AND ((local.package.kind ?: "") NEQ "app" OR (local.package.app_name ?: local.package.name) EQ application.app_name)>
+            <cfif routePackageLoads(local.package)>
                 <cfset arrayAppend(routePackages, local.package) />
             </cfif>
         </cfloop>
 
         <cfloop array="#routePackages#" item="routePackage">
+            <cfset packagePrecedence = routePackagePrecedence(routePackage) />
             <cfset iPackage = routePackage.path />
             <cfset packagePath = expandPath(iPackage) />
             <cfset routePath = "#packagePath#/routes" />
@@ -55,7 +56,6 @@
             </cfif>
 
             <cfdirectory action="list" directory="#routePath#" name="qRoutes" recurse="true" filter="*.cfc">
-
 
 <!---
 TODO: need to check if old way works for the following and which has precedence: the url of both routes is /test
@@ -76,11 +76,51 @@ TODO: need to check if old way works for the following and which has precedence:
                 <!--- Need to determine if the route is already defined --->
 
                 <cfset processed_route_url_key = lCase(stRoute.url) />
-                <cfif !structKeyExists(processed_route_urls, processed_route_url_key)>
-                    <cfset processed_route_urls[processed_route_url_key] = stRoute.componentPath />
+
+                <cfif !structKeyExists(routeCandidates, processed_route_url_key)>
+                    <cfset routeCandidates[processed_route_url_key] = {
+                        route: stRoute,
+                        precedence: packagePrecedence,
+                        package_name: routePackage.name,
+                        package_kind: routePackage.kind,
+                        source: stRoute.componentPath
+                    } />
+                    <cfset arrayAppend(routeCandidateKeys, processed_route_url_key) />
                 <cfelse>
-                    <cfthrow message="Duplicate route URL '#stRoute.url#' loaded from #stRoute.componentPath#; already loaded from #processed_route_urls[processed_route_url_key]#. Package boundaries require unique canonical routes within an app runtime." />
+                    <cfset existingCandidate = routeCandidates[processed_route_url_key] />
+
+                    <cfif packagePrecedence EQ existingCandidate.precedence>
+                        <cfset duplicateRoute = {
+                            route: stRoute.url,
+                            new_source: stRoute.componentPath,
+                            existing_source: existingCandidate.source,
+                            package: routePackage.name,
+                            package_kind: routePackage.kind
+                        } />
+                        <cfset duplicateRouteMessage = serializeJSON(duplicateRoute) />
+                        <cfthrow message="#duplicateRouteMessage#" />
+                    </cfif>
+
+                    <cfif packagePrecedence GT existingCandidate.precedence>
+                        <cfset arrayAppend(application.route_overrides, {
+                            route: stRoute.url,
+                            selected_source: stRoute.componentPath,
+                            overridden_source: existingCandidate.source
+                        }) />
+                        <cfset routeCandidates[processed_route_url_key] = {
+                            route: stRoute,
+                            precedence: packagePrecedence,
+                            package_name: routePackage.name,
+                            package_kind: routePackage.kind,
+                            source: stRoute.componentPath
+                        } />
+                    </cfif>
                 </cfif>
+            </cfloop>
+        </cfloop>
+
+        <cfloop array="#routeCandidateKeys#" item="processed_route_url_key">
+            <cfset stRoute = routeCandidates[processed_route_url_key].route />
 
                 <cfif ArrayFind(aCheckNoDuplicateKeys, stRoute.md.key)>
                     <cfthrow message="Key In Use. No duplicate keys allowed (#stRoute.md.key#)" />
@@ -112,7 +152,6 @@ TODO: need to check if old way works for the following and which has precedence:
                 <cfset application.stAllRoutes[stRoute.id] = stRoute />
 
 
-            </cfloop>
         </cfloop>
 
         <cfset arraySort(application.aDynamicRoutes, function(leftRoute, rightRoute) {
@@ -121,6 +160,55 @@ TODO: need to check if old way works for the following and which has precedence:
 
         <cfset variables.routeRegistryStore.deleteLegacyUnscopedRoutes(routeRegistry.persistenceAvailable) />
 
+    </cffunction>
+
+
+    <cffunction name="routePackageLoads" access="private" returntype="boolean" output="false">
+        <cfargument name="package" type="struct" required="true" />
+
+        <cfset var packageKind = arguments.package.kind ?: "" />
+
+        <cfif packageKind EQ "core">
+            <cfreturn sysadminRoutesEnabled() />
+        </cfif>
+
+        <cfif packageKind EQ "shared">
+            <cfreturn true />
+        </cfif>
+
+        <cfif packageKind EQ "app">
+            <cfreturn (arguments.package.app_name ?: arguments.package.name) EQ (application.app_name ?: "") />
+        </cfif>
+
+        <cfreturn false />
+    </cffunction>
+
+
+    <cffunction name="sysadminRoutesEnabled" access="private" returntype="boolean" output="false">
+        <cfset var enabled = trim(server.system.environment.MOOPA_ENABLE_SYSADMIN ?: "") />
+
+        <cfreturn listFindNoCase("true,yes,1,on", enabled) GT 0 />
+    </cffunction>
+
+
+    <cffunction name="routePackagePrecedence" access="private" returntype="numeric" output="false">
+        <cfargument name="package" type="struct" required="true" />
+
+        <cfset var packageKind = arguments.package.kind ?: "" />
+
+        <cfif packageKind EQ "app">
+            <cfreturn 30 />
+        </cfif>
+
+        <cfif packageKind EQ "shared">
+            <cfreturn 20 />
+        </cfif>
+
+        <cfif packageKind EQ "core">
+            <cfreturn 10 />
+        </cfif>
+
+        <cfreturn 0 />
     </cffunction>
 
 

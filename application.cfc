@@ -12,7 +12,7 @@
           (memcached is never written) and logins never stick. --->
     <cfset this.sessionManagement = true />
 
-        <cfset this.sessioncookie = {
+    <cfset this.sessioncookie = {
         secure: true,
         httponly: true,
         samesite: "Lax"
@@ -446,13 +446,13 @@
         <cfset var packageKind = arguments.package.kind ?: "" />
 
         <cfif arguments.capability EQ "routes">
-            <!--- Routes are app-local by convention, plus shared routes for every app. --->
-            <cfreturn listFindNoCase("app,shared", packageKind) GT 0 />
+            <!--- Core system routes/navs are opt-in for runtimes that expose system administration. --->
+            <cfreturn listFindNoCase("shared,app", packageKind) GT 0 OR (packageKind EQ "core" AND _sysadminRoutesEnabled()) />
         </cfif>
 
         <cfif arguments.capability EQ "navs">
-            <!--- Navigation follows the route-owning packages: app plus shared. --->
-            <cfreturn listFindNoCase("app,shared", packageKind) GT 0 />
+            <!--- Navigation follows route-owning packages so filtered navs can resolve their routes. --->
+            <cfreturn listFindNoCase("shared,app", packageKind) GT 0 OR (packageKind EQ "core" AND _sysadminRoutesEnabled()) />
         </cfif>
 
         <cfif listFindNoCase("tables,controls,lib", arguments.capability)>
@@ -461,6 +461,34 @@
         </cfif>
 
         <cfreturn false />
+    </cffunction>
+
+
+    <cffunction name="_sysadminRoutesEnabled" access="private" returntype="boolean" output="false">
+        <cfset var enabled = trim(server.system.environment.MOOPA_ENABLE_SYSADMIN ?: "") />
+
+        <cfreturn listFindNoCase("true,yes,1,on", enabled) GT 0 />
+    </cffunction>
+
+
+    <cffunction name="_packagePrecedence" access="private" returntype="numeric" output="false">
+        <cfargument name="package" type="struct" required="true" />
+
+        <cfset var packageKind = arguments.package.kind ?: "" />
+
+        <cfif packageKind EQ "app">
+            <cfreturn 30 />
+        </cfif>
+
+        <cfif packageKind EQ "shared">
+            <cfreturn 20 />
+        </cfif>
+
+        <cfif packageKind EQ "core">
+            <cfreturn 10 />
+        </cfif>
+
+        <cfreturn 0 />
     </cffunction>
 
 
@@ -613,10 +641,13 @@
 
     <cffunction name="_setupNavs" access="private" returntype="void" output="true">
 
-        <cfset application.navs = {} />
-        <cfset application.nav_id = createUUID() />
+        <cfset var navs = {} />
+        <cfset var navSources = {} />
+        <cfset var navPrecedence = {} />
+        <cfset application.nav_overrides = [] />
 
         <cfloop array="#_getPackagesFor('navs')#" item="local.package">
+            <cfset local.packagePrecedence = _packagePrecedence(local.package) />
             <cfset local.virtualDirectory = "#local.package.path#/navs" />
             <cfset local.physicalDirectory = expandPath(local.virtualDirectory) />
 
@@ -635,13 +666,40 @@
                     <cfthrow message="Error parsing JSON file #local.qNavFiles.name#" />
                 </cfif>
 
-                <cfif structKeyExists(application.navs, local.fileName)>
-                    <cfthrow message="Duplicate nav '#local.fileName#' loaded from #local.filePath#. Package boundaries require unique nav names." />
+                <cfif structKeyExists(navs, local.fileName)>
+                    <cfif local.packagePrecedence EQ navPrecedence[local.fileName]>
+                        <cfset local.duplicateNav = {
+                            nav: local.fileName,
+                            new_file: local.filePath,
+                            existing_file: navSources[local.fileName],
+                            package: local.package.name,
+                            package_kind: local.package.kind,
+                            row: local.qNavFiles.currentRow,
+                            record_count: local.qNavFiles.recordCount
+                        } />
+                        <cfset local.duplicateNavMessage = serializeJSON(local.duplicateNav) />
+                        <cfthrow message="#local.duplicateNavMessage#" />
+                    </cfif>
+
+                    <cfif local.packagePrecedence LT navPrecedence[local.fileName]>
+                        <cfcontinue />
+                    </cfif>
+
+                    <cfset arrayAppend(application.nav_overrides, {
+                        nav: local.fileName,
+                        selected_file: local.filePath,
+                        overridden_file: navSources[local.fileName]
+                    }) />
                 </cfif>
 
-                <cfset application.navs[local.fileName] = deserializeJSON(local.jsonContent) />
+                <cfset navs[local.fileName] = deserializeJSON(local.jsonContent) />
+                <cfset navSources[local.fileName] = local.filePath />
+                <cfset navPrecedence[local.fileName] = local.packagePrecedence />
             </cfloop>
         </cfloop>
+
+        <cfset application.navs = navs />
+        <cfset application.nav_id = createUUID() />
 
     </cffunction>
 
