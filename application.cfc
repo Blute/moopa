@@ -6,11 +6,17 @@
 
     <cfset this.tag.cflocation.addtoken = false />
 
-    <cfset this.sessioncookie = {
+    <!--- Sessions must be explicitly enabled (CFML spec default is false; Lucee
+          installs often enable it admin-side, which masked this). RustCFML
+          follows the spec default, so without this no session scope persists
+          (memcached is never written) and logins never stick. --->
+    <cfset this.sessionManagement = true />
+
+        <cfset this.sessioncookie = {
         secure: true,
         httponly: true,
         samesite: "Lax"
-    } />  
+    } />
 
     <!--- S3 --->
     <!--- TODO: REMOVE THIS BLOCK WHEN WE HAVE SWITCHED TO CLOUDFLARE R2 --->
@@ -93,8 +99,10 @@
 
         <cfargument name="TargetPage" type="string" required="true" />
 
+        <cfset local.targetPage = replace(arguments.TargetPage, "\", "/", "all") />
+
         <!--- DETERMINE IF WE ARE IN THE MOOPA FRAMEWORK. This is the result of the nginx rewrite rule --->
-        <cfif arguments.TargetPage EQ "/_moopa.cfm">
+        <cfif local.targetPage EQ "/_moopa.cfm" OR local.targetPage EQ "/index.cfm" OR right(local.targetPage, 10) EQ "/index.cfm" OR right(local.targetPage, 11) EQ "/_moopa.cfm">
             <cfset _moopa() />
         <cfelse>
             <!--- OTHERWISE WE ARE OUTSIDE THE MOOPA FRAMEWORK --->
