@@ -72,6 +72,7 @@ Table definitions live in `code/shared/tables/{table_name}.cfc` or `code/apps/{a
 | `numeric` | numeric(precision, scale) | number |
 | `geometry` | PostGIS geometry | text |
 | `tsvector` | full-text search vector | (hidden) |
+| `vector` | pgvector embedding — requires `dimensions` (e.g. 1536); excluded from row projections, query via similarity operators (`<=>`) | (hidden) |
 
 **Important:** Use `int4` for integers, NOT `int`. The framework only recognizes `int2`, `int4`, `int8`.
 
