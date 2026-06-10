@@ -57,7 +57,7 @@
                 VALUES (
                     <cfqueryparam cfsqltype="other" value="#arguments.recordId#" />,
                     <cfqueryparam cfsqltype="other" value="#foreignId#" />,
-                    <cfqueryparam cfsqltype="numeric" value="#seq#" />
+                    <cfqueryparam cfsqltype="integer" value="#seq#" />
                 );
             </cfloop>
         </cfquery>
