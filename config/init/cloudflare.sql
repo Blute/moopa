@@ -10,11 +10,33 @@
 -- persistent app.* settings via connection startup options. This script stores signing
 -- config in DB-backed private settings and resolves values inside signed_asset_url().
 --
+-- KEY VERSIONING (kid):
+-- When cloudflare_assets_signing_kid is set, signed URLs carry a kid=<id> query
+-- param (signed like any other param). The Worker verifies kid-carrying URLs
+-- against its SIGNING_KEYS_JSON keyring ({"v1": "<b64>", ...}) and URLs without
+-- kid against the legacy SIGNING_KEY_B64 secret. Signing always uses the current
+-- key here; old keys only need to remain in the Worker keyring for as long as
+-- URLs signed with them must stay valid (e.g. NEVER URLs persisted to the DB).
+-- This separates planned rotation (add new kid, keep old ones verifying) from
+-- revocation (delete a kid from the keyring to kill its URLs immediately).
+--
+-- Rotation runbook:
+--   1. Generate a new key: openssl rand -base64 32
+--   2. Worker: add it to SIGNING_KEYS_JSON under the next kid (e.g. "v2").
+--   3. DB: update cloudflare_assets_signing_key_b64 to the new key and
+--      cloudflare_assets_signing_kid to 'v2'.
+--   4. Optionally re-sign persisted URLs, then prune retired kids from the keyring.
+--
 -- Optional one-time seed values:
 -- INSERT INTO app_private_setting(key, value) VALUES
 --   ('cloudflare_assets_signing_key_b64', '<key>'),
+--   ('cloudflare_assets_signing_kid', 'v1'),
 --   ('cloudflare_assets_base_url', 'https://assets.your_domain.com')
 -- ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+--
+-- cloudflare_assets_signing_kid is optional: when absent, URLs are signed without
+-- a kid param and verified against the Worker's SIGNING_KEY_B64 (legacy mode), so
+-- this script can be deployed before any settings change.
 
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -72,7 +94,11 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION signed_url_query(p_options text, p_exp bigint)
+-- Signature changed when kid support was added; drop the old 2-arg overload so
+-- 2-arg calls do not become ambiguous between it and the defaulted 3-arg version.
+DROP FUNCTION IF EXISTS signed_url_query(text, bigint);
+
+CREATE OR REPLACE FUNCTION signed_url_query(p_options text, p_exp bigint, p_kid text DEFAULT NULL)
 RETURNS text
 LANGUAGE sql
 AS $$
@@ -91,6 +117,9 @@ with_exp AS (
   SELECT key, value FROM opts
   UNION ALL
   SELECT 'exp' AS key, p_exp::text AS value
+  UNION ALL
+  SELECT 'kid' AS key, btrim(p_kid) AS value
+  WHERE nullif(btrim(coalesce(p_kid, '')), '') IS NOT NULL
 ),
 escaped AS (
   SELECT
@@ -149,6 +178,7 @@ DECLARE
     clean_key text;
     base_url text;
     signing_key_b64 text;
+    signing_kid text;
     exp_unix bigint;
     query_no_sig text;
     path_raw text;
@@ -189,8 +219,18 @@ BEGIN
     END IF;
     base_url := regexp_replace(base_url, '/+$', '');
 
+    -- kid is optional, so cache "absent" as '-' to avoid re-reading the setting per call.
+    signing_kid := nullif(current_setting('app.signing_kid', true), '');
+    IF signing_kid IS NULL THEN
+        signing_kid := btrim(coalesce(app_private_setting_get('cloudflare_assets_signing_kid'), ''));
+        PERFORM set_config('app.signing_kid', CASE WHEN signing_kid = '' THEN '-' ELSE signing_kid END, true);
+    END IF;
+    IF signing_kid = '-' THEN
+        signing_kid := '';
+    END IF;
+
     exp_unix := signed_url_expiry(p_expiry_type);
-    query_no_sig := signed_url_query(p_options, exp_unix);
+    query_no_sig := signed_url_query(p_options, exp_unix, nullif(signing_kid, ''));
 
     canonical := path_raw || '?' || query_no_sig;
 
