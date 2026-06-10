@@ -50,8 +50,9 @@
             <cfset sqlResult = updateRecord(arguments.stModel, stDataFields) />
             <cfset arrayAppend(result.sql_statements, sqlResult) />
         <cfelse>
+            <cfset ensureInsertPrimaryKeyValues(arguments.stModel, arguments.data, stDataFields) />
             <cfset sqlResult = insertRecord(arguments.stModel, stDataFields, arguments.data) />
-            <cfset result.id = sqlResult.id />
+            <cfset result.id = stDataFields.id ?: sqlResult.id />
             <cfset arrayAppend(result.sql_statements, sqlResult) />
         </cfif>
 
@@ -82,6 +83,53 @@
         <cfargument name="data" required="true" />
 
         <cfreturn len(arguments.stDataFields.id ?: "") AND NOT (arguments.data.is_new_record ?: false) />
+    </cffunction>
+
+    <cffunction name="ensureInsertPrimaryKeyValues" access="private" returntype="void" output="false" hint="Allocate UUID primary keys before insert so relationship bridge rows can reference the new record.">
+        <cfargument name="stModel" type="struct" required="true" />
+        <cfargument name="data" type="struct" required="true" />
+        <cfargument name="stDataFields" type="struct" required="true" />
+
+        <cfset var pkName = "" />
+        <cfset var pkField = {} />
+
+        <cfloop array="#arguments.stModel.primary_keys#" item="pkName">
+            <cfif len(arguments.stDataFields[pkName] ?: "")>
+                <cfcontinue />
+            </cfif>
+
+            <cfif NOT structKeyExists(arguments.stModel.fields, pkName)>
+                <cfthrow type="moopa.db.invalidPrimaryKey" message="Primary key '#pkName#' is not defined as a field on table '#arguments.stModel.table_name#'." />
+            </cfif>
+
+            <cfset pkField = arguments.stModel.fields[pkName] />
+
+            <cfif (pkField.type ?: "") EQ "uuid">
+                <cfset arguments.stDataFields[pkName] = generateUuidPrimaryKey(pkField) />
+                <cfset arguments.data[pkName] = arguments.stDataFields[pkName] />
+            </cfif>
+        </cfloop>
+    </cffunction>
+
+    <cffunction name="generateUuidPrimaryKey" access="private" returntype="string" output="false" hint="Generate a UUID primary key using the table definition default where one is declared.">
+        <cfargument name="fieldDef" type="struct" required="true" />
+
+        <cfset var defaultExpression = trim(arguments.fieldDef.default ?: "") />
+        <cfset var qPrimaryKey = "" />
+
+        <cfif len(defaultExpression)>
+            <cfquery name="qPrimaryKey" returntype="array">
+                SELECT (#preserveSingleQuotes(defaultExpression)#)::text AS id
+            </cfquery>
+
+            <cfif NOT arrayLen(qPrimaryKey) OR NOT len(qPrimaryKey[1].id ?: "")>
+                <cfthrow type="moopa.db.primaryKeyGenerationFailed" message="Database default for primary key field '#arguments.fieldDef.name#' did not return a UUID." />
+            </cfif>
+
+            <cfreturn qPrimaryKey[1].id />
+        </cfif>
+
+        <cfreturn createUUID() />
     </cffunction>
 
     <cffunction name="updateRecord" access="private" returntype="struct" output="false" hint="Update direct table columns for an existing record.">
