@@ -188,6 +188,13 @@
         <cfreturn application.lib.db.delete(table_name="moo_profile", id="#url.id#") />
     </cffunction>
 
+    <cffunction name="resetPassword">
+        <cfif NOT structKeyExists(application.lib, "auth_local_password")>
+            <cfthrow type="moopa.auth.providerMissing" message="The local password auth provider is not available in this app." />
+        </cfif>
+        <cfreturn serializeJSON(application.lib.auth_local_password.provisionTempPassword(profile_id=url.id ?: "")) />
+    </cffunction>
+
 
     <cffunction name="search.current_record.roles">
         <cfreturn application.lib.db.search(table_name='moo_role', q="#url.q?:''#") />
@@ -539,6 +546,25 @@
                                     <template x-if="!current_record.auth_identities?.length">
                                         <div class="rounded-lg border border-dashed border-base-300 px-4 py-3 text-sm text-base-content/55">No auth identities linked.</div>
                                     </template>
+
+                                    <div x-show="current_record.id && current_record.can_login" class="space-y-3">
+                                        <button type="button" class="btn btn-outline btn-sm" @click="generateInvite()" :disabled="generating_invite">
+                                            <span class="loading loading-spinner loading-xs" x-show="generating_invite"></span>
+                                            <i class="fa-solid fa-key" x-show="!generating_invite"></i>
+                                            <span x-text="hasLocalPassword(current_record) ? 'Reset password & new invite' : 'Generate password & invite'"></span>
+                                        </button>
+
+                                        <template x-if="invite">
+                                            <div class="space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3">
+                                                <p class="text-xs font-semibold">This temporary password is shown once. Copy the invite now and send it to the user.</p>
+                                                <pre class="whitespace-pre-wrap break-all rounded-lg bg-base-100 p-3 text-xs" x-text="inviteText()"></pre>
+                                                <button type="button" class="btn btn-primary btn-sm" @click="copyInvite()">
+                                                    <i class="fa-solid fa-copy"></i>
+                                                    Copy invite
+                                                </button>
+                                            </div>
+                                        </template>
+                                    </div>
                                 </section>
                             </div>
                         </div>
@@ -633,6 +659,8 @@
                         current_record: {},
                         filters: { ...default_filters },
                         app_names: [],
+                        invite: null,
+                        generating_invite: false,
 
                         getInitials(name) {
                             const cleaned = (name || '').trim();
@@ -694,7 +722,22 @@
                             if (this.saving) return;
                             this.saving = true;
                             try {
-                                await req({ endpoint: 'save', body: this.current_record });
+                                const isNew = !this.current_record.id;
+                                const saved = await req({ endpoint: 'save', body: this.current_record });
+                                const savedRecord = typeof saved === 'string' ? JSON.parse(saved) : saved;
+
+                                if (isNew && savedRecord?.id && this.current_record.can_login) {
+                                    // New login-enabled profile: keep the drawer open and hand the admin an invite.
+                                    this.current_record = { ...this.current_record, ...savedRecord };
+                                    this.drawer_original_record = JSON.stringify(this.current_record || {});
+                                    await this.load();
+                                    await this.generateInvite();
+                                    if (window.toast) {
+                                        window.toast({ type: 'success', message: 'Profile created — copy the invite below', duration: 4000 });
+                                    }
+                                    return;
+                                }
+
                                 this.drawer_original_record = JSON.stringify(this.current_record || {});
                                 this.closeDrawer({ force: true });
                                 await this.load();
@@ -706,8 +749,64 @@
                             }
                         },
 
+                        hasLocalPassword(profile) {
+                            return (profile?.auth_identities || []).some(identity => identity.provider === 'local_password');
+                        },
+
+                        async generateInvite() {
+                            if (this.generating_invite || !this.current_record.id) return;
+                            if (this.hasLocalPassword(this.current_record)
+                                && !window.confirm('This replaces the existing password. The user will no longer be able to sign in with their old one. Continue?')) {
+                                return;
+                            }
+                            this.generating_invite = true;
+                            try {
+                                // Persist any pending drawer edits first so the invite reflects the saved profile.
+                                const saved = await req({ endpoint: 'save', body: this.current_record });
+                                const savedRecord = typeof saved === 'string' ? JSON.parse(saved) : saved;
+                                this.current_record = { ...this.current_record, ...savedRecord };
+                                this.invite = await req({ endpoint: 'resetPassword', id: this.current_record.id });
+                                this.current_record.auth_identities = [{ provider: 'local_password', provider_subject: this.invite.email }];
+                                this.drawer_original_record = JSON.stringify(this.current_record || {});
+                                await this.load();
+                            } catch (error) {
+                                if (window.toast) {
+                                    window.toast({ type: 'error', message: 'Could not save the profile and generate a password.', duration: 3000 });
+                                }
+                            } finally {
+                                this.generating_invite = false;
+                            }
+                        },
+
+                        inviteText() {
+                            if (!this.invite) return '';
+                            return [
+                                `You've been invited to ${window.location.host}.`,
+                                '',
+                                `Sign in: ${window.location.origin}/login/`,
+                                `Email: ${this.invite.email}`,
+                                `Temporary password: ${this.invite.temp_password}`,
+                                '',
+                                "You'll be asked to choose your own password when you first sign in."
+                            ].join('\n');
+                        },
+
+                        async copyInvite() {
+                            try {
+                                await navigator.clipboard.writeText(this.inviteText());
+                                if (window.toast) {
+                                    window.toast({ type: 'success', message: 'Invite copied to clipboard', duration: 2000 });
+                                }
+                            } catch (error) {
+                                if (window.toast) {
+                                    window.toast({ type: 'error', message: 'Copy failed — select the text and copy manually.', duration: 3000 });
+                                }
+                            }
+                        },
+
                         async addNew() {
                             clearTimeout(this.drawer_reset_timer);
+                            this.invite = null;
                             this.current_record = await req({ endpoint: 'new' });
                             this.drawer_original_record = JSON.stringify(this.current_record || {});
                             this.drawer_open = true;
@@ -716,6 +815,7 @@
 
                         select(item) {
                             clearTimeout(this.drawer_reset_timer);
+                            this.invite = null;
                             this.current_record = JSON.parse(JSON.stringify(item));
                             this.drawer_original_record = JSON.stringify(this.current_record || {});
                             this.drawer_open = true;
@@ -739,6 +839,7 @@
                                 if (!this.drawer_open) {
                                     this.current_record = {};
                                     this.drawer_original_record = '';
+                                    this.invite = null;
                                 }
                             }, 220);
                         },
