@@ -103,6 +103,9 @@
 
         <!--- DETERMINE IF WE ARE IN THE MOOPA FRAMEWORK. This is the result of the nginx rewrite rule --->
         <cfif local.targetPage EQ "/_moopa.cfm" OR local.targetPage EQ "/index.cfm" OR right(local.targetPage, 10) EQ "/index.cfm" OR right(local.targetPage, 11) EQ "/_moopa.cfm">
+            <!--- A direct index.cfm entry (nginx directory index for "/") carries no ?route= param,
+                  and bypassing the include of code/www/index.cfm skips the url.route it used to set --->
+            <cfparam name="url.route" default="/" />
             <cfset _moopa() />
         <cfelse>
             <!--- OTHERWISE WE ARE OUTSIDE THE MOOPA FRAMEWORK --->
