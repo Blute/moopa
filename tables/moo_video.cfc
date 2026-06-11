@@ -89,9 +89,29 @@
 
         <cfreturn {
             success: true,
+            status_code: val(api_result.status_code ?: 0),
             result: (isStruct(parsed) ? (parsed.result ?: {}) : {}),
             details: parsed
         } />
+    </cffunction>
+
+    <cffunction name="getThumbnailWorkerConfig" access="private" returntype="struct" output="false">
+        <cfreturn {
+            url: reReplace(trim(server.system.environment.THUMBNAIL_WORKER_URL ?: ""), "/+$", ""),
+            token: trim(server.system.environment.THUMBNAIL_WORKER_TOKEN ?: "")
+        } />
+    </cffunction>
+
+    <cffunction name="mergeVideoMetadata" access="private" returntype="void" output="false" hint="Atomically merge keys into moo_video.metadata so concurrent writers (e.g. the thumbnail thread) are never clobbered">
+        <cfargument name="video_id" type="string" required="true" />
+        <cfargument name="patch" type="struct" required="true" />
+
+        <cfquery>
+            UPDATE moo_video
+            SET last_updated_at = now(),
+                metadata = COALESCE(metadata, '{}'::jsonb) || <cfqueryparam cfsqltype="varchar" value="#serializeJSON(arguments.patch)#" />::jsonb
+            WHERE id = <cfqueryparam cfsqltype="other" value="#arguments.video_id#" />
+        </cfquery>
     </cffunction>
 
     <cffunction name="signedStreamUrl" access="private" returntype="string" output="false">
@@ -116,6 +136,7 @@
         <cfset var stream_ready = metadata.stream_ready ?: false />
         <cfset var stream_iframe_url = signedStreamUrl(stream_id, "/iframe") />
         <cfset var stream_thumbnail = signedStreamUrl(stream_id, "/thumbnails/thumbnail.jpg", "time=1s") />
+        <cfset var thumb_url = trim(metadata.thumb_url ?: "") />
 
         <cfif NOT len(stream_status) AND len(stream_id)>
             <cfset stream_status = "inprogress" />
@@ -129,8 +150,11 @@
             stream_status: stream_status,
             stream_ready: stream_ready,
             stream_error: trim(metadata.stream_error ?: ""),
+            thumb_status: lCase(trim(metadata.thumb_status ?: "")),
+            thumb_url: thumb_url,
+            thumb_error: trim(metadata.thumb_error ?: ""),
             video_iframe_url: stream_iframe_url,
-            video_thumbnail: (len(stream_thumbnail) AND stream_ready ? stream_thumbnail : (arguments.video_record.thumbnail ?: ""))
+            video_thumbnail: (len(thumb_url) ? thumb_url : (len(stream_thumbnail) AND stream_ready ? stream_thumbnail : (arguments.video_record.thumbnail ?: "")))
         } />
     </cffunction>
 
@@ -210,6 +234,128 @@
         </cfif>
 
         <cfreturn result_metadata />
+    </cffunction>
+
+    <cffunction name="triggerThumbnailGenerationIfReady" access="public" returntype="boolean" output="false" hint="Fires the agent-video-thumbnails Worker in the background once a stream is ready; tracks progress in metadata.thumb_*. Returns true if a generation request was started.">
+        <cfargument name="video_record" type="struct" required="true" />
+
+        <cfset var config = getThumbnailWorkerConfig() />
+        <cfset var metadata = getVideoMetadata(arguments.video_record) />
+        <cfset var stream_id = trim(arguments.video_record.cloudflare_stream_id ?: "") />
+        <cfset var video_id = trim(arguments.video_record.id ?: "") />
+        <cfset var thumb_status = lCase(trim(metadata.thumb_status ?: "")) />
+        <cfset var thumb_attempts = val(metadata.thumb_attempts ?: 0) />
+        <cfset var requested_at = trim(metadata.thumb_requested_at ?: "") />
+        <cfset var is_stale = true />
+        <cfset var thread_name = "" />
+
+        <cfif NOT len(config.url) OR NOT len(stream_id) OR NOT len(video_id)>
+            <cfreturn false />
+        </cfif>
+        <cfif NOT (metadata.stream_ready ?: false)>
+            <cfreturn false />
+        </cfif>
+        <cfif thumb_status EQ "ready">
+            <cfreturn false />
+        </cfif>
+
+        <!--- A 'generating' state younger than 3 minutes means a request is already in flight --->
+        <cfif len(requested_at) AND isDate(requested_at)>
+            <cfset is_stale = dateDiff("n", parseDateTime(requested_at), now()) GTE 3 />
+        </cfif>
+        <cfif thumb_status EQ "generating" AND NOT is_stale>
+            <cfreturn false />
+        </cfif>
+        <cfif thumb_status EQ "error" AND (thumb_attempts GTE 3 OR NOT is_stale)>
+            <cfreturn false />
+        </cfif>
+
+        <cfset mergeVideoMetadata(video_id, {
+            thumb_status: "generating",
+            thumb_requested_at: dateTimeFormat(now(), "yyyy-mm-dd HH:nn:ss"),
+            thumb_attempts: thumb_attempts + 1,
+            thumb_error: ""
+        }) />
+
+        <cfset thread_name = "thumb_generate_#replace(createUUID(), '-', '', 'all')#" />
+        <cfthread
+            action="run"
+            name="#thread_name#"
+            worker_url="#config.url#"
+            worker_token="#config.token#"
+            stream_id="#stream_id#"
+            video_id="#video_id#"
+        >
+            <cfset var api_result = {} />
+            <cfset var parsed = {} />
+            <cfset var patch = {} />
+            <cfset var thumb_path = "" />
+            <cfset var worker_error = "" />
+
+            <cftry>
+                <cfhttp method="POST" url="#attributes.worker_url#/" result="api_result" timeout="120">
+                    <cfhttpparam type="header" name="Content-Type" value="application/json" />
+                    <cfhttpparam type="header" name="Accept" value="application/json" />
+                    <cfif len(attributes.worker_token)>
+                        <cfhttpparam type="header" name="Authorization" value="Bearer #attributes.worker_token#" />
+                    </cfif>
+                    <cfhttpparam type="body" value="#serializeJSON({ "videoId": attributes.stream_id })#" />
+                </cfhttp>
+
+                <cfif isJSON(api_result.fileContent ?: "")>
+                    <cfset parsed = deserializeJSON(api_result.fileContent) />
+                </cfif>
+                <cfif isStruct(parsed)>
+                    <cfset thumb_path = trim(parsed.path ?: "") />
+                    <cfset worker_error = trim(parsed.error ?: "") />
+                </cfif>
+
+                <cfif val(api_result.status_code ?: 0) EQ 200 AND len(thumb_path)>
+                    <cfset patch = {
+                        thumb_status: "ready",
+                        thumb_url: thumb_path,
+                        thumb_frame_time: trim(parsed.frameTime ?: ""),
+                        thumb_generated_at: dateTimeFormat(now(), "yyyy-mm-dd HH:nn:ss"),
+                        thumb_error: ""
+                    } />
+                <cfelse>
+                    <cfset patch = {
+                        thumb_status: "error",
+                        thumb_error: len(worker_error) ? worker_error : "Thumbnail worker returned status #val(api_result.status_code ?: 0)#"
+                    } />
+                </cfif>
+
+                <cfcatch>
+                    <cfset patch = { thumb_status: "error", thumb_error: cfcatch.message } />
+                </cfcatch>
+            </cftry>
+
+            <cfquery>
+                UPDATE moo_video
+                SET last_updated_at = now(),
+                    metadata = COALESCE(metadata, '{}'::jsonb) || <cfqueryparam cfsqltype="varchar" value="#serializeJSON(patch)#" />::jsonb
+                    <cfif len(thumb_path)>
+                    , thumbnail = <cfqueryparam cfsqltype="varchar" value="#thumb_path#" />
+                    </cfif>
+                WHERE id = <cfqueryparam cfsqltype="other" value="#attributes.video_id#" />
+            </cfquery>
+        </cfthread>
+
+        <cfreturn true />
+    </cffunction>
+
+    <cffunction name="backfillThumbnailIfMissing" access="public" returntype="boolean" output="false" hint="Self-heal for videos whose ready-transition was never observed by a poll (page closed during processing, or pre-existing videos). Returns true if generation was started.">
+        <cfargument name="video_id" type="string" required="true" />
+
+        <cfset var clean_video_id = getVideoId(arguments.video_id) />
+
+        <cfif NOT len(clean_video_id)>
+            <cfreturn false />
+        </cfif>
+
+        <cfreturn triggerThumbnailGenerationIfReady(
+            application.lib.db.read(table_name = "moo_video", id = clean_video_id, returnFormat = "cfml")
+        ) />
     </cffunction>
 
     <cffunction name="uploadVideoInit" access="public" returntype="struct" output="false">
@@ -295,6 +441,8 @@
         ) />
 
         <cfset video_record = application.lib.db.read(table_name = "moo_video", id = video_id, returnFormat = "cfml") />
+        <cfset triggerThumbnailGenerationIfReady(video_record) />
+        <cfset video_record = application.lib.db.read(table_name = "moo_video", id = video_id, returnFormat = "cfml") />
         <cfreturn buildVideoResponse(video_record) />
     </cffunction>
 
@@ -309,6 +457,8 @@
         <cfset var cloudflare_result = {} />
         <cfset var stream_status_data = {} />
         <cfset var output_records = [] />
+        <cfset var metadata_patch = {} />
+        <cfset var caption_key = "" />
 
         <cfloop array="#arguments.video_ids#" index="pending_id">
             <cfset pending_id = getVideoId(pending_id) />
@@ -335,7 +485,23 @@
             <cfset metadata.stream_last_checked_at = dateTimeFormat(now(), "yyyy-mm-dd HH:nn:ss") />
             <cfset metadata = triggerCaptionGenerationIfReady(video_record = video_record, metadata = metadata) />
 
-            <cfset application.lib.db.save(table_name = "moo_video", data = { id: video_record.id, metadata: metadata }) />
+            <!--- Merge only the keys this poll changed: the thumbnail thread writes
+                  thumb_* keys concurrently and a whole-metadata save would clobber them --->
+            <cfset metadata_patch = {
+                stream_status: metadata.stream_status,
+                stream_ready: metadata.stream_ready,
+                stream_error: metadata.stream_error,
+                stream_last_checked_at: metadata.stream_last_checked_at
+            } />
+            <cfloop list="captions_generation_requested_at,captions_languages,captions_generation_status,captions_generation_error" index="caption_key">
+                <cfif structKeyExists(metadata, caption_key)>
+                    <cfset metadata_patch[caption_key] = metadata[caption_key] />
+                </cfif>
+            </cfloop>
+            <cfset mergeVideoMetadata(video_record.id, metadata_patch) />
+
+            <cfset video_record = application.lib.db.read(table_name = "moo_video", id = video_record.id, returnFormat = "cfml") />
+            <cfset triggerThumbnailGenerationIfReady(video_record) />
 
             <cfset video_record = application.lib.db.read(table_name = "moo_video", id = video_record.id, returnFormat = "cfml") />
             <cfset arrayAppend(output_records, buildVideoResponse(video_record)) />
@@ -356,7 +522,9 @@
         <cfif len(stream_id)>
             <cfset cloudflare_delete = requestCloudflare(method = "DELETE", path = "/stream/#urlEncodedFormat(stream_id)#") />
 
-            <cfif NOT (cloudflare_delete.details.success ?: false)>
+            <!--- Stream's DELETE returns 200 with an empty body, so check the status code, not the (absent) JSON envelope --->
+            <cfif NOT (cloudflare_delete.details.success ?: false)
+                  AND NOT (cloudflare_delete.status_code GTE 200 AND cloudflare_delete.status_code LT 300)>
                 <cfreturn {
                     success: false,
                     error: "Failed to delete Cloudflare stream",
@@ -369,6 +537,9 @@
         <cfset metadata.stream_status = "deleted" />
         <cfset metadata.stream_ready = false />
         <cfset metadata.stream_error = "" />
+        <cfset metadata.thumb_status = "" />
+        <cfset metadata.thumb_url = "" />
+        <cfset metadata.thumb_error = "" />
 
         <cfset application.lib.db.save(
             table_name = "moo_video",
