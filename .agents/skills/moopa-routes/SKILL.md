@@ -250,6 +250,31 @@ req({
 })
 ```
 
+### ⚠️ JSON `null` values never reach `request.data`
+
+A `null` in the request body is **dropped during deserialisation** — the key
+simply does not exist in `request.data`, so `structKeyExists(request.data, "field")`
+is `false` and a "save the cleared value" silently no-ops. The classic symptom:
+clear a field in the UI, hit save, reload, and the old value is back.
+
+```javascript
+// WRONG — the backend never sees `address` at all:
+this.record.address = null;
+await req({ endpoint: 'save', body: this.record });
+
+// RIGHT — send an empty value of the field's shape instead:
+this.record.address = {};   // jsonb/object fields → {}
+this.record.nickname = '';  // text fields → ''
+this.record.tags = [];      // array fields → []
+```
+
+This bites hardest with object-valued controls (the address picker cleared
+to `null` was a real production bug); plain text inputs naturally clear to
+`''` and are unaffected. Rule: **never assign `null` to a model field that
+must round-trip through `req()` — clear to the empty value of its type.**
+If a backend endpoint genuinely needs "explicitly cleared" semantics,
+send a separate flag (e.g. `clear_address: true`) rather than a null.
+
 ### Example: Save Endpoint
 
 **Frontend (Alpine.js):**
