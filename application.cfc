@@ -37,9 +37,17 @@
         <!--- LET THE TEMPLATE KNOW WE HAVE INITIALIZE IN CASE WE WANT TO ALERT THE USER --->
         <cfset request.application_initialized = true />
 
-        <cfset application.app_name = trim(server.system.environment.APP_NAME ?: "") />
+        <!---
+            App resolution order:
+            1. this.moopa_app_name - set by the project Application.cfc pseudo-constructor
+               (runs every request), e.g. resolved from the request host. This lets one
+               Lucee instance serve several apps, each with its own application scope,
+               when this.name is derived from the same resolution.
+            2. APP_NAME environment variable - the one-app-per-container default.
+        --->
+        <cfset application.app_name = trim(this.moopa_app_name ?: (server.system.environment.APP_NAME ?: "")) />
         <cfif NOT len(application.app_name)>
-            <cfthrow message="APP_NAME is required. Set APP_NAME to the app directory name under code/apps/." />
+            <cfthrow message="APP_NAME is required. Set APP_NAME to the app directory name under code/apps/ (or set this.moopa_app_name in Application.cfc for host-resolved multi-app runtimes)." />
         </cfif>
         <cfset application.moopa_packages = _getMoopaPackages() />
         <cfset application.path = {} />
