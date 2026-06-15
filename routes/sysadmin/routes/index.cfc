@@ -212,7 +212,6 @@
                 async reset_filters() {
                   this.filters = { q: '' };
                   await clearFilters();
-                  await saveFilters({ q: '' });
                   await this.load();
                 },
                 async load() {
