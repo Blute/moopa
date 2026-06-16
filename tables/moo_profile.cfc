@@ -241,10 +241,6 @@
                 <cfset session.auth.is_sysadmin = true />
             </cfif>
 
-            <!--- GENERATE USER PRIMARY NAV BASED ON PERMISSIONS --->
-            <cfset generateNavs() />
-
-
             <cfset application.lib.db.save(
                 table_name = "moo_login_log",
                 data = {
@@ -263,19 +259,37 @@
 
 
 
-    <cffunction name="generateNavs">
-        <cfif application.lib.auth.isLoggedIn()>
+    <cffunction name="buildNavs" returntype="struct" output="false">
+        <cfset var navs = {} />
+        <cfset var navKey = "" />
 
-            <cfset session.auth.navs = {}>
-            <cfset session.auth.nav_id = application.nav_id?:'' />
-
-            <!--- Loop through all nav structures --->
-            <cfloop collection="#application.navs#" item="navKey">
-                <!--- Duplicate and filter each nav structure --->
-                <cfset session.auth.navs[navKey] = filterNavItems(duplicate(application.navs[navKey]))>
-            </cfloop>
-
+        <cfif NOT application.lib.auth.isLoggedIn()>
+            <cfreturn navs />
         </cfif>
+
+        <!--- Build the access-filtered nav lazily, on first render, and cache it in the
+              SESSION for the rest of the session. This is only ever called by apps that
+              actually render a nav (via <cf_nav_shell>), so apps that don't (e.g. a public
+              site) never store a nav tree — that is the point: the old generateNavs() ran
+              in login() for EVERY app, so every session serialised a nav it may never use.
+              Per-user data in the per-user scope is also cleared automatically on logout /
+              session expiry. Refreshes on the next login (login() resets session.auth) and
+              on deploy (application.nav_id changes, so the cached nav_id no longer matches).
+              Concurrent first-hits in one session may both build — harmless, identical
+              result, so no lock is needed. --->
+        <cfif structKeyExists(session.auth, "navs")
+              AND (session.auth.nav_id ?: "") EQ (application.nav_id ?: "")>
+            <cfreturn session.auth.navs />
+        </cfif>
+
+        <cfloop collection="#application.navs#" item="navKey">
+            <cfset navs[navKey] = filterNavItems(duplicate(application.navs[navKey]))>
+        </cfloop>
+
+        <cfset session.auth.navs = navs />
+        <cfset session.auth.nav_id = application.nav_id ?: "" />
+
+        <cfreturn navs />
     </cffunction>
 
 
