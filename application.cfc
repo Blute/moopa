@@ -406,7 +406,9 @@
                 <p class="h2 fw-normal mt-3 mb-4">Administrators have been notififed.</p>
                 <p class="h2 fw-normal mt-3 mb-4">You could try again or wait for us to get in touch.</p>
                 <div class="">
-                    <a href="#url.route?:''#" class="btn btn-outline-primary btn-lg" id="try-again-button">Try Again</a>
+                    <cfoutput>
+                    <a href="#encodeForHTMLAttribute(url.route?:'')#" class="btn btn-outline-primary btn-lg" id="try-again-button">Try Again</a>
+                    </cfoutput>
 
                     <a href="/" class="btn btn-primary btn-lg" id="try-again-button">Return home</a>
                 </div>
@@ -415,11 +417,15 @@
                 <cfif (server.system.environment.APP_ENVIRONMENT?:'production') EQ 'development' OR (url.debug?:'') EQ (server.system.environment.DEBUG_KEY?:createUUID())>
                     <hr>
 
-                    <p class="h1">#arguments.exception.message?:''#.</p>
+                    <cfoutput>
+                    <p class="h1">#encodeForHTML(arguments.exception.message?:'')#.</p>
+                    </cfoutput>
                     <hr>
                     <cfif arrayLen(arguments.exception.tagContext?:[])>
                         <cfloop array="#arguments.exception.tagContext#" item="item">
-                            <h4 class="text-lg text-start">From: #item.template#:#item.line# </h4>
+                            <cfoutput>
+                            <h4 class="text-lg text-start">From: #encodeForHTML(item.template?:'')#:#encodeForHTML(item.line?:'')# </h4>
+                            </cfoutput>
                         </cfloop>
                     </cfif>
 
