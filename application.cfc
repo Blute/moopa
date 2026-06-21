@@ -198,9 +198,6 @@
         </cfif>
 
 
-        <cfset _redirectToHubSetupIfNeeded() />
-
-
         <!--- --------------------------------- --->
         <!--- LETS SEE IF WE NEED TO AUTO LOGIN --->
         <!--- --------------------------------- --->
@@ -553,55 +550,6 @@
                 <cfset arguments.target[local.componentName] = CreateObject("component", local.componentPath).init() />
             </cfloop>
         </cfloop>
-    </cffunction>
-
-
-    <cffunction name="_redirectToHubSetupIfNeeded" access="private" returntype="void" output="false">
-        <cfset var currentRoute = url.route ?: "/" />
-        <cfset var currentApp = application.app_name ?: "" />
-        <cfset var isHubSetupRoute = (currentApp EQ "hub" AND reFindNoCase("^/setup/?$", currentRoute)) />
-        <cfset var isHubInstallRoute = (currentApp EQ "hub" AND reFindNoCase("^/install/?$", currentRoute)) />
-        <cfset var needsSetup = false />
-        <cfset var hubSetupUrl = "" />
-        <cfset var hubBaseUrl = "" />
-
-        <cfif isHubSetupRoute OR isHubInstallRoute OR NOT structKeyExists(application, "lib") OR NOT structKeyExists(application.lib, "core")>
-            <cfreturn />
-        </cfif>
-
-        <cftry>
-            <cfset needsSetup = application.lib.core.requiresHubSetup() />
-            <cfcatch type="database">
-                <cfset needsSetup = true />
-            </cfcatch>
-        </cftry>
-
-        <cfif NOT needsSetup>
-            <cfreturn />
-        </cfif>
-
-        <cfset hubBaseUrl = trim(server.system.environment.HUB_BASE_URL ?: "") />
-
-        <cfif NOT len(hubBaseUrl)>
-            <cfif currentApp EQ "hub">
-                <cfset hubBaseUrl = "" />
-            <cfelse>
-                <cfthrow type="moopa.configuration.missingHubBaseUrl" message="HUB_BASE_URL is required to redirect non-hub apps to Hub setup." />
-            </cfif>
-        <cfelseif NOT reFindNoCase("^https?://", hubBaseUrl)>
-            <cfthrow type="moopa.configuration.invalidHubBaseUrl" message="HUB_BASE_URL must be an absolute http(s) URL." />
-        </cfif>
-
-        <cfset hubSetupUrl = reReplace(hubBaseUrl, "/+$", "", "one") & "/setup/" />
-
-        <cfif structKeyExists(getHttpRequestData().headers, "X-Fetch-Request") AND getHttpRequestData().headers["X-Fetch-Request"] EQ "true">
-            <cfheader statuscode="409" statustext="Setup Required">
-            <cfcontent type="application/json" reset="true">
-            <cfoutput>#serializeJSON({error: "Setup required", setup_url: hubSetupUrl})#</cfoutput>
-            <cfabort>
-        </cfif>
-
-        <cflocation url="#hubSetupUrl#" addtoken="false" />
     </cffunction>
 
 
