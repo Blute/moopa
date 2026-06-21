@@ -223,37 +223,6 @@
     </cffunction>
 
 
-    <cffunction name="requiresHubSetup" access="public" output="false" returntype="boolean">
-        <cfset var sysadminEmails = "" />
-        <cfset var sysadminEmail = "" />
-
-        <cfloop list="#server.system.environment.SYSADMIN_EMAIL ?: ''#" item="sysadminEmail">
-            <cfset sysadminEmail = lCase(trim(sysadminEmail)) />
-            <cfif len(sysadminEmail)>
-                <cfset sysadminEmails = listAppend(sysadminEmails, sysadminEmail) />
-            </cfif>
-        </cfloop>
-
-        <cfif NOT hasMoopaProfileTable()>
-            <cfreturn true />
-        </cfif>
-
-        <cfif NOT len(sysadminEmails)>
-            <cfreturn true />
-        </cfif>
-
-        <cfquery name="local.qProfiles">
-            SELECT count(*) AS profile_count
-            FROM moo_profile
-            WHERE app_name = <cfqueryparam cfsqltype="varchar" value="hub" />
-            AND can_login = true
-            AND lower(email) IN (<cfqueryparam cfsqltype="varchar" value="#sysadminEmails#" list="true" />)
-        </cfquery>
-
-        <cfreturn val(local.qProfiles.profile_count) EQ 0 />
-    </cffunction>
-
-
 
 
     <cffunction name="logError" returntype="void" output="true">
