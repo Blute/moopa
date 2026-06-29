@@ -91,7 +91,7 @@ packages overriding core Moopa controls.
     <cfif len(attributes.label)>
         <cfif attributes.label_position EQ "left">
             <div class="flex items-center gap-4">
-                <label for="#control_attrs.id#" class="w-1/4">#attributes.label#</label>
+                <label for="#control_attrs.id#" class="w-1/4">#attributes.label#<cfif attributes.required> <span class="text-error" aria-hidden="true">*</span></cfif></label>
                 <div class="flex-1">
                     <cfmodule
                         template="#control_template#"
@@ -101,7 +101,7 @@ packages overriding core Moopa controls.
             </div>
         <cfelse>
             <fieldset class="#attributes.class#">
-                <legend class="fieldset-legend">#attributes.label#</legend>
+                <legend class="fieldset-legend">#attributes.label#<cfif attributes.required> <span class="text-error" aria-hidden="true">*</span></cfif></legend>
                 <cfmodule
                     template="#control_template#"
                     attributecollection="#control_attrs#"

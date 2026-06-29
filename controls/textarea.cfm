@@ -5,6 +5,7 @@
     <cfparam name="attributes.placeholder" default="" />
     <cfparam name="attributes.rows" default="3" />
     <cfparam name="attributes.id" default="" />
+    <cfparam name="attributes.required" type="boolean" default="false" />
 
     <cfoutput>
         <textarea
@@ -13,6 +14,7 @@
             placeholder="#attributes.placeholder#"
             x-model="#attributes.model#"
             <cfif len(attributes.id)>id="#attributes.id#"</cfif>
+            <cfif attributes.required>aria-required="true"</cfif>
         ></textarea>
     </cfoutput>
 

@@ -4,6 +4,7 @@
     <cfparam name="attributes.model" default="" />
     <cfparam name="attributes.class" default="input w-full" />
     <cfparam name="attributes.placeholder" default="" />
+    <cfparam name="attributes.required" type="boolean" default="false" />
 
     <cfoutput>
         <input id="#attributes.id#"
@@ -11,6 +12,7 @@
             class="#attributes.class#"
             placeholder="#attributes.placeholder#"
             x-model="#attributes.model#"
+            <cfif attributes.required>aria-required="true"</cfif>
         >
     </cfoutput>
 

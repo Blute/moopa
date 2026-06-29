@@ -52,6 +52,16 @@ Delegates actual rendering to <cf_control>.
         <!--- Set label from table definition unless the UI metadata overrides it. --->
         <cfset control_attrs.label = control_attrs.label ?: field_def.label ?: "" />
 
+        <!--- Derive required-ness from the schema: a non-nullable column is
+              required, unless the UI metadata explicitly overrides it
+              (html.required: true to force, false to suppress). Only honour the
+              override when it's an actual boolean — a stray non-boolean string
+              must never reach cf_control's `cfparam type="boolean"`, where a cast
+              throw would take down every form in the app (these are framework
+              tags). cf_control renders the marker and the per-control templates
+              the aria attribute. --->
+        <cfset control_attrs.required = isBoolean(control_attrs.required ?: "") ? control_attrs.required : (NOT (field_def.nullable ?: true)) />
+
         <!--- Auto-generate model path. --->
         <cfset control_attrs.model = "#attributes.model_record#.#field_name#" />
 
