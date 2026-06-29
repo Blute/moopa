@@ -52,6 +52,13 @@ Delegates actual rendering to <cf_control>.
         <!--- Set label from table definition unless the UI metadata overrides it. --->
         <cfset control_attrs.label = control_attrs.label ?: field_def.label ?: "" />
 
+        <!--- Derive required-ness from the schema: a non-nullable column is
+              required, unless the UI metadata explicitly overrides it
+              (html.required: true to force, false to suppress). cf_control
+              renders the marker and the per-control templates the aria/native
+              attribute. --->
+        <cfset control_attrs.required = control_attrs.required ?: (NOT (field_def.nullable ?: true)) />
+
         <!--- Auto-generate model path. --->
         <cfset control_attrs.model = "#attributes.model_record#.#field_name#" />
 
