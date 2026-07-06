@@ -78,7 +78,20 @@
         </cfif>
 
         <cfset profile = getProfileSysadminIdentity(arguments.profile_id) />
-        <cfreturn structKeyExists(profile, "id") AND isConfiguredHubSysadminEmail(profile.email ?: "", profile.app_name ?: "") />
+        <cfif NOT (structKeyExists(profile, "id") AND isConfiguredHubSysadminEmail(profile.email ?: "", profile.app_name ?: ""))>
+            <cfreturn false />
+        </cfif>
+
+        <!--- Duplicate rows for the same sysadmin email (e.g. stale pre-migration profiles)
+              stay editable/deletable: only the sole remaining row is protected. --->
+        <cfquery name="local.qDuplicates" returntype="array">
+            SELECT count(*)::int AS profile_count
+            FROM moo_profile
+            WHERE app_name = 'hub'
+              AND lower(email) = lower(<cfqueryparam cfsqltype="varchar" value="#profile.email#" />)
+        </cfquery>
+
+        <cfreturn local.qDuplicates[1].profile_count LTE 1 />
     </cffunction>
 
 
@@ -102,6 +115,14 @@
                 (
                     moo_profile.app_name = 'hub'
                     AND lower(moo_profile.email) IN (<cfqueryparam cfsqltype="varchar" value="#getSysadminEmailList()#" list="true" />)
+                    <!--- Duplicate rows for the same sysadmin email (e.g. stale pre-migration
+                          profiles) stay deletable: only the sole remaining row is protected. --->
+                    AND (
+                        SELECT count(*)
+                        FROM moo_profile dup
+                        WHERE dup.app_name = 'hub'
+                          AND lower(dup.email) = lower(moo_profile.email)
+                    ) = 1
                 ) AS is_configured_sysadmin,
                 COUNT(*) OVER() AS total_count,
                 COALESCE((
@@ -303,7 +324,10 @@
                                         <button class="btn btn-ghost btn-sm btn-square min-h-10 h-10 w-10" @click.stop="select(item)" title="Edit profile" aria-label="Edit profile">
                                             <i class="fa-solid fa-pen-to-square text-base-content/70"></i>
                                         </button>
-                                        <button class="btn btn-ghost btn-sm btn-square min-h-10 h-10 w-10 text-error" @click.stop="openDeleteModal(item)" title="Delete profile" :disabled="isProtectedSysadmin(item)" :aria-label="isProtectedSysadmin(item) ? 'Configured Hub sysadmin profiles cannot be deleted' : 'Delete profile'">
+                                        <!--- Not :disabled — daisyUI disabled buttons get pointer-events:none, so the click
+      would fall through to the row and open the drawer. Keep it clickable and let
+      openDeleteModal toast the protected explanation instead. --->
+                                        <button class="btn btn-ghost btn-sm btn-square min-h-10 h-10 w-10 text-error" :class="isProtectedSysadmin(item) && 'opacity-40 cursor-not-allowed'" @click.stop="openDeleteModal(item)" title="Delete profile" :aria-disabled="isProtectedSysadmin(item)" :aria-label="isProtectedSysadmin(item) ? 'Configured Hub sysadmin profiles cannot be deleted' : 'Delete profile'">
                                             <i class="fa-solid fa-trash"></i>
                                         </button>
                                     </div>
@@ -428,7 +452,7 @@
                                                 <button class="btn btn-ghost btn-sm btn-square min-h-9 h-9 w-9" @click.stop="select(item)" title="Edit profile" aria-label="Edit profile">
                                                     <i class="fa-solid fa-pen-to-square text-base-content/70"></i>
                                                 </button>
-                                                <button class="btn btn-ghost btn-sm btn-square min-h-9 h-9 w-9 text-error" @click.stop="openDeleteModal(item)" title="Delete profile" :disabled="isProtectedSysadmin(item)" :aria-label="isProtectedSysadmin(item) ? 'Configured Hub sysadmin profiles cannot be deleted' : 'Delete profile'">
+                                                <button class="btn btn-ghost btn-sm btn-square min-h-9 h-9 w-9 text-error" :class="isProtectedSysadmin(item) && 'opacity-40 cursor-not-allowed'" @click.stop="openDeleteModal(item)" title="Delete profile" :aria-disabled="isProtectedSysadmin(item)" :aria-label="isProtectedSysadmin(item) ? 'Configured Hub sysadmin profiles cannot be deleted' : 'Delete profile'">
                                                     <i class="fa-solid fa-trash"></i>
                                                 </button>
                                             </div>
