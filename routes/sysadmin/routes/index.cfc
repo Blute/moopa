@@ -36,7 +36,9 @@
       <cfreturn application.lib.db.search(table_name='moo_role', q="#url.q?:''#", exclude_ids="#url.exclude_ids?:''#")/>
     </cffunction>
     <cffunction name="search.current_record.profiles">
-      <cfreturn application.lib.db.search(table_name='moo_profile', q="#url.q?:''#", exclude_ids="#url.exclude_ids?:''#")/>
+      <!--- Route grants only make sense for profiles that can log into this app,
+            matching the app_name filter on the route list itself. --->
+      <cfreturn application.lib.db.search(table_name='moo_profile', q="#url.q?:''#", exclude_ids="#url.exclude_ids?:''#", where={"app_name": application.app_name})/>
     </cffunction>
 
     <cffunction name="get">
