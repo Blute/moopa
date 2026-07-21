@@ -107,6 +107,25 @@
         </cfquery>
     </cffunction>
 
+    <cffunction name="persistVideoDuration" access="private" returntype="void" output="false" hint="Write Cloudflare's reported duration (seconds) to the duration column; ignores unknown values and skips the write when unchanged">
+        <cfargument name="video_id" type="string" required="true" />
+        <cfargument name="duration_seconds" type="numeric" required="true" />
+
+        <!--- Stream reports -1 until processing completes --->
+        <cfset var rounded = round(arguments.duration_seconds) />
+        <cfif rounded LTE 0>
+            <cfreturn />
+        </cfif>
+
+        <cfquery>
+            UPDATE moo_video
+            SET last_updated_at = now(),
+                duration = <cfqueryparam cfsqltype="bigint" value="#rounded#" />
+            WHERE id = <cfqueryparam cfsqltype="other" value="#arguments.video_id#" />
+              AND duration IS DISTINCT FROM <cfqueryparam cfsqltype="bigint" value="#rounded#" />
+        </cfquery>
+    </cffunction>
+
     <cffunction name="signedStreamUrl" access="private" returntype="string" output="false">
         <cfargument name="stream_id" type="string" required="true" />
         <cfargument name="suffix" type="string" required="true" />
@@ -344,6 +363,7 @@
 
             <cfset cloudflare_response = requestCloudflare(method = "GET", path = "/stream/#urlEncodedFormat(video_record.cloudflare_stream_id)#") />
             <cfset cloudflare_result = cloudflare_response.result ?: {} />
+            <cfset persistVideoDuration(video_record.id, val(cloudflare_result.duration ?: -1)) />
             <cfset stream_status_data = isStruct(cloudflare_result.status ?: "") ? cloudflare_result.status : {} />
             <cfset metadata.stream_status = lCase(trim(stream_status_data.state ?: "inprogress")) />
             <cfset metadata.stream_ready = (cloudflare_result.readyToStream ?: false) OR metadata.stream_status EQ "ready" />
@@ -371,6 +391,57 @@
         </cfloop>
 
         <cfreturn output_records />
+    </cffunction>
+
+    <cffunction name="backfillVideoDurations" access="public" returntype="struct" output="false" hint="Maintenance: fetch durations from Cloudflare Stream for videos that have a stream but no stored duration. Streams still processing (or errored) report no duration and stay pending for a later pass. Callers batching through the backlog should advance offset by the pending count each batch (updated rows leave the NULL set on their own), or pending rows at the head of the queue would shadow reachable ones behind them">
+        <cfargument name="limit" type="numeric" required="false" default="50" />
+        <cfargument name="offset" type="numeric" required="false" default="0" />
+
+        <cfset var checked = 0 />
+        <cfset var updated = 0 />
+        <cfset var pending = 0 />
+        <cfset var cloudflare_response = {} />
+        <cfset var cloudflare_result = {} />
+        <cfset var duration_seconds = 0 />
+
+        <cfquery name="local.qMissing">
+            SELECT id, cloudflare_stream_id
+            FROM moo_video
+            WHERE COALESCE(cloudflare_stream_id, '') <> ''
+              AND duration IS NULL
+            ORDER BY created_at
+            LIMIT <cfqueryparam cfsqltype="integer" value="#int(arguments.limit)#" />
+            OFFSET <cfqueryparam cfsqltype="integer" value="#int(arguments.offset)#" />
+        </cfquery>
+
+        <cfloop query="local.qMissing">
+            <cfset checked = checked + 1 />
+            <cfset cloudflare_response = requestCloudflare(method = "GET", path = "/stream/#urlEncodedFormat(local.qMissing.cloudflare_stream_id)#") />
+            <cfset cloudflare_result = cloudflare_response.result ?: {} />
+            <cfset duration_seconds = val(cloudflare_result.duration ?: -1) />
+            <!--- Same rounded-value guard as persistVideoDuration, so a video only
+                  counts as updated when a write actually lands --->
+            <cfif round(duration_seconds) GT 0>
+                <cfset persistVideoDuration(local.qMissing.id, duration_seconds) />
+                <cfset updated = updated + 1 />
+            <cfelse>
+                <cfset pending = pending + 1 />
+            </cfif>
+        </cfloop>
+
+        <cfquery name="local.qRemaining">
+            SELECT count(*) AS missing
+            FROM moo_video
+            WHERE COALESCE(cloudflare_stream_id, '') <> ''
+              AND duration IS NULL
+        </cfquery>
+
+        <cfreturn {
+            checked: checked,
+            updated: updated,
+            pending: pending,
+            remaining: local.qRemaining.missing
+        } />
     </cffunction>
 
     <cffunction name="deleteVideo" access="public" returntype="struct" output="false">
