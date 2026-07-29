@@ -223,18 +223,21 @@ FROM (
 
 ## JSONB Columns and db.save()
 
-**"No hstore extension installed" errors** — this happens when you pass a CFML array or struct for a JSONB column to `db.save()`. The Lucee PostgreSQL driver can't map complex CFML types to JSONB and falls back to hstore (which isn't installed).
+Pass native CFML structs or arrays straight to JSONB fields — **`db.save()` serializes them automatically**. The write mapper (`internal/db/write_mapper.cfc`) detects `jsonb` columns and calls `serializeJSON()` on any non-simple value; values that are already JSON strings pass through unchanged, and empty values are stored as NULL. Do not serialize values yourself.
 
-**Always `serializeJSON()` before passing to db.save():**
 ```cfml
-<!--- GOOD: Serialize to JSON string first --->
-<cfset myData.status_history = serializeJSON(historyArray) />
-<cfset application.lib.db.save(table_name="my_table", data=myData) />
-
-<!--- BAD: Passing raw CFML array — causes hstore error --->
+<!--- GOOD: native CFML array/struct — the framework serializes it once --->
 <cfset myData.status_history = historyArray />
 <cfset application.lib.db.save(table_name="my_table", data=myData) />
+
+<!--- Also accepted: an existing JSON string passes through unchanged --->
+<cfset myData.status_history = '[{"status":"sent"}]' />
+<cfset application.lib.db.save(table_name="my_table", data=myData) />
 ```
+
+**Never `serializeJSON()` a value that is already a JSON string** — double-encoding stores a quoted string in the column instead of an object/array.
+
+**Round-trip:** `db.read(returnFormat="cfml")` deserializes the whole record — including JSONB fields — into native CFML values. Pass them back to `db.save()` as-is; the mapper re-serializes exactly once.
 
 **db.read() FK expansion gotcha:** `db.read(returnFormat="cfml")` in default `condensed` mode expands FK fields (e.g. `sell_tender_id`) into structs `{id, label}` instead of plain UUID strings. If you then use that value in a `cfqueryparam`, you get "Can't cast Complex Object Type Struct to String". Use `sql_type="simple"` when you need plain ID values:
 
