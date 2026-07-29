@@ -5,9 +5,9 @@
 
 
     <cffunction name="init">
-        <cfset variables.apiToken = server.system.environment.CLOUDFLARE_STREAM_API_TOKEN />
-        <cfset variables.accountId = server.system.environment.CLOUDFLARE_ACCOUNT_ID />
-        <cfset variables.customerSubdomain = server.system.environment.CLOUDFLARE_CUSTOMER_SUBDOMAIN />
+        <cfset variables.apiToken = server.system.environment.CLOUDFLARE_STREAM_API_TOKEN?:'' />
+        <cfset variables.accountId = server.system.environment.CLOUDFLARE_ACCOUNT_ID?:'' />
+        <cfset variables.customerSubdomain = server.system.environment.CLOUDFLARE_CUSTOMER_SUBDOMAIN?:'' />
     
         <cfreturn this />
     </cffunction>
