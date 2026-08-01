@@ -3,10 +3,10 @@
 
     <cffunction name="init">
 
-        <cfset variables.CLIENTID = server.system.environment.MICROSOFT_CLIENTID />
-        <cfset variables.CLIENTSECRET = server.system.environment.MICROSOFT_CLIENTSECRET />
-        <cfset variables.SCOPE = server.system.environment.MICROSOFT_SCOPE />
-        <cfset variables.TENANT = server.system.environment.MICROSOFT_TENANT />
+        <cfset variables.CLIENTID = server.system.environment.MICROSOFT_CLIENTID?:'' />
+        <cfset variables.CLIENTSECRET = server.system.environment.MICROSOFT_CLIENTSECRET?:'' />
+        <cfset variables.SCOPE = server.system.environment.MICROSOFT_SCOPE?:'' />
+        <cfset variables.TENANT = server.system.environment.MICROSOFT_TENANT?:'' />
         <cfset variables.PROXY = server.system.environment.MICROSOFT_PROXY?:'' />
 
         <cfreturn this />

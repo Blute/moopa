@@ -2,8 +2,6 @@
 
     <!--- Initialize function for setting up the database connection --->
     <cffunction name="init" access="public" returntype="any" hint="Initialize db with the database connection information.">
-        <!--- <cfargument name="dbinfo" type="struct" required="true" hint="A struct containing the database connection information.">
-        <cfset this.dbOldinfo = arguments.dbOldinfo> --->
 
         <cfset this.codeSchema = {} />
         <cfset this.searchable_tables = {} />
