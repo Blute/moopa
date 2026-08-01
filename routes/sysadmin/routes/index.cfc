@@ -264,8 +264,12 @@
                   }
                   const sort_nodes = (nodes) => {
                     nodes.sort((a, b) => {
-                      const a_is_folder = (a.children?.length || 0) > 0;
-                      const b_is_folder = (b.children?.length || 0) > 0;
+                      // Folders first, matching the icon: a node renders as a folder
+                      // only when it has no route of its own. A routed node with
+                      // children (e.g. /login with /login/logout) shows a file icon,
+                      // so it must sort with the files or the grouping looks random.
+                      const a_is_folder = !a.route;
+                      const b_is_folder = !b.route;
                       if (a_is_folder !== b_is_folder) return a_is_folder ? -1 : 1; // folders first
                       return a.name.localeCompare(b.name);
                     });
