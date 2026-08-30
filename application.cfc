@@ -67,7 +67,10 @@
 
         <cfset _setupNavs() />
 
-
+        <!--- Last line on purpose: OnRequestStart's boot guard waits on this key.
+              RustCFML lets concurrent requests bypass a running OnApplicationStart
+              and see the scope half-built (see the guard below). --->
+        <cfset application.boot_complete = true />
 
 		<cfreturn true />
 
@@ -90,6 +93,26 @@
 
 
 		<cfset var bReturn = true />
+		<cfset var bootWaited = 0 />
+
+        <!--- Boot race guard: RustCFML (<= v0.645.0) does not hold concurrent
+              requests behind a running OnApplicationStart, so early requests can
+              see application.lib/routes half-built (500s, then 404s, for ~1s after
+              a restart). Wait for boot to finish; answer 503 + Retry-After rather
+              than 500 if it never does. Lucee never enters the loop. Remove once
+              the engine serialises application start. --->
+        <cfif NOT structKeyExists(application, "boot_complete")>
+            <cfloop condition="NOT structKeyExists(application, 'boot_complete') AND bootWaited LT 5000">
+                <cfset sleep(50) />
+                <cfset bootWaited += 50 />
+            </cfloop>
+            <cfif NOT structKeyExists(application, "boot_complete")>
+                <cfheader statuscode="503" statustext="Service Unavailable" />
+                <cfheader name="Retry-After" value="2" />
+                <cfcontent type="text/plain" reset="true" /><cfoutput>booting</cfoutput>
+                <cfreturn false />
+            </cfif>
+        </cfif>
 
 
 
