@@ -305,7 +305,15 @@
 
             <cfset item.id = createUUID() />
 
-            <cfif structKeyExists(item, "route")>
+            <cfif structKeyExists(item, "divider")>
+                <!--- A divider is a pure separator: it carries no route, title or children, so it
+                      is never access-checked. It is kept here and tidied by trimNavDividers() once
+                      the surrounding items have been filtered. --->
+                <cfif !isBoolean(item.divider) OR !item.divider OR structKeyExists(item, "route") OR structKeyExists(item, "items")>
+                    <cfthrow type="moopa.nav.invalidDivider" message="Nav divider must be exactly { ""divider"": true } with no route or items." />
+                </cfif>
+                <cfset arrayAppend(filteredItems, item)>
+            <cfelseif structKeyExists(item, "route")>
                 <!--- Check access for the route --->
                 <cfset var route_data = moo_route.parseRoute(item.route) />
 
@@ -340,7 +348,30 @@
             </cfif>
         </cfloop>
 
-        <cfreturn filteredItems>
+        <cfreturn trimNavDividers(filteredItems)>
+    </cffunction>
+
+
+    <cffunction name="trimNavDividers" returntype="array" access="private"
+        hint="Drop dividers that access filtering has left meaningless: leading, trailing, or directly after another divider. A list holding only dividers comes back empty, so its parent menu is dropped too.">
+        <cfargument name="navItems" type="array" required="yes">
+
+        <cfset var trimmed = [] />
+        <cfset var navItem = "" />
+
+        <cfloop array="#arguments.navItems#" item="navItem">
+            <cfif structKeyExists(navItem, "divider")
+                  AND (!arrayLen(trimmed) OR structKeyExists(trimmed[arrayLen(trimmed)], "divider"))>
+                <cfcontinue />
+            </cfif>
+            <cfset arrayAppend(trimmed, navItem) />
+        </cfloop>
+
+        <cfif arrayLen(trimmed) AND structKeyExists(trimmed[arrayLen(trimmed)], "divider")>
+            <cfset arrayDeleteAt(trimmed, arrayLen(trimmed)) />
+        </cfif>
+
+        <cfreturn trimmed />
     </cffunction>
 
 
