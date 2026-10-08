@@ -91,6 +91,16 @@ code/apps/hub/navs
 
 Routes and navigation are normally app-owned because each app has its own URL space.
 
+### Nav files
+
+Each `navs/*.json` file is an array of items. An item is one of:
+
+- a link: `{ "icon": "...", "title": "...", "route": "/path" }` — shown only when the user can `GET` the route
+- a menu: `{ "icon": "...", "title": "...", "items": [ ... ] }` — shown only when at least one child survives filtering
+- a divider: `{ "divider": true }` — a separator line; nothing else is allowed on it
+
+`moo_profile.buildNavs()` filters items by route access, then drops any divider left at the start or end of a list, or directly after another divider, so access filtering never leaves an orphaned separator.
+
 ## Hub as the control plane
 
 Every Moopa project should include a `hub` app. Hub is the control-plane/admin app for framework features such as:
