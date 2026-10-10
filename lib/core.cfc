@@ -237,20 +237,17 @@
         </cfif>
 
 
+        <cfset var error_data = {
+            message = "#arguments.Exception.message#",
+            line = "#error_line#",
+            tag = "500 Error",
+            exception = "#serializeJSON(arguments.Exception)#"
+        } />
+        <cfset structAppend(error_data, errorLogContext(), true) />
+
         <cfset new_error_log = application.lib.db.save(
                 table_name = "moo_error_log",
-                data = {
-                    message = "#arguments.Exception.message#",
-                    line = "#error_line#",
-                    tag = "500 Error",
-                    exception = "#serializeJSON(arguments.Exception)#",
-                    current_auth = "#serializeJSON(session.auth?:{})#",
-                    cgi_scope = "#serializeJSON(cgi?:{})#",
-                    form_scope = "#serializeJSON(form?:{})#",
-                    request_scope = "#serializeJSON(request?:{})#",
-                    url_scope = "#serializeJSON(url?:{})#",
-                    session_scope = "#serializeJSON(session?:{})#"
-                },
+                data = error_data,
                 returnFormat="cfml"
             ) />
 
@@ -276,6 +273,86 @@
         </cfif>
 
 
+    </cffunction>
+
+
+    <!---
+        The request context stored with an error log row: auth, the request data
+        (request.data, i.e. the form or JSON body), url and session, as JSON with
+        secrets redacted. cgi and the whole request scope are left out.
+        Call it on the request thread, before any cfthread.
+    --->
+    <cffunction name="errorLogContext" access="public" returntype="struct" output="false">
+        <cfset var context = {} />
+        <cfset var request_data = {} />
+
+        <cftry>
+            <cfset request_data = (structKeyExists(request, "data") AND isStruct(request.data)) ? request.data : form />
+
+            <cfset context.current_auth = serializeJSON(redactForLog(session.auth ?: {})) />
+            <cfset context.form_scope = serializeJSON(redactForLog(request_data)) />
+            <cfset context.url_scope = serializeJSON(redactForLog(url)) />
+            <cfset context.session_scope = serializeJSON(redactForLog(session)) />
+
+            <cfcatch>
+                <!--- Never let the error log fail on its context --->
+            </cfcatch>
+        </cftry>
+
+        <cfreturn context />
+    </cffunction>
+
+
+    <!--- Deep copy of a value with secret-looking keys (passwords, tokens, codes, session ids) replaced by "[redacted]" --->
+    <cffunction name="redactForLog" access="public" returntype="any" output="false">
+        <cfargument name="value" type="any" required="true" />
+        <cfargument name="depth" type="numeric" required="false" default="0" />
+
+        <cfset var result = "" />
+        <cfset var key = "" />
+        <cfset var i = 0 />
+
+        <cfif arguments.depth GT 20>
+            <cfreturn "[too deep]" />
+        </cfif>
+
+        <cfif isObject(arguments.value)>
+            <cfreturn "[component]" />
+        </cfif>
+
+        <cfif isStruct(arguments.value)>
+            <cfset result = {} />
+            <cfloop collection="#arguments.value#" item="key">
+                <cfif isSensitiveLogKey(key)>
+                    <cfset result[key] = "[redacted]" />
+                <cfelseif structKeyExists(arguments.value, key)>
+                    <cfset result[key] = redactForLog(arguments.value[key], arguments.depth + 1) />
+                </cfif>
+            </cfloop>
+            <cfreturn result />
+        </cfif>
+
+        <cfif isArray(arguments.value)>
+            <cfset result = [] />
+            <cfloop from="1" to="#arrayLen(arguments.value)#" index="i">
+                <cfif arrayIsDefined(arguments.value, i)>
+                    <cfset arrayAppend(result, redactForLog(arguments.value[i], arguments.depth + 1)) />
+                <cfelse>
+                    <cfset arrayAppend(result, "") />
+                </cfif>
+            </cfloop>
+            <cfreturn result />
+        </cfif>
+
+        <cfreturn arguments.value />
+    </cffunction>
+
+
+    <cffunction name="isSensitiveLogKey" access="public" returntype="boolean" output="false">
+        <cfargument name="key" type="string" required="true" />
+
+        <!--- Exact names (auth codes, PINs, session ids, the deploy/debug url keys), then anything password/secret/token-ish --->
+        <cfreturn reFindNoCase("^(code|otp|pin|cfid|sessionid|jsessionid|endpoint_hash_code|deploy|debug)$|password|passwd|secret|token|api_?key|authori[sz]ation|cookie|signature|credential|private_?key|(auth|verification|reset|login|access)_code$", arguments.key) GT 0 />
     </cffunction>
 
 

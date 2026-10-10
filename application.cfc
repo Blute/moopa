@@ -320,23 +320,27 @@
         </cfif>
 
 
-        <cfthread Exception="#arguments.Exception#" error_line="#error_line#">
+        <!--- Redacted auth, request data, url and session, gathered here on the request thread --->
+        <cfset error_context = {} />
+        <cfif structKeyExists(application, "lib") AND structKeyExists(application.lib, "core")>
+            <cfset error_context = application.lib.core.errorLogContext() />
+        </cfif>
 
+
+        <!--- The thread body reads only its attributes: the arguments scope isn't visible inside cfthread on RustCFML --->
+        <cfthread Exception="#arguments.Exception#" error_line="#error_line#" error_context="#error_context#">
+
+            <cfset error_data = {
+                message = "#attributes.Exception.message#",
+                line = "#attributes.error_line#",
+                tag = "500 Error",
+                exception = "#serializeJSON(attributes.Exception)#"
+            } />
+            <cfset structAppend(error_data, attributes.error_context, true) />
 
             <cfset new_error_log = application.lib.db.save(
                     table_name = "moo_error_log",
-                    data = {
-                        message = "#arguments.Exception.message#",
-                        line = "#error_line#",
-                        tag = "500 Error",
-                        exception = "#serializeJSON(arguments.Exception)#",
-                        current_auth = "#serializeJSON(session.auth?:{})#",
-                        cgi_scope = "#serializeJSON(cgi?:{})#",
-                        form_scope = "#serializeJSON(form?:{})#",
-                        request_scope = "#serializeJSON(request?:{})#",
-                        url_scope = "#serializeJSON(url?:{})#",
-                        session_scope = "#serializeJSON(session?:{})#"
-                    },
+                    data = error_data,
                     returnFormat="cfml"
                 ) />
 
@@ -346,8 +350,8 @@
 
                 <cfsavecontent variable="email_body">
                     <cfoutput>
-                    #error_line# <br>
-                    #arguments.exception.message?:''# <br>
+                    #attributes.error_line# <br>
+                    #attributes.Exception.message?:''# <br>
                     <a href="#server.system.environment.base_url#/sysadmin/error_log">Error Log</a>
                     </cfoutput>
                 </cfsavecontent>
