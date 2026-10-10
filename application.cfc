@@ -602,8 +602,16 @@
 
     <cffunction name="_setupServices" access="private" returntype="void" output="true">
 
+        <!--- Prewarm through getService so application.service and every later
+              getService() call share the same cached instances. --->
         <cfset application.service = {} />
-        <cfset _loadCfcDirectory(application.service, "tables", "table service") />
+        <cfloop collection="#application.lib.db.codeSchema#" item="local.table_name">
+            <!--- The normalizer derives relationship (join) tables into codeSchema;
+                  they have no backing CFC to instantiate. --->
+            <cfif structKeyExists(application.lib.db.codeSchema[local.table_name], "path")>
+                <cfset application.service[local.table_name] = application.lib.db.getService(local.table_name) />
+            </cfif>
+        </cfloop>
 
     </cffunction>
 
