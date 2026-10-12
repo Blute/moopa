@@ -1,84 +1,95 @@
 export default {
+  // Every answer for a signed asset (/a/) can be read by any page, refusals and failures included: a signed URL is its
+  // own authorisation (no cookies are involved), and a web app that keeps a copy to work offline (Cache API,
+  // IndexedDB) reads it with a CORS request, so it needs to see a 404 or a 416 as that, not as a network failure.
   async fetch(request, env, ctx) {
-    try {
-      const url = new URL(request.url);
-      const method = request.method.toUpperCase();
-
-      if (method !== "GET" && method !== "HEAD") {
-        return new Response("Method not allowed", { status: 405 });
-      }
-
-      const kind = getKind(url.pathname);
-      if (!kind) {
-        return new Response("Not found", { status: 404 });
-      }
-
-      const sig = url.searchParams.get("sig");
-      const expStr = url.searchParams.get("exp");
-      if (!sig || !expStr) {
-        return new Response("Unauthorized", { status: 401 });
-      }
-
-      const exp = Number(expStr);
-      if (!Number.isFinite(exp)) {
-        return new Response("Bad exp", { status: 400 });
-      }
-
-      const now = Math.floor(Date.now() / 1000);
-      if (now > exp) {
-        return new Response("Expired", { status: 403 });
-      }
-
-      const decodedPathname = decodePathname(url.pathname);
-      if (!decodedPathname) {
-        return new Response("Bad path", { status: 400 });
-      }
-
-      const signingKeyB64 = resolveSigningKeyB64(
-        env,
-        url.searchParams.get("kid"),
-      );
-      if (!signingKeyB64) {
-        return new Response("Unauthorized", { status: 401 });
-      }
-
-      const canonical = buildCanonical(url, decodedPathname);
-      const expectedSig = await hmacSha256Hex(canonical, signingKeyB64);
-      if (!constantTimeEqualHex(expectedSig, sig)) {
-        return new Response("Unauthorized", { status: 401 });
-      }
-
-      const objectKey = getObjectKey(decodedPathname, kind);
-      if (!objectKey) {
-        return new Response("Not found", { status: 404 });
-      }
-
-      if (kind === "a") {
-        return handleAssetProxy({ request, env, objectKey, method, url });
-      }
-
-      if (kind === "i") {
-        return handleImageTransform({
-          request,
-          env,
-          objectKey,
-          method,
-          url,
-          ctx,
-        });
-      }
-
-      if (kind === "m") {
-        return handleMarkdownTransform({ env, objectKey, method, url, ctx });
-      }
-
-      return handleVideoStream({ env, objectKey, method, url });
-    } catch (error) {
-      const message = normalizeErrorMessage(error, "Unhandled worker error");
-      return new Response(`Worker error: ${message}`, { status: 500 });
+    const response = await handleRequest(request, env, ctx);
+    if (new URL(request.url).pathname.startsWith("/a/")) {
+      response.headers.set("Access-Control-Allow-Origin", "*");
     }
+    return response;
   },
 };
+
+async function handleRequest(request, env, ctx) {
+  try {
+    const url = new URL(request.url);
+    const method = request.method.toUpperCase();
+
+    if (method !== "GET" && method !== "HEAD") {
+      return new Response("Method not allowed", { status: 405 });
+    }
+
+    const kind = getKind(url.pathname);
+    if (!kind) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    const sig = url.searchParams.get("sig");
+    const expStr = url.searchParams.get("exp");
+    if (!sig || !expStr) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const exp = Number(expStr);
+    if (!Number.isFinite(exp)) {
+      return new Response("Bad exp", { status: 400 });
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    if (now > exp) {
+      return new Response("Expired", { status: 403 });
+    }
+
+    const decodedPathname = decodePathname(url.pathname);
+    if (!decodedPathname) {
+      return new Response("Bad path", { status: 400 });
+    }
+
+    const signingKeyB64 = resolveSigningKeyB64(
+      env,
+      url.searchParams.get("kid"),
+    );
+    if (!signingKeyB64) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const canonical = buildCanonical(url, decodedPathname);
+    const expectedSig = await hmacSha256Hex(canonical, signingKeyB64);
+    if (!constantTimeEqualHex(expectedSig, sig)) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const objectKey = getObjectKey(decodedPathname, kind);
+    if (!objectKey) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    if (kind === "a") {
+      return handleAssetProxy({ request, env, objectKey, method, url });
+    }
+
+    if (kind === "i") {
+      return handleImageTransform({
+        request,
+        env,
+        objectKey,
+        method,
+        url,
+        ctx,
+      });
+    }
+
+    if (kind === "m") {
+      return handleMarkdownTransform({ env, objectKey, method, url, ctx });
+    }
+
+    return handleVideoStream({ env, objectKey, method, url });
+  } catch (error) {
+    const message = normalizeErrorMessage(error, "Unhandled worker error");
+    return new Response(`Worker error: ${message}`, { status: 500 });
+  }
+}
 
 function getKind(pathname) {
   if (pathname.startsWith("/a/")) return "a";
@@ -177,10 +188,6 @@ async function handleAssetProxy({ request, env, objectKey, method, url }) {
   } else {
     headers.set("Content-Length", String(obj.size));
   }
-
-  // A signed URL is its own authorisation (no cookies are involved), so any page may read what it returns: a web app
-  // that keeps a copy to work offline (Cache API, IndexedDB) reads it with a CORS request.
-  headers.set("Access-Control-Allow-Origin", "*");
 
   applySignedExpiryCaching(headers, url);
 
