@@ -122,6 +122,8 @@ function decodePathname(pathname) {
 }
 
 async function handleAssetProxy({ request, env, objectKey, method, url }) {
+  // A range R2 can serve, or null for the whole object (a Range header this can't read is ignored, as RFC 9110
+  // allows: the whole object is the answer).
   const rangeHeader = request.headers.get("Range");
   const range = rangeHeader ? parseRange(rangeHeader) : null;
 
@@ -131,6 +133,14 @@ async function handleAssetProxy({ request, env, objectKey, method, url }) {
       ? await env.ASSETS_BUCKET.get(objectKey, { range })
       : await env.ASSETS_BUCKET.get(objectKey);
   } catch (_error) {
+    // R2 throws for a range past the end of the object: that's the asker's (416), not R2 failing.
+    const head = range ? await env.ASSETS_BUCKET.head(objectKey).catch(() => null) : null;
+    if (head && !servedRange(range, head.size)) {
+      return new Response(null, {
+        status: 416,
+        headers: { "Content-Range": `bytes */${head.size}` },
+      });
+    }
     return new Response("Upstream error", { status: 502 });
   }
 
@@ -146,19 +156,31 @@ async function handleAssetProxy({ request, env, objectKey, method, url }) {
   headers.set("Content-Type", contentType);
   if (obj.etag) headers.set("ETag", obj.etag);
 
+  // Partial only when a range was asked for: R2 reports a range on every object it returns, asked for or not, so
+  // obj.range can't say whether this answer is partial.
   let status = 200;
-  if (obj.range) {
+  headers.set("Accept-Ranges", "bytes");
+  if (range) {
+    const served = servedRange(range, obj.size);
+    if (!served) {
+      return new Response(null, {
+        status: 416,
+        headers: { "Content-Range": `bytes */${obj.size}` },
+      });
+    }
     status = 206;
-    headers.set("Accept-Ranges", "bytes");
     headers.set(
       "Content-Range",
-      `bytes ${obj.range.offset}-${obj.range.end}/${obj.size}`,
+      `bytes ${served.offset}-${served.offset + served.length - 1}/${obj.size}`,
     );
-    headers.set("Content-Length", String(obj.range.length));
-  } else if (typeof obj.size === "number") {
+    headers.set("Content-Length", String(served.length));
+  } else {
     headers.set("Content-Length", String(obj.size));
-    headers.set("Accept-Ranges", "bytes");
   }
+
+  // A signed URL is its own authorisation (no cookies are involved), so any page may read what it returns: a web app
+  // that keeps a copy to work offline (Cache API, IndexedDB) reads it with a CORS request.
+  headers.set("Access-Control-Allow-Origin", "*");
 
   applySignedExpiryCaching(headers, url);
 
@@ -454,28 +476,30 @@ function constantTimeEqualHex(a, b) {
   return out === 0;
 }
 
+// One byte range ("bytes=a-b", "bytes=a-" or "bytes=-n") as R2's get() takes it: { offset, length }, { offset } or
+// { suffix }. null for anything else (several ranges, other units), which is answered with the whole object.
 function parseRange(rangeHeader) {
   const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim());
-  if (!match) return null;
+  if (!match || (!match[1] && !match[2])) return null;
 
-  const startStr = match[1];
-  const endStr = match[2];
-
-  if (startStr && endStr) {
-    const offset = Number(startStr);
-    const end = Number(endStr);
-    if (!Number.isFinite(offset) || !Number.isFinite(end) || end < offset)
-      return null;
-    return { offset, end };
+  if (!match[1]) {
+    const suffix = Number(match[2]);
+    return suffix > 0 ? { suffix } : null;
   }
 
-  if (startStr && !endStr) {
-    const offset = Number(startStr);
-    if (!Number.isFinite(offset)) return null;
-    return { offset };
-  }
+  const offset = Number(match[1]);
+  if (!match[2]) return { offset };
 
-  return null;
+  const end = Number(match[2]);
+  return end >= offset ? { offset, length: end - offset + 1 } : null;
+}
+
+// The bytes a range covers of an object of `size`: { offset, length }, or null when it covers none (416).
+function servedRange(range, size) {
+  const offset = "suffix" in range ? Math.max(0, size - range.suffix) : range.offset;
+  if (offset >= size) return null;
+  const length = "length" in range ? Math.min(range.length, size - offset) : size - offset;
+  return { offset, length };
 }
 
 function toPositiveInt(value) {
