@@ -9,6 +9,9 @@
         A project may issue grants of its own kinds (lower-case slugs); those never have
         an impersonator.
 
+        The token is a live credential until used or expired: it is never part of the
+        label, and its field is hidden.
+
         Invariant (enforced by lib.login_grant; a project may also add it as a CHECK
         constraint, which table definitions can't express):
           impersonator_profile_id is set exactly when kind = 'impersonation'
@@ -21,7 +24,7 @@
             "name": "moo_login_grant",
             "title": "Login Grant",
             "title_plural": "Login Grants",
-            "label_generation_expression": "COALESCE(token::text, id::text)",
+            "label_generation_expression": "kind::text || ' grant ' || id::text",
             "searchable_fields": "",
             "order_by": "created_at desc",
 

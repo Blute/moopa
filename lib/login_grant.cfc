@@ -23,7 +23,12 @@
         </cfif>
 
         <cfset var token = application.lib.core.generateSecureToken(32) />
-        <cfset var expiresAt = dateAdd("n", variables.TTL_MINUTES, now()) />
+
+        <!--- Expiry comes from the database clock, the same clock consume() checks it against --->
+        <cfquery name="local.qExpiry" returntype="array">
+            SELECT now() + make_interval(mins => <cfqueryparam cfsqltype="integer" value="#variables.TTL_MINUTES#" />) AS expires_at
+        </cfquery>
+        <cfset var expiresAt = local.qExpiry[1].expires_at />
         <cfset var data = {
             kind = arguments.kind,
             token = token,
@@ -42,23 +47,29 @@
 
 
     <cffunction name="consume" access="public" returntype="struct" output="false"
-        hint="Use a grant of this kind and sign the browser in as its target. Throws loginGrant.unusable unless the token is of this kind, unused and unexpired. Returns { target_profile_id, impersonator_profile_id, app_name, auth_type } with app_name and auth_type the target's.">
+        hint="Use a grant of this kind and sign the browser in as its target. Throws loginGrant.unusable unless the token is of this kind, unused and unexpired. Returns { target_profile_id, impersonator_profile_id, app_name } with app_name the target's (empty when it has none).">
         <cfargument name="token" type="string" required="true" />
         <cfargument name="kind" type="string" required="true" />
 
         <cfset assertKind(arguments.kind) />
 
-        <!--- Atomic: only one request can use a grant, and only while it's live --->
+        <!--- Atomic: only one request can use a grant, and only while it's live. The
+              target's app comes back from the same statement, so nothing is read after
+              the grant is spent. --->
         <cfquery name="local.qConsume" returntype="array">
         UPDATE moo_login_grant
         SET consumed_at = now(),
             consume_ip = <cfqueryparam cfsqltype="varchar" value="#cgi.remote_addr ?: ''#" />,
             user_agent = <cfqueryparam cfsqltype="varchar" value="#left(cgi.http_user_agent ?: '', 500)#" />
-        WHERE token = <cfqueryparam cfsqltype="varchar" value="#arguments.token#" />
-          AND kind = <cfqueryparam cfsqltype="varchar" value="#arguments.kind#" />
-          AND consumed_at IS NULL
-          AND expires_at > now()
-        RETURNING target_profile_id::text, COALESCE(impersonator_profile_id::text, '') AS impersonator_profile_id
+        FROM moo_profile target
+        WHERE target.id = moo_login_grant.target_profile_id
+          AND moo_login_grant.token = <cfqueryparam cfsqltype="varchar" value="#arguments.token#" />
+          AND moo_login_grant.kind = <cfqueryparam cfsqltype="varchar" value="#arguments.kind#" />
+          AND moo_login_grant.consumed_at IS NULL
+          AND moo_login_grant.expires_at > now()
+        RETURNING moo_login_grant.target_profile_id::text AS target_profile_id,
+                  COALESCE(moo_login_grant.impersonator_profile_id::text, '') AS impersonator_profile_id,
+                  COALESCE(target.app_name, '') AS app_name
         </cfquery>
 
         <cfif NOT arrayLen(local.qConsume)>
@@ -66,13 +77,6 @@
         </cfif>
 
         <cfset var grant = local.qConsume[1] />
-
-        <cfset var target = application.lib.db.read(
-            table_name = "moo_profile",
-            id = grant.target_profile_id,
-            field_list = "id,app_name,auth_type",
-            returnFormat = "cfml"
-        ) />
 
         <!--- Sever any remember-me on this browser. Without this, the previous
               user's deviceid cookie survives and, when the granted session
@@ -96,8 +100,7 @@
         <cfreturn {
             target_profile_id = grant.target_profile_id,
             impersonator_profile_id = grant.impersonator_profile_id,
-            app_name = target.app_name ?: "",
-            auth_type = target.auth_type
+            app_name = grant.app_name
         } />
     </cffunction>
 
