@@ -158,102 +158,106 @@
         </cfif>
 
 
-        <cflock name="session_#arguments.profile_id#" timeout="10">
+        <!--- No lock. The login is built whole in a local struct and set as session.auth in one assignment, so a
+              request in the same session never sees half of one; two requests of one session logging in together
+              (auto-login on parallel requests) set the same thing, last one wins. The lock this replaced was named
+              after the profile, not the session, and was held across the database calls below: every device and
+              every concurrent request of one person queued behind each other's logins, and when one was slow (seen
+              while a container was being replaced) the rest failed after its 10 seconds with "a timeout occurred ...
+              lock with name [session_<profile id>]". --->
+        <cfset var profile_to_login = application.lib.db.read(
+            table_name = "moo_profile",
+            id = arguments.profile_id,
+            field_list = "id,full_name,email,mobile,app_name,profile_avatar_id,profile_picture_id,can_login,roles",
+            returnFormat="cfml"
+        ) />
 
+        <cfif !profile_to_login.can_login>
+            <!--- Refused: nobody is left signed in in this session, as before. --->
             <cfset session.auth = {} />
+            <cfabort showerror="YOU DO NOT HAVE ACCESS TO LOGIN" />
+        </cfif>
 
-            <cfset profile_to_login = application.lib.db.read(
-                table_name = "moo_profile",
-                id = arguments.profile_id,
-                field_list = "id,full_name,email,mobile,app_name,profile_avatar_id,profile_picture_id,can_login,roles",
+        <cfset var auth = {} />
+        <cfset auth.profile = profile_to_login />
+        <cfset auth.isLoggedIn = true />
+        <cfset auth.auto_login = false />
+        <cfset auth.stay_logged_in = false />
+        <cfset auth.authentication_service_user = arguments.authentication_service_user />
+        <cfset auth.user = {} /> <!--- Find Profile in DB --->
+        <cfset auth.is_sysadmin = false />
+        <cfset auth.role_id_array = [] />
+        <cfset auth.role_id_list = "" />
+        <cfset auth.user_directory = arguments.user_directory />
+        <cfset auth.endpoint_hash_code = createUniqueID() />
+
+
+        <cfif !arguments.auto_login AND arguments.stay_logged_in>
+
+            <cfset var new_device_id = createUUID() />
+            <cfset var expireTime = dateAdd("d", 30, now())>
+            <cfset application.lib.db.save(
+                table_name = "moo_profile_extended_session",
+                data = {
+                    profile_id = "#auth.profile.id#",
+                    device_id = "#new_device_id#",
+                    expiration = "#expireTime#"
+                },
                 returnFormat="cfml"
             ) />
 
-            <cfif !profile_to_login.can_login>
-                <cfabort showerror="YOU DO NOT HAVE ACCESS TO LOGIN" />
+            <cfcookie name="deviceid" value="#new_device_id#" expires="#expireTime#" httponly="true" secure="true" samesite="Lax">
+
+
+            <cfset auth.stay_logged_in = true />
+
+        </cfif>
+
+
+        <cfif (arguments.auto_login)>
+            <cfset auth.auto_login = true />
+            <cfset auth.stay_logged_in = true />
+        </cfif>
+
+
+        <cfset auth.role_id_array = ArrayMap(auth.profile.roles, function(role) {
+            return role.id;
+        })>
+
+        <!--- Convert the array of role IDs to a comma-separated list --->
+        <cfset auth.role_id_list = ArrayToList(auth.role_id_array)>
+
+        <cfset var sysadmin_email_list = "" />
+        <cfset var sysadmin_email = "" />
+        <cfloop list="#server.system.environment.SYSADMIN_EMAIL ?: ''#" item="sysadmin_email">
+            <cfset sysadmin_email = lCase(trim(sysadmin_email)) />
+            <cfif len(sysadmin_email)>
+                <cfset sysadmin_email_list = listAppend(sysadmin_email_list, sysadmin_email) />
             </cfif>
+        </cfloop>
 
-            <cfset session.auth.profile = profile_to_login />
+        <cfset var profile_email = lCase(trim(auth.profile.email ?: "")) />
+        <cfset var is_hub_profile = lCase(trim(auth.profile.app_name ?: "")) EQ "hub" />
+        <cfset var has_configured_sysadmin_email = len(profile_email) AND (listFindNoCase(sysadmin_email_list, profile_email) GT 0) />
+        <cfset var has_trusted_sysadmin_login = arguments.is_sysadmin />
 
+        <cfif is_hub_profile AND (has_trusted_sysadmin_login OR has_configured_sysadmin_email)>
+            <cfset auth.is_sysadmin = true />
+        </cfif>
 
-            <cfset session.auth.isLoggedIn = true />
-            <cfset session.auth.auto_login = false />
-            <cfset session.auth.stay_logged_in = false />
-            <cfset session.auth.authentication_service_user = arguments.authentication_service_user />
-            <cfset session.auth.user = {} /> <!--- Find Profile in DB --->
-            <cfset session.auth.is_sysadmin = false />
-            <cfset session.auth.role_id_array = [] />
-            <cfset session.auth.role_id_list = "" />
-            <cfset session.auth.user_directory = arguments.user_directory />
-            <cfset session.auth.endpoint_hash_code = createUniqueID() />
+        <cfset session.auth = auth />
 
-
-            <cfif !arguments.auto_login AND arguments.stay_logged_in>
-
-                <cfset new_device_id = createUUID() />
-                <cfset expireTime = dateAdd("d", 30, now())>
-                <cfset new_extended_session = application.lib.db.save(
-                    table_name = "moo_profile_extended_session",
-                    data = {
-                        profile_id = "#session.auth.profile.id#",
-                        device_id = "#new_device_id#",
-                        expiration = "#expireTime#"
-                    },
-                    returnFormat="cfml"
-                ) />
-
-                <cfcookie name="deviceid" value="#new_device_id#" expires="#expireTime#" httponly="true" secure="true" samesite="Lax">
-
-
-                <cfset session.auth.stay_logged_in = true />
-
-            </cfif>
-
-
-            <cfif (arguments.auto_login)>
-                <cfset session.auth.auto_login = true />
-                <cfset session.auth.stay_logged_in = true />
-            </cfif>
-
-
-            <cfset session.auth.role_id_array = ArrayMap(session.auth.profile.roles, function(role) {
-                return role.id;
-            })>
-
-            <!--- Convert the array of role IDs to a comma-separated list --->
-            <cfset session.auth.role_id_list = ArrayToList(session.auth.role_id_array)>
-
-            <cfset var sysadmin_email_list = "" />
-            <cfset var sysadmin_email = "" />
-            <cfloop list="#server.system.environment.SYSADMIN_EMAIL ?: ''#" item="sysadmin_email">
-                <cfset sysadmin_email = lCase(trim(sysadmin_email)) />
-                <cfif len(sysadmin_email)>
-                    <cfset sysadmin_email_list = listAppend(sysadmin_email_list, sysadmin_email) />
-                </cfif>
-            </cfloop>
-
-            <cfset var profile_email = lCase(trim(session.auth.profile.email ?: "")) />
-            <cfset var is_hub_profile = lCase(trim(session.auth.profile.app_name ?: "")) EQ "hub" />
-            <cfset var has_configured_sysadmin_email = len(profile_email) AND (listFindNoCase(sysadmin_email_list, profile_email) GT 0) />
-            <cfset var has_trusted_sysadmin_login = arguments.is_sysadmin />
-
-            <cfif is_hub_profile AND (has_trusted_sysadmin_login OR has_configured_sysadmin_email)>
-                <cfset session.auth.is_sysadmin = true />
-            </cfif>
-
-            <cfset application.lib.db.save(
-                table_name = "moo_login_log",
-                data = {
-                    mobile = "#session.auth.profile.mobile?:''#",
-                    email = "#session.auth.profile.email?:''#",
-                    status = "Login",
-                    auto_login = session.auth.auto_login,
-                    authentication_service_user = session.auth.authentication_service_user,
-                    stay_logged_in = session.auth.stay_logged_in
-                }
-            ) />
-
-        </cflock>
+        <cfset application.lib.db.save(
+            table_name = "moo_login_log",
+            data = {
+                mobile = "#auth.profile.mobile?:''#",
+                email = "#auth.profile.email?:''#",
+                status = "Login",
+                auto_login = auth.auto_login,
+                authentication_service_user = auth.authentication_service_user,
+                stay_logged_in = auth.stay_logged_in
+            }
+        ) />
 
     </cffunction>
 
