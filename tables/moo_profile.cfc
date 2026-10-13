@@ -190,20 +190,7 @@
 
             <cfif !arguments.auto_login AND arguments.stay_logged_in>
 
-                <cfset new_device_id = createUUID() />
-                <cfset expireTime = dateAdd("d", 30, now())>
-                <cfset new_extended_session = application.lib.db.save(
-                    table_name = "moo_profile_extended_session",
-                    data = {
-                        profile_id = "#session.auth.profile.id#",
-                        device_id = "#new_device_id#",
-                        expiration = "#expireTime#"
-                    },
-                    returnFormat="cfml"
-                ) />
-
-                <cfcookie name="deviceid" value="#new_device_id#" expires="#expireTime#" httponly="true" secure="true" samesite="Lax">
-
+                <cfset application.lib.device_session.issue(profile_id = session.auth.profile.id) />
 
                 <cfset session.auth.stay_logged_in = true />
 
@@ -240,6 +227,12 @@
             <cfif is_hub_profile AND (has_trusted_sysadmin_login OR has_configured_sysadmin_email)>
                 <cfset session.auth.is_sysadmin = true />
             </cfif>
+
+            <!--- The write-behind session flush is mutation-gated and skipped when the
+                  login request ends in a cflocation redirect, so without a synchronous
+                  commit session.auth may never reach the session store and any in-memory
+                  scope drop (deploy/GC) logs the user straight back out. --->
+            <cfset sessionCommit() />
 
             <cfset application.lib.db.save(
                 table_name = "moo_login_log",

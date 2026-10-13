@@ -198,36 +198,8 @@
         </cfif>
 
 
-        <!--- --------------------------------- --->
-        <!--- LETS SEE IF WE NEED TO AUTO LOGIN --->
-        <!--- --------------------------------- --->
-        <cfif !application.lib.auth.isLoggedIn() AND (len(cookie.deviceid?:''))>
-
-            <cfquery name="qCheckDevice">
-            SELECT id::text as id,
-            profile_id::text as profile_id,
-            device_id,
-            expiration
-            FROM moo_profile_extended_session
-            WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#cookie.deviceid#" />
-            </cfquery>
-
-            <cfif qCheckDevice.recordcount EQ 1>
-
-                <cfif dateDiff('d', now(), qCheckDevice.expiration) GTE 0>
-                    <!--- AUTO LOGIN --->
-                    <cfset application.lib.db.getService("moo_profile").login(profile_id="#qCheckDevice.profile_id#", auto_login=true) />
-
-                <cfelse>
-                    <cfquery name="qCleanupExtendedSession">
-                    DELETE FROM moo_profile_extended_session
-                    WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#cookie.deviceid#" />
-                    </cfquery>
-                    <cfcookie name="deviceid" value="" expires="0" httponly="true" secure="true" samesite="Lax">
-
-                </cfif>
-            </cfif>
-        </cfif>
+        <!--- Resume a device session (deviceid cookie) when no session is active. --->
+        <cfset application.lib.device_session.resume() />
 
 
         <!---
