@@ -39,9 +39,10 @@
                            WHEN g.expires_at <= now() THEN 'expired'
                            ELSE 'active'
                        END AS status
-                FROM moo_impersonation_grant g
+                FROM moo_login_grant g
                 INNER JOIN moo_profile ip ON ip.id = g.impersonator_profile_id
                 INNER JOIN moo_profile tp ON tp.id = g.target_profile_id
+                WHERE g.kind = 'impersonation'
                 ORDER BY g.created_at DESC
                 LIMIT 50
             ) data
