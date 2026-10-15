@@ -62,11 +62,11 @@
             <cfset res.file = application.lib.db.read( table_name : 'moo_file', id : new_file.id, returnFormat="cfml" ) />
 
 
-            <cfset res.presignedURL = s3generatePresignedUrl(
-                bucket= '#server.system.environment.S3_bucket#',
-                objectName = new_path,
-                httpMethod = "PUT",
-                expireDate = dateAdd('n', 5, now())
+            <cfset res.presignedURL = application.lib.s3_client.presignedUrl(
+                store = application.lib.s3_client.defaultStore(),
+                objectKey = new_path,
+                method = "PUT",
+                expiresSeconds = 300
             ) />
 
 
