@@ -85,15 +85,12 @@
 
         <cfset var sigv4 = application.lib.aws_sigv4 />
         <cfset var httpResult = {} />
-        <cfset var parsed = "" />
-        <cfset var contents = [] />
+        <cfset var listing = "" />
         <cfset var results = [] />
-        <cfset var contentNode = "" />
+        <cfset var node = "" />
         <cfset var isTruncated = true />
         <cfset var continuationToken = "" />
         <cfset var queryString = "" />
-        <cfset var truncatedNodes = [] />
-        <cfset var tokenNodes = [] />
 
         <cfloop condition="isTruncated">
             <!--- SigV4 requires canonical query string parameters sorted alphabetically --->
@@ -109,28 +106,23 @@
                 canonicalUri = "/" & arguments.store.bucket,
                 canonicalQueryString = queryString
             ) />
-            <cfset parsed = xmlParse(httpResult.fileContent ?: "") />
-            <cfset contents = xmlSearch(parsed, "//*[local-name()='Contents']") />
-
-            <cfloop array="#contents#" item="contentNode">
-                <cfset arrayAppend(results, {
-                    key: xmlTextByLocalName(contentNode, "Key"),
-                    etag: replace(xmlTextByLocalName(contentNode, "ETag"), '"', "", "all"),
-                    size: xmlTextByLocalName(contentNode, "Size"),
-                    last_modified: xmlTextByLocalName(contentNode, "LastModified")
-                }) />
+            <!--- A ListBucketResult holds each object as a Contents child of the root, beside IsTruncated and
+                  NextContinuationToken. Read by walking the root's children by local name, not XPath, which engines
+                  support unevenly. --->
+            <cfset listing = xmlParse(httpResult.fileContent ?: "").xmlRoot />
+            <cfloop array="#listing.xmlChildren#" item="node">
+                <cfif localName(node) EQ "Contents">
+                    <cfset arrayAppend(results, {
+                        key: childText(node, "Key"),
+                        etag: replace(childText(node, "ETag"), '"', "", "all"),
+                        size: childText(node, "Size"),
+                        last_modified: childText(node, "LastModified")
+                    }) />
+                </cfif>
             </cfloop>
 
-            <cfset truncatedNodes = xmlSearch(parsed, "//*[local-name()='IsTruncated']") />
-            <cfif arrayLen(truncatedNodes) AND trim(truncatedNodes[1].xmlText ?: "") EQ "true">
-                <cfset tokenNodes = xmlSearch(parsed, "//*[local-name()='NextContinuationToken']") />
-                <cfset continuationToken = arrayLen(tokenNodes) ? trim(tokenNodes[1].xmlText ?: "") : "" />
-                <cfif NOT len(continuationToken)>
-                    <cfset isTruncated = false />
-                </cfif>
-            <cfelse>
-                <cfset isTruncated = false />
-            </cfif>
+            <cfset continuationToken = childText(listing, "IsTruncated") EQ "true" ? childText(listing, "NextContinuationToken") : "" />
+            <cfset isTruncated = len(continuationToken) GT 0 />
         </cfloop>
 
         <cfreturn results />
@@ -346,15 +338,23 @@
         <cfreturn application.lib.aws_sigv4.uriEncode(reReplace(arguments.objectKey, "^/+", ""), false) />
     </cffunction>
 
-    <cffunction name="xmlTextByLocalName" access="private" returntype="string" output="false">
+    <!--- The trimmed text of a node's first child element with this local name (any namespace prefix), or "". --->
+    <cffunction name="childText" access="private" returntype="string" output="false">
         <cfargument name="parentNode" type="any" required="true" />
-        <cfargument name="localName" type="string" required="true" />
+        <cfargument name="name" type="string" required="true" />
 
-        <cfset var nodes = xmlSearch(arguments.parentNode, "./*[local-name()='#arguments.localName#']") />
-        <cfif arrayLen(nodes)>
-            <cfreturn trim(nodes[1].xmlText ?: "") />
-        </cfif>
+        <cfset var child = "" />
+        <cfloop array="#arguments.parentNode.xmlChildren#" item="child">
+            <cfif localName(child) EQ arguments.name>
+                <cfreturn trim(child.xmlText ?: "") />
+            </cfif>
+        </cfloop>
         <cfreturn "" />
+    </cffunction>
+
+    <cffunction name="localName" access="private" returntype="string" output="false">
+        <cfargument name="node" type="any" required="true" />
+        <cfreturn listLast(arguments.node.xmlName, ":") />
     </cffunction>
 
     <cffunction name="normalizeBaseUrl" access="private" returntype="string" output="false">

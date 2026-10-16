@@ -46,6 +46,10 @@ Every call takes a store: `defaultStore()`, or one built with `configure(label, 
 
 A failed request throws `s3.request.failed` with the store's status and answer in the detail.
 
+## Engines
+
+The client is plain CFML: no Java classes and no XPath, so it runs the same on Lucee and on RustCFML (verified on 0.653.14 against AWS's SigV4 and presigned-URL examples and live against R2). One RustCFML gap remains: until [RustCFML#490](https://github.com/RustCFML/RustCFML/pull/490) is fixed, `cfhttp` sends a binary body as the text `<Binary>`, so `writeObject` with bytes fails there (`XAmzContentSHA256Mismatch`). Text writes, reads, downloads, presigned URLs and Moopa's own uploads (which only presign) are unaffected.
+
 ```cfml
 store = application.lib.s3_client.defaultStore();
 application.lib.s3_client.writeObject(store, "reports/#id#.pdf", pdfBytes, "application/pdf");

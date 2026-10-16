@@ -1,4 +1,4 @@
-<cfcomponent displayname="AWS SigV4" hint="Pure AWS Signature Version 4 signer for any AWS-compatible API (S3 and S3-compatible stores such as Cloudflare R2, Secrets Manager, Bedrock): header signing for requests the app sends itself, and query signing for presigned URLs a browser uses. No HTTP here: callers send the request with exactly the headers they signed.">
+<cfcomponent displayname="AWS SigV4" hint="Pure AWS Signature Version 4 signer for any AWS-compatible API (S3 and S3-compatible stores such as Cloudflare R2, Secrets Manager, Bedrock): header signing for requests the app sends itself, and query signing for presigned URLs a browser uses. No HTTP here: callers send the request with exactly the headers they signed. Built only on CFML functions (hash, hmac, charsetDecode, binaryEncode), with no Java classes, so it signs identically on Lucee and on engines without a JVM such as RustCFML.">
 
     <cffunction name="init" access="public" returntype="any" output="false">
         <cfreturn this />
@@ -136,24 +136,33 @@
     <!--- The lower-case hex SHA-256 of a payload: a string (hashed as its UTF-8 bytes) or binary (hashed as is). --->
     <cffunction name="sha256Hex" access="public" returntype="string" output="false">
         <cfargument name="value" type="any" required="true" />
-        <cfset var bytes = isBinary(arguments.value) ? arguments.value : toString(arguments.value).getBytes("UTF-8") />
-        <cfset var digest = createObject("java", "java.security.MessageDigest").getInstance("SHA-256") />
-        <cfreturn lCase(binaryEncode(digest.digest(bytes), "hex")) />
+        <cfreturn lCase(hash(isBinary(arguments.value) ? arguments.value : charsetDecode(toString(arguments.value), "utf-8"), "SHA-256")) />
     </cffunction>
 
-    <!--- RFC 3986 percent-encoding as SigV4 requires: every byte but A-Z a-z 0-9 - _ . ~ is encoded, a space as %20.
-          encodeSlash false keeps "/" for an object key's path. --->
+    <!--- RFC 3986 percent-encoding as SigV4 requires: every UTF-8 byte but A-Z a-z 0-9 - _ . ~ is encoded as %XX (upper-case
+          hex), so a space is %20 and * is %2A. encodeSlash false keeps "/" for an object key's path. Byte by byte over the
+          UTF-8 encoding, so it doesn't depend on any engine's urlEncodedFormat rules. --->
     <cffunction name="uriEncode" access="public" returntype="string" output="false">
         <cfargument name="value" type="string" required="true" />
         <cfargument name="encodeSlash" type="boolean" required="false" default="true" />
-        <cfset var encoded = createObject("java", "java.net.URLEncoder").encode(arguments.value, "UTF-8") />
-        <cfset encoded = replace(encoded, "+", "%20", "all") />
-        <cfset encoded = replace(encoded, "*", "%2A", "all") />
-        <cfset encoded = replace(encoded, "%7E", "~", "all") />
-        <cfif NOT arguments.encodeSlash>
-            <cfset encoded = replace(encoded, "%2F", "/", "all") />
-        </cfif>
-        <cfreturn encoded />
+
+        <cfset var hex = uCase(binaryEncode(charsetDecode(arguments.value, "utf-8"), "hex")) />
+        <cfset var parts = [] />
+        <cfset var position = 0 />
+        <cfset var pair = "" />
+        <cfset var code = 0 />
+
+        <cfloop from="1" to="#len(hex)#" step="2" index="position">
+            <cfset pair = mid(hex, position, 2) />
+            <cfset code = inputBaseN(pair, 16) />
+            <cfif (code GTE 48 AND code LTE 57) OR (code GTE 65 AND code LTE 90) OR (code GTE 97 AND code LTE 122)
+                  OR code EQ 45 OR code EQ 46 OR code EQ 95 OR code EQ 126 OR (code EQ 47 AND NOT arguments.encodeSlash)>
+                <cfset arrayAppend(parts, chr(code)) />
+            <cfelse>
+                <cfset arrayAppend(parts, "%" & pair) />
+            </cfif>
+        </cfloop>
+        <cfreturn arrayToList(parts, "") />
     </cffunction>
 
     <cffunction name="signatureFor" access="private" returntype="string" output="false">
@@ -170,16 +179,11 @@
         <cfreturn lCase(binaryEncode(hmacSHA256Binary(kSigning, arguments.stringToSign), "hex")) />
     </cffunction>
 
-    <cffunction name="hmacSHA256Binary" access="private" returntype="any" output="false">
-        <cfargument name="key" type="any" required="true" hint="String or binary key" />
+    <!--- HMAC-SHA256 of data (UTF-8) as bytes, so each step of the key derivation can key the next. --->
+    <cffunction name="hmacSHA256Binary" access="private" returntype="binary" output="false">
+        <cfargument name="key" type="any" required="true" hint="String (UTF-8) or binary key" />
         <cfargument name="data" type="string" required="true" />
-
-        <cfset var mac = createObject("java", "javax.crypto.Mac").getInstance("HmacSHA256") />
-        <cfset var keyBytes = isSimpleValue(arguments.key) ? arguments.key.getBytes("UTF-8") : arguments.key />
-        <cfset var secretKey = createObject("java", "javax.crypto.spec.SecretKeySpec").init(keyBytes, "HmacSHA256") />
-
-        <cfset mac.init(secretKey) />
-        <cfreturn mac.doFinal(arguments.data.getBytes("UTF-8")) />
+        <cfreturn binaryDecode(hmac(arguments.data, arguments.key, "HMACSHA256", "utf-8"), "hex") />
     </cffunction>
 
 </cfcomponent>

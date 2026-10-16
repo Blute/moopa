@@ -117,19 +117,28 @@
         <cfreturn "" />
     </cffunction>
 
-    <!--- Container credentials carry an ISO-8601 UTC expiry such as 2026-09-08T04:12:33Z. Lucee's date parser rejects the Z form, so parse via Java. --->
+    <!--- Container credentials carry an ISO-8601 UTC expiry such as 2026-09-08T04:12:33Z (fractional seconds allowed and
+          dropped). Parsed field by field into a UTC date: CFML's date parsers reject the Z form, and the same code then runs on
+          engines without a JVM. --->
     <cffunction name="parseIso8601Utc" access="private" returntype="date" output="false">
         <cfargument name="value" type="string" required="true" />
 
-        <cfset var instant = "" />
+        <cfset var found = reFind("^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?Z$", arguments.value, 1, true) />
+        <cfset var fields = [] />
+        <cfset var group = 0 />
+
+        <cfif found.pos[1] EQ 0>
+            <cfthrow type="aws.credentials.malformed" message="Container credentials Expiration is not ISO-8601 UTC: #arguments.value#" />
+        </cfif>
+        <cfloop from="2" to="7" index="group">
+            <cfset arrayAppend(fields, int(mid(arguments.value, found.pos[group], found.len[group]))) />
+        </cfloop>
         <cftry>
-            <cfset instant = createObject("java", "java.time.Instant").parse(arguments.value) />
+            <cfreturn createDateTime(fields[1], fields[2], fields[3], fields[4], fields[5], fields[6], 0, "UTC") />
             <cfcatch>
-                <cfthrow type="aws.credentials.malformed" message="Container credentials Expiration is not ISO-8601: #arguments.value#" />
+                <cfthrow type="aws.credentials.malformed" message="Container credentials Expiration is not a valid date: #arguments.value#" />
             </cfcatch>
         </cftry>
-
-        <cfreturn createObject("java", "java.util.Date").from(instant) />
     </cffunction>
 
 </cfcomponent>
