@@ -45,14 +45,36 @@
             this.s3 = { host: "<endpoint>", defaultLocation: "<region>", accessKeyId: "...", awsSecretKey: "..." };
           defaultLocation is the signing region (R2: "auto"). Leave both keys empty to sign with the ECS task role. --->
     <cffunction name="defaultStore" access="public" returntype="struct" output="false">
-        <cfset var settings = getApplicationSettings().s3 ?: {} />
+        <cfreturn storeFromSettings(
+            settings = getApplicationSettings().s3 ?: {},
+            bucket = server.system.environment.S3_BUCKET ?: ""
+        ) />
+    </cffunction>
+
+    <!--- The default store from given S3 settings and bucket: what defaultStore() reads from the application, taken as
+          arguments so it can be checked without one. A missing setting throws s3.config.missing naming the exact
+          this.s3 key or variable to set. --->
+    <cffunction name="storeFromSettings" access="public" returntype="struct" output="false">
+        <cfargument name="settings" type="struct" required="true" hint="An application's this.s3, as getApplicationSettings().s3 returns it." />
+        <cfargument name="bucket" type="string" required="true" />
+
+        <cfset var label = "Default S3 store (S3_BUCKET and this.s3)" />
+        <cfif NOT len(trim(arguments.bucket))>
+            <cfthrow type="s3.config.missing" message="#label#: the bucket is not configured; set the S3_BUCKET environment variable." />
+        </cfif>
+        <cfif NOT len(trim(arguments.settings.host ?: ""))>
+            <cfthrow type="s3.config.missing" message="#label#: the endpoint is not configured; set this.s3.host in Application.cfc (e.g. https://<account>.r2.cloudflarestorage.com)." />
+        </cfif>
+        <cfif NOT len(trim(arguments.settings.defaultLocation ?: ""))>
+            <cfthrow type="s3.config.missing" message="#label#: the region is not configured; set this.s3.defaultLocation in Application.cfc to the store's signing region (Cloudflare R2: ""auto""; AWS S3: e.g. ""ap-southeast-2"")." />
+        </cfif>
         <cfreturn configure(
-            label = "Default S3 store (S3_BUCKET and this.s3)",
-            bucket = server.system.environment.S3_BUCKET ?: "",
-            region = settings.defaultLocation ?: "",
-            endpoint = settings.host ?: "",
-            accessKeyId = settings.accessKeyId ?: "",
-            secretAccessKey = settings.awsSecretKey ?: ""
+            label = label,
+            bucket = arguments.bucket,
+            region = arguments.settings.defaultLocation,
+            endpoint = arguments.settings.host,
+            accessKeyId = arguments.settings.accessKeyId ?: "",
+            secretAccessKey = arguments.settings.awsSecretKey ?: ""
         ) />
     </cffunction>
 

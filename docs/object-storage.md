@@ -18,7 +18,16 @@ this.s3 = {
 };
 ```
 
-Leave both keys empty to sign with the ECS task role (AWS S3 only; R2 needs keys). A missing bucket, endpoint or region throws `s3.config.missing` naming the store.
+Leave both keys empty to sign with the ECS task role (AWS S3 only; R2 needs keys). A missing bucket, endpoint or region throws `s3.config.missing` naming the variable or `this.s3` key to set.
+
+## Upgrading an existing app
+
+Before this, Moopa's uploads went through the Lucee S3 extension (`s3generatePresignedUrl`), which read only `this.s3.host`, `accessKeyId` and `awsSecretKey`. Moopa now signs the request itself, and SigV4 signing needs the region too. So when an existing app moves to this version of Moopa:
+
+1. **Add `defaultLocation` to `this.s3`** in `Application.cfc`: the store's signing region, `"auto"` for Cloudflare R2, the bucket's region (e.g. `"ap-southeast-2"`) for AWS S3. Without it, every `moo_file` and `moo_video` upload fails with `s3.config.missing: … set this.s3.defaultLocation in Application.cfc …`.
+2. **Use `defaultLocation`, not a key of your own** such as `region`: Lucee rewrites `this.s3` into its fixed set of keys (`host`, `defaultLocation`, `accessKeyId`, `awsSecretKey`) and drops any other.
+3. **Rename any libs of your own called `s3_client`, `aws_sigv4` or `aws_credentials`**: Moopa refuses two libs with one name, so the app would fail to start.
+4. **Keep or drop the S3 extension as your own code needs.** Moopa no longer uses it. If the app still calls `s3write()`, `s3readBinary()`, `s3generatePresignedUrl()` or reads `s3://` paths itself, keep the extension installed until those calls move to `s3_client`. Once nothing calls them, remove it from the image.
 
 ## Using the client
 
