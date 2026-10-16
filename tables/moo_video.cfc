@@ -274,11 +274,11 @@
         <cfreturn {
             video: buildVideoResponse(application.lib.db.read(table_name = "moo_video", id = new_video.id, returnFormat = "cfml")),
             video_id: new_video.id,
-            presignedURL: s3generatePresignedUrl(
-                bucket= '#server.system.environment.S3_bucket#',
-                objectName = new_path,
-                httpMethod = "PUT",
-                expireDate = dateAdd('n', 20, now())
+            presignedURL: application.lib.s3_client.presignedUrl(
+                store = application.lib.s3_client.defaultStore(),
+                objectKey = new_path,
+                method = "PUT",
+                expiresSeconds = 1200
             )
         } />
     </cffunction>
@@ -290,11 +290,11 @@
         <cfset var video_id = getVideoId(arguments.data.video_id ?: arguments.data.id ?: arguments.data.video ?: "") />
         <cfset var video_record = application.lib.db.read(table_name = "moo_video", id = video_id, returnFormat = "cfml") />
         <cfset var metadata = getVideoMetadata(video_record) />
-        <cfset var presigned_get = s3generatePresignedUrl(
-            bucket= '#server.system.environment.S3_bucket#',
-            objectName = video_record.path,
-            httpMethod = "GET",
-            expireDate = dateAdd('n', 120, now())
+        <cfset var presigned_get = application.lib.s3_client.presignedUrl(
+            store = application.lib.s3_client.defaultStore(),
+            objectKey = video_record.path,
+            method = "GET",
+            expiresSeconds = 7200
         ) />
         <cfset var cloudflare_copy = requestCloudflare(
             method = "POST",
