@@ -32,7 +32,6 @@
 
         <cfset var endpoint = getContainerCredentialsEndpoint() />
         <cfset var cached = {} />
-        <cfset var httpResult = {} />
         <cfset var fresh = {} />
 
         <cfif NOT len(endpoint)>
@@ -51,21 +50,47 @@
                 <cfreturn variables.containerCache[endpoint].credentials />
             </cfif>
 
-            <cfhttp url="#endpoint#" method="GET" result="httpResult" timeout="10">
-                <cfif len(server.system.environment.AWS_CONTAINER_AUTHORIZATION_TOKEN ?: "")>
-                    <cfhttpparam type="header" name="Authorization" value="#server.system.environment.AWS_CONTAINER_AUTHORIZATION_TOKEN#" />
-                </cfif>
-            </cfhttp>
-
-            <cfif left(httpResult.statusCode ?: "", 3) NEQ "200">
-                <cfthrow type="aws.credentials.fetchFailed" message="#arguments.label#: container credentials endpoint returned #httpResult.statusCode ?: 'no status'#" detail="#left(httpResult.fileContent ?: '', 500)#" />
-            </cfif>
-
-            <cfset fresh = parseContainerCredentials(httpResult.fileContent ?: "") />
+            <!--- A refresh that fails while the cached credentials still have time left keeps using them, so a blip on
+                  the credentials endpoint during the refresh window doesn't fail every signed request. --->
+            <cftry>
+                <cfset fresh = fetchContainerCredentials(endpoint = endpoint, label = arguments.label) />
+                <cfcatch>
+                    <cfif structKeyExists(variables.containerCache, endpoint)
+                          AND usableAfterFailedRefresh(expiration = variables.containerCache[endpoint].expiration, asOf = now())>
+                        <cfreturn variables.containerCache[endpoint].credentials />
+                    </cfif>
+                    <cfrethrow />
+                </cfcatch>
+            </cftry>
             <cfset variables.containerCache[endpoint] = fresh />
         </cflock>
 
         <cfreturn fresh.credentials />
+    </cffunction>
+
+    <cffunction name="fetchContainerCredentials" access="private" returntype="struct" output="false">
+        <cfargument name="endpoint" type="string" required="true" />
+        <cfargument name="label" type="string" required="true" />
+
+        <cfset var httpResult = {} />
+        <cfhttp url="#arguments.endpoint#" method="GET" result="httpResult" timeout="10">
+            <cfif len(server.system.environment.AWS_CONTAINER_AUTHORIZATION_TOKEN ?: "")>
+                <cfhttpparam type="header" name="Authorization" value="#server.system.environment.AWS_CONTAINER_AUTHORIZATION_TOKEN#" />
+            </cfif>
+        </cfhttp>
+
+        <cfif left(httpResult.statusCode ?: "", 3) NEQ "200">
+            <cfthrow type="aws.credentials.fetchFailed" message="#arguments.label#: container credentials endpoint returned #httpResult.statusCode ?: 'no status'#" detail="#left(httpResult.fileContent ?: '', 500)#" />
+        </cfif>
+        <cfreturn parseContainerCredentials(httpResult.fileContent ?: "") />
+    </cffunction>
+
+    <!--- Pure: whether cached credentials may still sign after their refresh failed: only while more than a minute is left,
+          so a request signed now can't arrive after they expire. --->
+    <cffunction name="usableAfterFailedRefresh" access="public" returntype="boolean" output="false">
+        <cfargument name="expiration" type="date" required="true" />
+        <cfargument name="asOf" type="date" required="true" />
+        <cfreturn dateDiff("s", arguments.asOf, arguments.expiration) GT 60 />
     </cffunction>
 
     <!--- Pure: parses the container credentials JSON into { credentials: {...}, expiration: date }. Throws on any missing field. --->

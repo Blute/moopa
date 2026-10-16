@@ -78,7 +78,8 @@
         ) />
     </cffunction>
 
-    <!--- Returns [{ key, etag, size, last_modified }] for every object under prefix, following continuation tokens. --->
+    <!--- Returns [{ key, etag, size, last_modified }] for every object under prefix, following continuation tokens. Leading
+          slashes are dropped from the prefix, as from every object key. --->
     <cffunction name="listObjects" access="public" returntype="array" output="false">
         <cfargument name="store" type="struct" required="true" />
         <cfargument name="prefix" type="string" required="true" />
@@ -91,13 +92,14 @@
         <cfset var isTruncated = true />
         <cfset var continuationToken = "" />
         <cfset var queryString = "" />
+        <cfset var prefix = reReplace(arguments.prefix, "^/+", "") />
 
         <cfloop condition="isTruncated">
             <!--- SigV4 requires canonical query string parameters sorted alphabetically --->
             <cfif len(continuationToken)>
-                <cfset queryString = "continuation-token=" & sigv4.uriEncode(continuationToken) & "&list-type=2&prefix=" & sigv4.uriEncode(arguments.prefix) />
+                <cfset queryString = "continuation-token=" & sigv4.uriEncode(continuationToken) & "&list-type=2&prefix=" & sigv4.uriEncode(prefix) />
             <cfelse>
-                <cfset queryString = "list-type=2&prefix=" & sigv4.uriEncode(arguments.prefix) />
+                <cfset queryString = "list-type=2&prefix=" & sigv4.uriEncode(prefix) />
             </cfif>
 
             <cfset httpResult = signedRequest(
@@ -293,30 +295,40 @@
         <cfset var status = "" />
         <cfset var detail = "" />
 
-        <cfhttp url="#requestUrl#" method="#arguments.method#" result="httpResult" timeout="120" encodeurl="false"
-                getasbinary="#(arguments.binaryResponse OR toFile) ? 'yes' : 'auto'#"
-                attributeCollection="#toFile ? { path: getDirectoryFromPath(arguments.filePath), file: getFileFromPath(arguments.filePath) } : {}#">
-            <cfhttpparam type="header" name="Host" value="#arguments.store.host#" />
-            <cfhttpparam type="header" name="x-amz-date" value="#signature.amzDate#" />
-            <cfhttpparam type="header" name="x-amz-content-sha256" value="#payloadHash#" />
-            <cfif len(credentials.sessionToken)>
-                <cfhttpparam type="header" name="x-amz-security-token" value="#credentials.sessionToken#" />
-            </cfif>
-            <cfhttpparam type="header" name="Authorization" value="#signature.authorization#" />
-            <cfif len(arguments.contentType)>
-                <cfhttpparam type="header" name="Content-Type" value="#arguments.contentType#" />
-            </cfif>
-            <cfif arguments.method EQ "PUT">
-                <cfhttpparam type="body" value="#arguments.body#" />
-            </cfif>
-        </cfhttp>
+        <!--- A streamed download that fails before an answer (a timeout, a dropped connection) may have written part of
+              the file: remove it before the failure goes on. --->
+        <cftry>
+            <cfhttp url="#requestUrl#" method="#arguments.method#" result="httpResult" timeout="120" encodeurl="false"
+                    getasbinary="#(arguments.binaryResponse OR toFile) ? 'yes' : 'auto'#"
+                    attributeCollection="#toFile ? { path: getDirectoryFromPath(arguments.filePath), file: getFileFromPath(arguments.filePath) } : {}#">
+                <cfhttpparam type="header" name="Host" value="#arguments.store.host#" />
+                <cfhttpparam type="header" name="x-amz-date" value="#signature.amzDate#" />
+                <cfhttpparam type="header" name="x-amz-content-sha256" value="#payloadHash#" />
+                <cfif len(credentials.sessionToken)>
+                    <cfhttpparam type="header" name="x-amz-security-token" value="#credentials.sessionToken#" />
+                </cfif>
+                <cfhttpparam type="header" name="Authorization" value="#signature.authorization#" />
+                <cfif len(arguments.contentType)>
+                    <cfhttpparam type="header" name="Content-Type" value="#arguments.contentType#" />
+                </cfif>
+                <cfif arguments.method EQ "PUT">
+                    <cfhttpparam type="body" value="#arguments.body#" />
+                </cfif>
+            </cfhttp>
+            <cfcatch>
+                <cfif toFile>
+                    <cfset discardFile(arguments.filePath) />
+                </cfif>
+                <cfrethrow />
+            </cfcatch>
+        </cftry>
 
         <cfset status = left(httpResult.statusCode ?: "", 3) />
         <cfif left(status, 1) NEQ "2" AND NOT listFind(arguments.allowedStatuses, status)>
-            <!--- A streamed download wrote the store's error body to the file: read it for the message, then remove it. --->
-            <cfif toFile AND fileExists(arguments.filePath)>
-                <cfset detail = fileRead(arguments.filePath, "utf-8") />
-                <cffile action="delete" file="#arguments.filePath#" />
+            <!--- A streamed download wrote the store's answer to the file: read its start for the message, then remove it. --->
+            <cfif toFile>
+                <cfset detail = fileStart(arguments.filePath) />
+                <cfset discardFile(arguments.filePath) />
             <cfelse>
                 <cfset detail = isBinary(httpResult.fileContent ?: "") ? charsetEncode(httpResult.fileContent, "utf-8") : (httpResult.fileContent ?: "") />
             </cfif>
@@ -324,6 +336,26 @@
         </cfif>
 
         <cfreturn httpResult />
+    </cffunction>
+
+    <!--- The first 1000 characters of a file as text, or "" when there's no file or it can't be read as text. --->
+    <cffunction name="fileStart" access="private" returntype="string" output="false">
+        <cfargument name="filePath" type="string" required="true" />
+        <cfset var text = "" />
+        <cfif fileExists(arguments.filePath) AND getFileInfo(arguments.filePath).size LTE 65536>
+            <cftry>
+                <cfset text = left(fileRead(arguments.filePath, "utf-8"), 1000) />
+                <cfcatch><cfset text = "" /></cfcatch>
+            </cftry>
+        </cfif>
+        <cfreturn text />
+    </cffunction>
+
+    <cffunction name="discardFile" access="private" returntype="void" output="false">
+        <cfargument name="filePath" type="string" required="true" />
+        <cfif fileExists(arguments.filePath)>
+            <cffile action="delete" file="#arguments.filePath#" />
+        </cfif>
     </cffunction>
 
     <cffunction name="objectCanonicalUri" access="private" returntype="string" output="false">
