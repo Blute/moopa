@@ -56,6 +56,7 @@
                 .ra-node:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
                 .ra-node .ra-dot { width: 0.5rem; height: 0.5rem; flex: none; border-radius: 9999px; background: var(--color-base-300); transition: background-color .3s, box-shadow .3s; }
                 .ra-node .ra-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8125rem; font-weight: 500; }
+                .ra-node .ra-label.ra-url { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.75rem; white-space: normal; overflow-wrap: break-word; }
                 .ra-node.ra-off { border-style: dashed; opacity: .8; }
                 .ra-node.ra-on { color: var(--color-base-content); border-color: color-mix(in oklch, var(--color-success) 65%, white); background: color-mix(in oklch, var(--color-success) 9%, var(--color-base-100)); box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-success) 30%, transparent), 0 0 16px -3px color-mix(in oklch, var(--color-success) 55%, transparent); }
                 .ra-node.ra-on .ra-dot { background: var(--color-success); box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-success) 22%, transparent); }
@@ -115,6 +116,22 @@
                                     <span x-show="pendingCount(role.id) > 0" class="badge badge-sm badge-primary" x-text="`${pendingCount(role.id)} staged`"></span>
                                 </button>
                             </template>
+                        </div>
+
+                        <!-- People in the role -->
+                        <div class="rounded-box border border-base-300 bg-base-100 px-4 py-3">
+                            <p class="mb-2 text-[0.6875rem] uppercase tracking-[0.09em] text-base-content/50" x-text="`People in ${currentRole()?.name}`"></p>
+                            <div class="flex flex-wrap gap-1.5" x-show="(currentRole()?.profiles || []).length > 0">
+                                <template x-for="person in currentRole()?.profiles || []" :key="person.id">
+                                    <a class="badge badge-outline gap-1.5 py-3 hover:border-primary hover:text-primary" :class="person.can_login ? '' : 'opacity-60'" :href="`/sysadmin/profiles/?profile_id=${person.id}`" target="_blank" rel="noopener" :title="person.can_login ? `${person.email} · opens in a new tab` : `${person.email} · can't sign in · opens in a new tab`">
+                                        <span x-text="person.full_name || person.email"></span>
+                                        <span class="text-base-content/50" x-show="person.full_name && sharedName(person)" x-text="lastSignIn(person)"></span>
+                                        <span class="text-[0.625rem] uppercase tracking-wide text-base-content/50" x-show="!person.can_login">can't sign in</span>
+                                        <i class="fa-solid fa-arrow-up-right-from-square text-[0.625rem] text-base-content/40"></i>
+                                    </a>
+                                </template>
+                            </div>
+                            <p class="text-sm text-base-content/55" x-show="(currentRole()?.profiles || []).length === 0">Nobody holds this role yet.</p>
                         </div>
 
                         <!-- Problems -->
@@ -188,7 +205,7 @@
                                         <div class="w-56">
                                         <button type="button" :class="nodeClasses(row.id)" :data-route-id="row.id" :title="routesById[row.id].url" :aria-pressed="map.can_apply && isToggleable(row.id) ? String(has(row.id)) : null">
                                             <span class="ra-dot"></span>
-                                            <span class="ra-label" x-text="rowLabel(row.id, row.parent)"></span>
+                                            <span class="ra-label" :class="menuTitles(row.id).length ? '' : 'ra-url'" x-text="nodeLabel(row.id)"></span>
                                             <i class="fa-solid fa-lock text-xs" x-show="isLocked(row.id)" title="Endpoint-level grants"></i>
                                             <i class="fa-solid fa-circle-exclamation text-warning" x-show="deadEnd(row.id)" title="Dead end for this role"></i>
                                             <i class="fa-solid fa-circle-question text-xs text-base-content/40" x-show="!routeLinked(row.id)" title="Not in any route_links.json"></i>
@@ -214,7 +231,7 @@
                                                     <li :class="row.depth ? 'ra-child ' + connectorClass(row) : ''" :style="`margin-left:${row.depth * 1.25}rem`">
                                         <button type="button" :class="nodeClasses(row.id)" :data-route-id="row.id" :title="routesById[row.id].url" :aria-pressed="map.can_apply && isToggleable(row.id) ? String(has(row.id)) : null">
                                             <span class="ra-dot"></span>
-                                            <span class="ra-label" x-text="rowLabel(row.id, row.parent)"></span>
+                                            <span class="ra-label" :class="menuTitles(row.id).length ? '' : 'ra-url'" x-text="nodeLabel(row.id)"></span>
                                             <i class="fa-solid fa-lock text-xs" x-show="isLocked(row.id)" title="Endpoint-level grants"></i>
                                             <i class="fa-solid fa-circle-exclamation text-warning" x-show="deadEnd(row.id)" title="Dead end for this role"></i>
                                             <i class="fa-solid fa-circle-question text-xs text-base-content/40" x-show="!routeLinked(row.id)" title="Not in any route_links.json"></i>
@@ -235,7 +252,7 @@
                                             <template x-for="row in orphanRows" :key="row.key">
                                         <button type="button" :class="nodeClasses(row.id)" :data-route-id="row.id" :title="routesById[row.id].url" :aria-pressed="map.can_apply && isToggleable(row.id) ? String(has(row.id)) : null">
                                             <span class="ra-dot"></span>
-                                            <span class="ra-label" x-text="rowLabel(row.id, row.parent)"></span>
+                                            <span class="ra-label" :class="menuTitles(row.id).length ? '' : 'ra-url'" x-text="nodeLabel(row.id)"></span>
                                             <i class="fa-solid fa-lock text-xs" x-show="isLocked(row.id)" title="Endpoint-level grants"></i>
                                             <i class="fa-solid fa-circle-exclamation text-warning" x-show="deadEnd(row.id)" title="Dead end for this role"></i>
                                             <i class="fa-solid fa-circle-question text-xs text-base-content/40" x-show="!routeLinked(row.id)" title="Not in any route_links.json"></i>
@@ -583,6 +600,14 @@
                         grantedPercent() { return this.gatedIds.length ? Math.round(this.grantedCount() / this.gatedIds.length * 100) : 0; },
                         sectionGranted(section) { return section.ids.filter(id => this.has(id)).length; },
                         sectionToggleable(section) { return section.ids.filter(id => this.isToggleable(id)); },
+                        sharedName(person) {
+                            return (this.currentRole()?.profiles || []).filter(other => other.full_name === person.full_name).length > 1;
+                        },
+                        // Tells apart profiles that share a name (and often an email).
+                        lastSignIn(person) {
+                            if (!person.last_login_at) return 'never signed in';
+                            return 'last in ' + new Date(person.last_login_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+                        },
                         peopleHolding() {
                             const count = this.currentRole()?.profile_count ?? 0;
                             return count === 1 ? '1 person holds this role' : `${count} people hold this role`;
@@ -599,15 +624,9 @@
                             if (!route) return id;
                             return this.menuTitles(id)[0] || route.url;
                         },
-                        // A linked page shows its URL with the part it shares with the page above trimmed off.
-                        rowLabel(id, parent) {
-                            if (this.menuTitles(id).length || !parent) return this.title(id);
-                            const url = this.routesById[id].url;
-                            const parentParts = this.routesById[parent].url.split('/');
-                            const parts = url.split('/');
-                            let shared = 0;
-                            while (shared < parts.length - 1 && parts[shared] === parentParts[shared]) shared++;
-                            return shared > 1 ? '…/' + parts.slice(shared).join('/') : url;
+                        // Linked pages show their whole route, allowed to wrap only after a slash.
+                        nodeLabel(id) {
+                            return this.menuTitles(id).length ? this.title(id) : this.title(id).replaceAll('/', '/\u200B');
                         },
                         kindLabel(id) {
                             if (this.menuTitles(id).length) return 'Menu item';

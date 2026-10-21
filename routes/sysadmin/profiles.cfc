@@ -99,6 +99,8 @@
 
         <cfset searchTerm = request.data.filter.term?:'' />
         <cfset appNameFilter = request.data.filter.app_name?:'' />
+        <!--- One profile by id, for links that open it straight in the drawer (?profile_id=). --->
+        <cfset profileIdFilter = request.data.profile_id?:'' />
         <cfset limit = val(request.data.limit ?: 20) />
         <cfset offset = val(request.data.offset ?: 0) />
         <cfif NOT listFind("20,50,100", limit)>
@@ -143,6 +145,9 @@
             </cfif>
             <cfif len(appNameFilter)>
                 AND moo_profile.app_name = <cfqueryparam cfsqltype="varchar" value="#appNameFilter#" />
+            </cfif>
+            <cfif len(profileIdFilter)>
+                AND moo_profile.id = <cfqueryparam cfsqltype="other" value="#profileIdFilter#" />
             </cfif>
             <cfif len(searchTerm)>
                 ORDER BY word_similarity(<cfqueryparam cfsqltype="varchar" value="#searchTerm#" />, search_text) DESC
@@ -698,6 +703,19 @@
                             this.filters = await loadFilters(default_filters);
                             this.app_names = await req({ endpoint: 'getAppNames' });
                             await this.load();
+                            await this.openLinkedProfile();
+                        },
+
+                        // ?profile_id=<id> opens that profile in the drawer, so other pages can link to it.
+                        async openLinkedProfile() {
+                            const profileId = new URLSearchParams(window.location.search).get('profile_id');
+                            if (!profileId) return;
+                            const [profile] = await req({ endpoint: 'search', body: { profile_id: profileId, limit: 20, offset: 0 } });
+                            if (profile) {
+                                this.select(profile);
+                            } else if (window.toast) {
+                                window.toast({ type: 'error', message: 'That profile no longer exists.', duration: 3000 });
+                            }
                         },
 
                         async load(options = {}) {
