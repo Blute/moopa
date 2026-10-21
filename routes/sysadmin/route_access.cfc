@@ -66,6 +66,9 @@
                 .ra-node.ra-selected { box-shadow: 0 0 0 2px var(--color-base-content); }
                 .ra-node.ra-on.ra-selected { box-shadow: 0 0 0 2px var(--color-base-content), 0 0 16px -3px color-mix(in oklch, var(--color-success) 55%, transparent); }
                 .ra-node.ra-dim { opacity: .22; }
+                .ra-node.ra-peek { opacity: 1; outline: 2px solid var(--color-primary); outline-offset: 2px; animation: ra-pulse 1.1s ease-out infinite; }
+                @keyframes ra-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--color-primary) 45%, transparent); } 100% { box-shadow: 0 0 0 12px transparent; } }
+                @media (prefers-reduced-motion: reduce) { .ra-node.ra-peek { animation: none; } }
                 .ra-child { position: relative; }
                 .ra-child::before { content: ""; position: absolute; top: -0.25rem; left: -0.6875rem; width: 0.5625rem; height: 1.125rem; border-left: 1.5px solid var(--color-base-300); border-bottom: 1.5px solid var(--color-base-300); border-bottom-left-radius: 0.375rem; transition: border-color .3s; }
                 .ra-child.ra-live::before { border-color: var(--color-success); }
@@ -351,7 +354,7 @@
                                                         <template x-for="id in inbound[selectedId] || []" :key="id">
                                                             <li class="flex items-center gap-1.5 text-xs">
                                                                 <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="openable(id) ? 'bg-success' : 'bg-base-300'"></span>
-                                                                <button type="button" class="link link-hover truncate text-left" @click="select(id)" x-text="title(id)"></button>
+                                                                <button type="button" class="link link-hover truncate text-left" @click="select(id)" @mouseenter="peek(id)" @mouseleave="peek(null)" @focus="peek(id)" @blur="peek(null)" x-text="title(id)"></button>
                                                             </li>
                                                         </template>
                                                     </ul>
@@ -365,7 +368,7 @@
                                                         <template x-for="id in map.links[selectedId] || []" :key="id">
                                                             <li class="flex items-center gap-1.5 text-xs">
                                                                 <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="openable(id) ? 'bg-success' : 'bg-base-300'"></span>
-                                                                <button type="button" class="link link-hover truncate text-left" @click="select(id)" x-text="title(id)"></button>
+                                                                <button type="button" class="link link-hover truncate text-left" @click="select(id)" @mouseenter="peek(id)" @mouseleave="peek(null)" @focus="peek(id)" @blur="peek(null)" x-text="title(id)"></button>
                                                             </li>
                                                         </template>
                                                     </ul>
@@ -458,6 +461,7 @@
                         roleId: null,
                         pending: {},
                         selectedId: null,
+                        peekId: null,
                         search: '',
                         issuesOnly: false,
                         reviewOpen: false,
@@ -658,6 +662,7 @@
                             if (this.deadEnd(id)) classes.push('ra-issue');
                             if (id === this.selectedId) classes.push('ra-selected');
                             if (!this.matches(id)) classes.push('ra-dim');
+                            if (id === this.peekId) classes.push('ra-peek');
                             return classes.join(' ');
                         },
                         matches(id) {
@@ -668,7 +673,17 @@
                         },
 
                         // ----- staging -----
-                        select(id) { this.selectedId = id; },
+                        select(id) { this.peekId = null; this.selectedId = id; },
+                        // Points at a route on the map from the inspector. On the wide layout the inspector
+                        // stays put while the page scrolls, so an off-screen route is brought into view.
+                        peek(id) {
+                            this.peekId = id;
+                            if (!id || !window.matchMedia('(min-width: 80rem)').matches) return;
+                            const node = this.$root.querySelector(`[data-route-id="${CSS.escape(id)}"]`);
+                            if (!node) return;
+                            const box = node.getBoundingClientRect();
+                            if (box.top < 0 || box.bottom > window.innerHeight) node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                        },
                         selectRole(id) { this.roleId = id; this.conflict = ''; },
                         stage(id, granted) {
                             if (!this.map.can_apply || !this.isToggleable(id)) return;
