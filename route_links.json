@@ -1,0 +1,16 @@
+{
+  "/sysadmin/app_summary": [],
+  "/sysadmin/error_log": [],
+  "/sysadmin/impersonation": [],
+  "/sysadmin/profiles": [],
+  "/sysadmin/roles": [],
+  "/sysadmin/route_access": [
+    "/sysadmin/roles",
+    "/sysadmin/routes/[route_id]"
+  ],
+  "/sysadmin/routes": [
+    "/sysadmin/routes/[route_id]"
+  ],
+  "/sysadmin/routes/[route_id]": [],
+  "/sysadmin/schema": []
+}

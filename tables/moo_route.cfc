@@ -16,6 +16,12 @@
             routeRegistryStore = variables.routeRegistryStore
         ) />
         <cfset variables.accessPolicy = CreateObject("component", "/moopa/internal/routing/access_policy").init() />
+        <cfset variables.roleRouteAccess = CreateObject("component", "/moopa/internal/routing/role_route_access").init() />
+        <cfset variables.routeAccessMap = CreateObject("component", "/moopa/internal/routing/route_access_map").init(
+            routeUrl = variables.routeUrl,
+            routeLinks = CreateObject("component", "/moopa/internal/routing/route_links").init(),
+            roleRouteAccess = variables.roleRouteAccess
+        ) />
 
         <cfset this.definition =
         {
@@ -114,6 +120,38 @@
             sysadmin_has_access = arguments.sysadmin_has_access
         ) />
     </cffunction>
+
+    <cffunction name="getRouteAccessMap" access="public" returntype="struct" output="false" hint="Everything the Route Access page draws for the running app: menus, live routes, route links, roles and what each can open.">
+        <cfreturn variables.routeAccessMap.build(
+            app_name = application.app_name,
+            live_routes = application.stAllRoutes,
+            navs = application.navs,
+            packages = application.moopa_packages
+        ) />
+    </cffunction>
+
+
+    <cffunction name="applyRoleRouteAccess" access="public" returntype="struct" output="false" hint="Apply one role's reviewed route-wide grants and revokes, all or nothing. Returns {success, applied} or {success: false, status_code, error, conflicts}.">
+        <cfargument name="role_id" type="string" required="true" />
+        <cfargument name="changes" type="array" required="true" hint="[{route_id, granted, was_granted}]" />
+
+        <cfset var result = variables.roleRouteAccess.apply(
+            role_id = arguments.role_id,
+            changes = arguments.changes,
+            app_name = application.app_name,
+            live_routes = application.stAllRoutes
+        ) />
+
+        <cfif result.success>
+            <!--- Menus are cached per session against nav_id (moo_profile.buildNavs). A new id
+                  makes every session rebuild its menu on the next render, so the change shows
+                  in people's menus now rather than at their next login. --->
+            <cfset application.nav_id = createUUID() />
+        </cfif>
+
+        <cfreturn result />
+    </cffunction>
+
 
     <!--- Get profiles by route access --->
     <cffunction name="getProfilesByRouteAccess" access="public" returntype="array" output="false">
