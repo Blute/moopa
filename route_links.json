@@ -5,6 +5,7 @@
   "/sysadmin/profiles": [],
   "/sysadmin/roles": [],
   "/sysadmin/route_access": [
+    "/sysadmin/profiles",
     "/sysadmin/roles",
     "/sysadmin/routes/[route_id]"
   ],

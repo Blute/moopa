@@ -38,7 +38,20 @@
                                 INNER JOIN moo_profile ON moo_profile.id = moo_profile_roles.primary_id
                                 WHERE moo_profile_roles.foreign_id = moo_role.id
                                   AND moo_profile.app_name = <cfqueryparam cfsqltype="varchar" value="#arguments.app_name#" />
-                            )
+                            ),
+                            'profiles', COALESCE((
+                                SELECT json_agg(json_build_object(
+                                    'id', moo_profile.id,
+                                    'full_name', moo_profile.full_name,
+                                    'email', moo_profile.email,
+                                    'can_login', COALESCE(moo_profile.can_login, false),
+                                    'last_login_at', moo_profile.last_login_at
+                                ) ORDER BY moo_profile.can_login DESC NULLS LAST, lower(COALESCE(NULLIF(moo_profile.full_name, ''), moo_profile.email)), moo_profile.id)
+                                FROM moo_profile_roles
+                                INNER JOIN moo_profile ON moo_profile.id = moo_profile_roles.primary_id
+                                WHERE moo_profile_roles.foreign_id = moo_role.id
+                                  AND moo_profile.app_name = <cfqueryparam cfsqltype="varchar" value="#arguments.app_name#" />
+                            ), '[]'::json)
                         ) ORDER BY moo_role.name)
                         FROM moo_role
                     ), '[]'::json) AS roles,

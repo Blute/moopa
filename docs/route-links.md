@@ -64,7 +64,7 @@ A same-app URL with no route file behind it is a broken link, not an entry: leav
 
 ## Where it shows
 
-**System → Route Access** (`/sysadmin/route_access`) merges every package's file in load order; a later package's entry for the same route wins, as with navs. The page lists any key or link that names a route the app doesn't serve, and shows routes missing from every file as **Unmapped**.
+**System → Route Access** (`/sysadmin/route_access`) draws the map for anyone granted the route; only sysadmins can change access there, as on each route's security page. It merges every package's file in load order; a later package's entry for the same route wins, as with navs. The page lists any key or link that names a route the app doesn't serve, and shows routes missing from every file as **Unmapped**.
 
 ## Validation
 
