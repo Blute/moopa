@@ -3,7 +3,6 @@
     <cffunction name="get">
 
         <cfset statements = application.lib.schemaSync.compareDatabaseSchema(application.lib.db.codeSchema) />
-        <cfset reinitUrl = (url.route ?: "/sysadmin/schema/") & "?init=" & randRange(1, 1000) />
 
         <cf_layout_default title="Schema">
             <div x-data="coapi" x-cloak class="flex flex-col gap-4 lg:gap-5">
@@ -48,12 +47,13 @@
                                     </button>
                                 </div>
                                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                                    <cfoutput>
-                                        <a href="#encodeForHTMLAttribute(reinitUrl)#" class="btn btn-primary btn-sm gap-2">
+                                    <!--- Re-initialising is for sysadmins only (application.cfc _reinitAllowed) --->
+                                    <cfif application.lib.auth.isSysAdmin()>
+                                        <button type="button" class="btn btn-primary btn-sm gap-2" @click="reinit()">
                                             <i class="fa-solid fa-rotate-right"></i>
                                             Re-init
-                                        </a>
-                                    </cfoutput>
+                                        </button>
+                                    </cfif>
                                     <button type="button" class="btn btn-ghost btn-sm gap-2" @click="openSqlDrawer()" :disabled="selectedCount === 0">
                                         <i class="fa-solid fa-code"></i>
                                         Show SQL
@@ -285,6 +285,11 @@
                             if (!total) return "No statements";
                             if (total === 1) return "1 statement";
                             return `${total} statements`;
+                        },
+
+                        async reinit() {
+                            await req({ url_params: { init: "1" }, body: {} });
+                            window.location.reload();
                         },
 
                         resetFilters() {

@@ -352,7 +352,31 @@
         <cfargument name="key" type="string" required="true" />
 
         <!--- Exact names (auth codes, PINs, session ids, the deploy/debug url keys), then anything password/secret/token-ish --->
-        <cfreturn reFindNoCase("^(code|otp|pin|cfid|sessionid|jsessionid|endpoint_hash_code|deploy|debug)$|password|passwd|secret|token|api_?key|authori[sz]ation|cookie|signature|credential|private_?key|(auth|verification|reset|login|access)_code$", arguments.key) GT 0 />
+        <cfreturn reFindNoCase("^(code|otp|pin|cfid|sessionid|jsessionid|endpoint_hash_code|deploy|debug)$|password|passwd|secret|token|api_?key|init_?key|authori[sz]ation|cookie|signature|credential|private_?key|(auth|verification|reset|login|access)_code$", arguments.key) GT 0 />
+    </cffunction>
+
+
+    <cffunction name="isInitKey" access="public" returntype="boolean" output="false" hint="Whether candidate is the init key (PROJECT_INIT_KEY), which lets an operator re-initialise the application or bootstrap an empty database outside development. False whenever the key is not configured. The two SHA-256 digests are compared in full, whatever the first difference.">
+        <cfargument name="candidate" type="string" required="true" />
+
+        <cfset var key = server.system.environment.PROJECT_INIT_KEY ?: "" />
+        <cfset var expected = "" />
+        <cfset var actual = "" />
+        <cfset var difference = 0 />
+        <cfset var i = 0 />
+
+        <cfif NOT len(key) OR NOT len(arguments.candidate)>
+            <cfreturn false />
+        </cfif>
+
+        <cfset expected = hash(key, "SHA-256") />
+        <cfset actual = hash(arguments.candidate, "SHA-256") />
+
+        <cfloop from="1" to="#len(expected)#" index="i">
+            <cfset difference = bitOr(difference, bitXor(asc(mid(expected, i, 1)), asc(mid(actual, i, 1)))) />
+        </cfloop>
+
+        <cfreturn difference EQ 0 />
     </cffunction>
 
 
