@@ -94,7 +94,7 @@
 
 
         <cfif (application.about_to_initialize?:false)>
-            <cflocation url="/restarting/index.html?redirect=#url.route?:'/'#" />
+            <cflocation url="/restarting/index.html?redirect=#encodeForURL(_localPath(url.route ?: '/'))#" />
         </cfif>
 
 		<!--- Return out. --->
@@ -166,35 +166,110 @@
 
 
 
-    <cffunction name="_moopa" access="private" returntype="void" output="true" hint="THIS IS THE MOOPA FRAMEWORK">
+    <!---
+        RE-INITIALISING (?init). Restarting the application is allowed only in development (bare
+        ?init, so local tooling keeps working), to a sysadmin signed in to this app, through req()
+        (a POST carrying X-Fetch-Request, which a cross-site page cannot send), or to an operator
+        POSTing the init key (PROJECT_INIT_KEY) in the X-Moopa-Init-Key header. The key is never
+        read from the query string, which lands in access logs. Anything else is refused with 403.
+    --->
+    <cffunction name="_reinitialize" access="private" returntype="void" output="true" hint="Answers a ?init request: restarts the application when _reinitAllowed says so, else refuses with 403. A GET is answered with a redirect back to the page, a POST with JSON.">
+        <cfset var isFetch = (getHttpRequestData().headers["X-Fetch-Request"] ?: "") EQ "true" />
 
-        <cfif ( url.keyExists( "init" ) )>
-            <cftry>
-
-                <cfset application.about_to_initialize = true />
-
-                <!--- Give other requests 1 second to finish processing on production --->
-                <cfif (server.system.environment.APP_ENVIRONMENT?:'production') EQ 'production'>
-                    <cfset delay_init = 1000 />
-
-                    <cfsleep time="#delay_init#" />
-                </cfif>
-
-                <cfset applicationStop() />
-
-                <cfcatch>
-                    <!--- IGNORE. Someone else got here --->
-                </cfcatch>
-            </cftry>
-            <cflocation url = '#url.route#' />
-
+        <cfif NOT _reinitAllowed()>
+            <cfheader statuscode="403" statustext="Forbidden" />
+            <cfheader name="Cache-Control" value="no-store" />
+            <cfif isFetch>
+                <cfcontent type="application/json" reset="true" />
+                <cfoutput>#serializeJSON({ "success": false, "error": "Only a sysadmin can re-initialise the application.", "status": 403 })#</cfoutput>
+            <cfelse>
+                <cfcontent type="text/plain" reset="true" />
+                <cfoutput>Re-initialising the application needs a sysadmin or the init key.</cfoutput>
+            </cfif>
+            <cfabort />
         </cfif>
 
+        <!--- Requests arriving from here on are sent to /restarting/ (OnRequestStart) --->
+        <cfset application.about_to_initialize = true />
+
+        <cftry>
+            <!--- Give other requests 1 second to finish processing on production --->
+            <cfif (server.system.environment.APP_ENVIRONMENT ?: 'production') EQ 'production'>
+                <cfsleep time="1000" />
+            </cfif>
+
+            <cfset applicationStop() />
+
+            <cfcatch>
+                <!--- The application is still running: stop sending requests to /restarting/ --->
+                <cfset application.about_to_initialize = false />
+                <cfrethrow />
+            </cfcatch>
+        </cftry>
+
+        <cfif cgi.request_method EQ "POST">
+            <cfheader name="Cache-Control" value="no-store" />
+            <cfcontent type="application/json" reset="true" />
+            <cfoutput>#serializeJSON({ "success": true })#</cfoutput>
+            <cfabort />
+        </cfif>
+
+        <cflocation url="#_localPath(url.route ?: '/')#" addtoken="false" />
+    </cffunction>
+
+
+    <cffunction name="_reinitAllowed" access="private" returntype="boolean" output="false" hint="Whether this request may restart the application: always in development; otherwise only a POST, carrying the init key or made through req() by a sysadmin signed in to this app.">
+        <cfset var headers = getHttpRequestData().headers />
+
+        <cfif compare(server.system.environment.APP_ENVIRONMENT ?: "", "development") EQ 0>
+            <cfreturn true />
+        </cfif>
+
+        <cfif cgi.request_method NEQ "POST">
+            <cfreturn false />
+        </cfif>
+
+        <cfif len(headers["X-Moopa-Init-Key"] ?: "")>
+            <cfreturn application.lib.core.isInitKey(headers["X-Moopa-Init-Key"]) />
+        </cfif>
+
+        <cfif (headers["X-Fetch-Request"] ?: "") NEQ "true">
+            <cfreturn false />
+        </cfif>
+
+        <!--- The same session checks the route access policy makes before its sysadmin bypass --->
+        <cfreturn application.lib.auth.isLoggedIn()
+            AND (session.auth.profile.app_name ?: "") EQ application.app_name
+            AND application.lib.auth.isSysAdmin() />
+    </cffunction>
+
+
+    <cffunction name="_localPath" access="private" returntype="string" output="false" hint="The path when it is a path on this site (one leading slash, no backslashes or control characters), else /. Keeps redirects built from url.route on this site.">
+        <cfargument name="path" type="string" required="true" />
+
+        <cfif left(arguments.path, 1) NEQ "/"
+                OR left(arguments.path, 2) EQ "//"
+                OR find("\", arguments.path)
+                OR reFind("[\x00-\x1F\x7F]", arguments.path)>
+            <cfreturn "/" />
+        </cfif>
+
+        <cfreturn arguments.path />
+    </cffunction>
+
+
+
+    <cffunction name="_moopa" access="private" returntype="void" output="true" hint="THIS IS THE MOOPA FRAMEWORK">
 
         <cfif !structKeyExists(application, "lib")>
             <h1>Application not initialized correctly</h1>
             <cfset applicationStop() /><cfabort>
             <!--- NOT INITIALIZED CORRECTLY --->
+        </cfif>
+
+
+        <cfif url.keyExists("init")>
+            <cfset _reinitialize() />
         </cfif>
 
 
