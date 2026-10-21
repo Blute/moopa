@@ -1,12 +1,27 @@
 <cfcomponent key="073d9220-20ec-43e4-86ec-698624233385" open_to="security">
 
+    <cffunction name="refusedUnlessSysadmin" access="private" returntype="boolean" output="false" hint="Changing who can reach a route is for sysadmins only. True, after answering 403, when the caller isn't one.">
+        <cfif application.lib.auth.isSysAdmin()>
+            <cfreturn false />
+        </cfif>
+        <cfheader statuscode="403" statustext="Forbidden" />
+        <cfreturn true />
+    </cffunction>
+
+
     <cffunction name="load">
-        <cfreturn application.lib.db.getService("moo_route").getRouteAccessMap() />
+        <cfset var map = application.lib.db.getService("moo_route").getRouteAccessMap() />
+        <cfset map.can_apply = application.lib.auth.isSysAdmin() />
+        <cfreturn map />
     </cffunction>
 
 
     <cffunction name="apply">
         <cfset var result = {} />
+
+        <cfif refusedUnlessSysadmin()>
+            <cfreturn { success: false, error: "Only sysadmins can change route access." } />
+        </cfif>
 
         <cfif NOT isArray(request.data.changes ?: "")>
             <cfheader statuscode="400" statustext="Bad Request" />
@@ -68,7 +83,11 @@
                             <h1 class="text-[1.625rem] font-semibold leading-none tracking-[-0.03em]">Route Access</h1>
                             <span class="text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-base-content/42" x-text="summary()"></span>
                         </div>
-                        <p class="mt-1 max-w-[70ch] text-sm leading-5 text-base-content/62">Every route, laid out the way people reach it: from a menu, through links on those pages, or not at all. Pick a role, click routes to stage grants and revokes, then review and apply them together.</p>
+                        <p class="mt-1 max-w-[70ch] text-sm leading-5 text-base-content/62">
+                            Every route, laid out the way people reach it: from a menu, through links on those pages, or not at all.
+                            <span x-show="map.can_apply">Pick a role, click routes to stage grants and revokes, then review and apply them together.</span>
+                            <span x-show="!loading && !map.can_apply">Pick a role to see what it can open. Only sysadmins can change access.</span>
+                        </p>
                     </div>
                 </div>
 
@@ -133,7 +152,7 @@
                                     <p class="text-[1.75rem] font-bold leading-none tracking-[-0.04em]" :class="deadEndIds().length ? 'text-warning' : ''" x-text="deadEndIds().length"></p>
                                     <p class="mt-1 text-xs text-base-content/55">links that dead-end for this role</p>
                                 </div>
-                                <button type="button" class="btn btn-xs btn-outline ml-auto shrink-0" x-show="stageableDeadEnds().length > 0" @click="stageDeadEnds()">Stage linked pages</button>
+                                <button type="button" class="btn btn-xs btn-outline ml-auto shrink-0" x-show="map.can_apply && stageableDeadEnds().length > 0" @click="stageDeadEnds()">Stage linked pages</button>
                             </div>
                             <div class="rounded-box border border-base-300 bg-base-100 px-5 py-4">
                                 <p class="text-[1.75rem] font-bold leading-none tracking-[-0.04em]" x-text="map.ghosts.length"></p>
@@ -159,7 +178,7 @@
                                         <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-base-300"></span>Can't open</span>
                                         <span class="flex items-center gap-1.5"><i class="fa-solid fa-circle-exclamation text-warning"></i>Dead end</span>
                                         <span class="flex items-center gap-1.5"><i class="fa-solid fa-lock"></i>Endpoint grants</span>
-                                        <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm border-2 border-dashed border-primary"></span>Staged</span>
+                                        <span class="flex items-center gap-1.5" x-show="map.can_apply"><span class="h-2.5 w-2.5 rounded-sm border-2 border-dashed border-primary"></span>Staged</span>
                                     </div>
                                 </div>
 
@@ -167,7 +186,7 @@
                                 <div class="flex flex-wrap justify-center gap-2" x-show="topLinkIds.length > 0">
                                     <template x-for="row in topRows" :key="row.key">
                                         <div class="w-56">
-                                        <button type="button" :class="nodeClasses(row.id)" :data-route-id="row.id" :title="routesById[row.id].url" :aria-pressed="isToggleable(row.id) ? String(has(row.id)) : null">
+                                        <button type="button" :class="nodeClasses(row.id)" :data-route-id="row.id" :title="routesById[row.id].url" :aria-pressed="map.can_apply && isToggleable(row.id) ? String(has(row.id)) : null">
                                             <span class="ra-dot"></span>
                                             <span class="ra-label" x-text="rowLabel(row.id, row.parent)"></span>
                                             <i class="fa-solid fa-lock text-xs" x-show="isLocked(row.id)" title="Endpoint-level grants"></i>
@@ -185,7 +204,7 @@
                                             <div class="mb-2 flex items-center gap-2 px-0.5">
                                                 <h2 class="text-sm font-semibold" x-text="section.title"></h2>
                                                 <span class="ml-auto text-xs tabular-nums text-base-content/50" x-text="`${sectionGranted(section)}/${section.ids.length}`"></span>
-                                                <button type="button" class="btn btn-ghost btn-xs" x-show="sectionToggleable(section).length > 0" @click="stageSection(section)" x-text="sectionToggleable(section).every(id => has(id)) ? 'Revoke all' : 'Grant all'"></button>
+                                                <button type="button" class="btn btn-ghost btn-xs" x-show="map.can_apply && sectionToggleable(section).length > 0" @click="stageSection(section)" x-text="sectionToggleable(section).every(id => has(id)) ? 'Revoke all' : 'Grant all'"></button>
                                             </div>
                                             <div class="mx-0.5 mb-2.5 h-[3px] overflow-hidden rounded bg-base-300">
                                                 <div class="h-full bg-success transition-all duration-300" :style="`width:${section.ids.length ? sectionGranted(section) / section.ids.length * 100 : 0}%`"></div>
@@ -193,7 +212,7 @@
                                             <ul class="flex flex-col gap-1">
                                                 <template x-for="row in section.rows" :key="row.key">
                                                     <li :class="row.depth ? 'ra-child ' + connectorClass(row) : ''" :style="`margin-left:${row.depth * 1.25}rem`">
-                                        <button type="button" :class="nodeClasses(row.id)" :data-route-id="row.id" :title="routesById[row.id].url" :aria-pressed="isToggleable(row.id) ? String(has(row.id)) : null">
+                                        <button type="button" :class="nodeClasses(row.id)" :data-route-id="row.id" :title="routesById[row.id].url" :aria-pressed="map.can_apply && isToggleable(row.id) ? String(has(row.id)) : null">
                                             <span class="ra-dot"></span>
                                             <span class="ra-label" x-text="rowLabel(row.id, row.parent)"></span>
                                             <i class="fa-solid fa-lock text-xs" x-show="isLocked(row.id)" title="Endpoint-level grants"></i>
@@ -214,7 +233,7 @@
                                         <p class="mb-2.5 text-xs text-base-content/55">Role-gated routes that no menu item, or page reached from one, links to. Reachable by URL only.</p>
                                         <div class="flex flex-col gap-1" x-show="orphanIds.length > 0">
                                             <template x-for="row in orphanRows" :key="row.key">
-                                        <button type="button" :class="nodeClasses(row.id)" :data-route-id="row.id" :title="routesById[row.id].url" :aria-pressed="isToggleable(row.id) ? String(has(row.id)) : null">
+                                        <button type="button" :class="nodeClasses(row.id)" :data-route-id="row.id" :title="routesById[row.id].url" :aria-pressed="map.can_apply && isToggleable(row.id) ? String(has(row.id)) : null">
                                             <span class="ra-dot"></span>
                                             <span class="ra-label" x-text="rowLabel(row.id, row.parent)"></span>
                                             <i class="fa-solid fa-lock text-xs" x-show="isLocked(row.id)" title="Endpoint-level grants"></i>
@@ -298,8 +317,8 @@
                                         </template>
 
                                         <div class="mt-3 flex flex-col gap-2">
-                                            <button type="button" class="btn btn-primary btn-sm" x-show="isToggleable(selectedId)" @click="toggle(selectedId)" x-text="toggleLabel(selectedId)"></button>
-                                            <button type="button" class="btn btn-outline btn-sm" x-show="isToggleable(selectedId) && has(selectedId) && stageableTargets(selectedId).length > 0" @click="stageGrants(stageableTargets(selectedId))" x-text="`Stage ${stageableTargets(selectedId).length} linked page${stageableTargets(selectedId).length === 1 ? '' : 's'} too`"></button>
+                                            <button type="button" class="btn btn-primary btn-sm" x-show="map.can_apply && isToggleable(selectedId)" @click="toggle(selectedId)" x-text="toggleLabel(selectedId)"></button>
+                                            <button type="button" class="btn btn-outline btn-sm" x-show="map.can_apply && isToggleable(selectedId) && has(selectedId) && stageableTargets(selectedId).length > 0" @click="stageGrants(stageableTargets(selectedId))" x-text="`Stage ${stageableTargets(selectedId).length} linked page${stageableTargets(selectedId).length === 1 ? '' : 's'} too`"></button>
                                             <a class="btn btn-ghost btn-sm" :href="`/sysadmin/routes/${selectedId}`">
                                                 <i class="fa-solid fa-shield-halved"></i>
                                                 Route security
@@ -418,7 +437,7 @@
                 document.addEventListener("alpine:init", () => {
                     Alpine.data("route_access", () => ({
                         loading: true,
-                        map: { sections: [], top_links: [], routes: [], links: {}, roles: [], access: {}, locked: [], ghosts: [], problems: [] },
+                        map: { sections: [], top_links: [], routes: [], links: {}, roles: [], access: {}, locked: [], ghosts: [], problems: [], can_apply: false },
                         roleId: null,
                         pending: {},
                         selectedId: null,
@@ -452,7 +471,7 @@
                                 const node = event.target.closest('[data-route-id]');
                                 if (!node) return;
                                 this.selectedId = node.dataset.routeId;
-                                if (this.isToggleable(node.dataset.routeId)) this.toggle(node.dataset.routeId);
+                                if (this.map.can_apply && this.isToggleable(node.dataset.routeId)) this.toggle(node.dataset.routeId);
                             });
                         },
 
@@ -633,7 +652,7 @@
                         select(id) { this.selectedId = id; },
                         selectRole(id) { this.roleId = id; this.conflict = ''; },
                         stage(id, granted) {
-                            if (!this.isToggleable(id)) return;
+                            if (!this.map.can_apply || !this.isToggleable(id)) return;
                             const roleChanges = { ...(this.pending[this.roleId] || {}) };
                             if (granted === this.baseHas(id)) delete roleChanges[id];
                             else roleChanges[id] = granted;

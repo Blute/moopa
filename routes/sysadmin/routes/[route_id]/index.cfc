@@ -17,6 +17,15 @@
     </cffunction>
 
 
+    <cffunction name="refusedUnlessSysadmin" access="private" returntype="boolean" output="false" hint="Changing who can reach a route is for sysadmins only. True, after answering 403, when the caller isn't one.">
+        <cfif application.lib.auth.isSysAdmin()>
+            <cfreturn false />
+        </cfif>
+        <cfheader statuscode="403" statustext="Forbidden" />
+        <cfreturn true />
+    </cffunction>
+
+
     <cffunction name="getRouteAccessSubjects" access="private" returntype="struct" output="false">
         <cfargument name="route_id" type="string" required="true" />
 
@@ -239,6 +248,10 @@
     <cffunction name="toggleProfileAccess">
         <cfargument name="route_id" type="string" required="true" />
 
+        <cfif refusedUnlessSysadmin()>
+            <cfreturn { success: false, error: "Only sysadmins can change route access." } />
+        </cfif>
+
         <cfset assertRouteInCurrentApp(arguments.route_id) />
 
         <cfquery name="qCheckExists">
@@ -274,6 +287,10 @@
 
     <cffunction name="toggleRoleAccess">
         <cfargument name="route_id" type="string" required="true" />
+
+        <cfif refusedUnlessSysadmin()>
+            <cfreturn { success: false, error: "Only sysadmins can change route access." } />
+        </cfif>
 
         <cfset assertRouteInCurrentApp(arguments.route_id) />
 
@@ -320,6 +337,10 @@
 
 
     <cffunction name="save_route">
+
+        <cfif refusedUnlessSysadmin()>
+            <cfreturn { success: false, error: "Only sysadmins can change route access." } />
+        </cfif>
         <cfparam name="request.data.id" />
         <cfset assertRouteInCurrentApp(request.data.id) />
         <cfset request.data.app_name = application.app_name />
