@@ -110,31 +110,36 @@
                 <template x-if="!loading && map.roles.length > 0">
                     <div class="flex flex-col gap-4 lg:gap-5">
 
-                        <!-- Roles -->
-                        <div class="flex flex-wrap gap-2" role="group" aria-label="Role">
-                            <template x-for="role in map.roles" :key="role.id">
-                                <button type="button" class="btn btn-sm gap-2 rounded-full" :class="role.id === roleId ? 'btn-neutral' : 'btn-outline border-base-300'" :aria-pressed="role.id === roleId" @click="selectRole(role.id)">
-                                    <span x-text="role.name"></span>
-                                    <span class="badge badge-sm badge-ghost" x-text="role.profile_count" :title="`${role.profile_count} people in this app hold ${role.name}`"></span>
-                                    <span x-show="pendingCount(role.id) > 0" class="badge badge-sm badge-primary" x-text="`${pendingCount(role.id)} staged`"></span>
+                        <!-- Role picker -->
+                        <div class="flex flex-wrap items-center gap-3">
+                            <div class="relative" @keydown.escape="rolePickerOpen = false" @click.outside="rolePickerOpen = false">
+                                <button type="button" class="btn btn-neutral btn-sm gap-2" @click="openRolePicker()" aria-haspopup="listbox" :aria-expanded="rolePickerOpen">
+                                    <i class="fa-solid fa-shield-halved text-xs"></i>
+                                    <span x-text="currentRole()?.name"></span>
+                                    <span class="badge badge-sm badge-ghost" x-text="currentRole()?.profile_count ?? 0"></span>
+                                    <span class="badge badge-sm badge-primary" x-show="pendingCount(roleId) > 0" x-text="`${pendingCount(roleId)} staged`"></span>
+                                    <i class="fa-solid fa-chevron-down text-[0.625rem] opacity-70"></i>
                                 </button>
-                            </template>
-                        </div>
-
-                        <!-- People in the role -->
-                        <div class="rounded-box border border-base-300 bg-base-100 px-4 py-3">
-                            <p class="mb-2 text-[0.6875rem] uppercase tracking-[0.09em] text-base-content/50" x-text="`People in ${currentRole()?.name}`"></p>
-                            <div class="flex flex-wrap gap-1.5" x-show="(currentRole()?.profiles || []).length > 0">
-                                <template x-for="person in currentRole()?.profiles || []" :key="person.id">
-                                    <a class="badge badge-outline gap-1.5 py-3 hover:border-primary hover:text-primary" :class="person.can_login ? '' : 'opacity-60'" :href="`/sysadmin/profiles/?profile_id=${person.id}`" target="_blank" rel="noopener" :title="person.can_login ? `${person.email} · opens in a new tab` : `${person.email} · can't sign in · opens in a new tab`">
-                                        <span x-text="person.full_name || person.email"></span>
-                                        <span class="text-base-content/50" x-show="person.full_name && sharedName(person)" x-text="lastSignIn(person)"></span>
-                                        <span class="text-[0.625rem] uppercase tracking-wide text-base-content/50" x-show="!person.can_login">can't sign in</span>
-                                        <i class="fa-solid fa-arrow-up-right-from-square text-[0.625rem] text-base-content/40"></i>
-                                    </a>
-                                </template>
+                                <div class="absolute left-0 z-30 mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg" x-show="rolePickerOpen" x-transition.origin.top.left>
+                                    <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2">
+                                        <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
+                                        <input type="search" placeholder="Find a role" aria-label="Find a role" x-ref="roleSearch" x-model="roleQuery" @keydown.enter.prevent="filteredRoles().length && chooseRole(filteredRoles()[0].id)" />
+                                    </label>
+                                    <ul class="mt-2 flex max-h-80 flex-col gap-0.5 overflow-auto" role="listbox" aria-label="Roles">
+                                        <template x-for="role in filteredRoles()" :key="role.id">
+                                            <li>
+                                                <button type="button" role="option" :aria-selected="role.id === roleId" class="flex w-full items-center gap-2 rounded-field px-2.5 py-1.5 text-left text-sm hover:bg-base-200" :class="role.id === roleId ? 'bg-base-200 font-medium' : ''" @click="chooseRole(role.id)">
+                                                    <span class="min-w-0 flex-1 truncate" x-text="role.name"></span>
+                                                    <span class="badge badge-sm badge-primary" x-show="pendingCount(role.id) > 0" x-text="`${pendingCount(role.id)} staged`"></span>
+                                                    <span class="text-xs tabular-nums text-base-content/50" x-text="`${role.profile_count} ${role.profile_count === 1 ? 'person' : 'people'}`"></span>
+                                                </button>
+                                            </li>
+                                        </template>
+                                        <li class="px-2.5 py-2 text-sm text-base-content/55" x-show="filteredRoles().length === 0">No role matches.</li>
+                                    </ul>
+                                </div>
                             </div>
-                            <p class="text-sm text-base-content/55" x-show="(currentRole()?.profiles || []).length === 0">Nobody holds this role yet.</p>
+                            <span class="text-xs text-base-content/55" x-show="otherRolesStaged().length > 0" x-text="`Staged changes in ${otherRolesStaged().length} other role${otherRolesStaged().length === 1 ? '' : 's'}: ${otherRolesStaged().map(role => role.name).join(', ')}`"></span>
                         </div>
 
                         <!-- Problems -->
@@ -163,9 +168,12 @@
                                     <p class="mt-1 text-xs text-base-content/55" x-text="`of ${gatedIds.length} role-gated routes`"></p>
                                 </div>
                             </div>
-                            <div class="rounded-box border border-base-300 bg-base-100 px-5 py-4">
-                                <p class="text-[1.75rem] font-bold leading-none tracking-[-0.04em]" x-text="currentRole()?.profile_count ?? 0"></p>
-                                <p class="mt-1 text-xs text-base-content/55" x-text="(currentRole()?.profile_count ?? 0) === 1 ? 'person holds this role' : 'people hold this role'"></p>
+                            <div class="flex items-center gap-3 rounded-box border border-base-300 bg-base-100 px-5 py-4">
+                                <div class="min-w-0">
+                                    <p class="text-[1.75rem] font-bold leading-none tracking-[-0.04em]" x-text="currentRole()?.profile_count ?? 0"></p>
+                                    <p class="mt-1 text-xs text-base-content/55" x-text="(currentRole()?.profile_count ?? 0) === 1 ? 'person holds this role' : 'people hold this role'"></p>
+                                </div>
+                                <button type="button" class="btn btn-xs btn-outline ml-auto shrink-0" x-show="(currentRole()?.profile_count ?? 0) > 0" @click="openPeople()">View people</button>
                             </div>
                             <div class="flex items-center gap-3 rounded-box border border-base-300 bg-base-100 px-5 py-4">
                                 <div class="min-w-0">
@@ -401,6 +409,42 @@
                     </div>
                 </div>
 
+                <!-- People -->
+                <dialog class="modal" :class="{ 'modal-open': peopleOpen }" @keydown.escape.prevent="peopleOpen = false">
+                    <div class="modal-box flex max-w-2xl flex-col">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-lg font-semibold" x-text="`People in ${currentRole()?.name}`"></h3>
+                                <p class="mt-0.5 text-sm text-base-content/60" x-text="`${peopleHolding()} in this app. Each opens their profile in a new tab.`"></p>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-circle btn-ghost" @click="peopleOpen = false" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <label class="input input-sm mt-4 w-full focus-within:outline-primary/55 focus-within:outline-offset-2">
+                            <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
+                            <input type="search" placeholder="Find a person by name or email" aria-label="Find a person" x-ref="peopleSearch" x-model="peopleQuery" />
+                        </label>
+                        <ul class="mt-3 max-h-[60vh] divide-y divide-base-200 overflow-auto">
+                            <template x-for="person in filteredPeople()" :key="person.id">
+                                <li>
+                                    <a class="flex items-center gap-3 rounded-field px-2 py-2.5 hover:bg-base-200/60" :class="person.can_login ? '' : 'opacity-60'" :href="`/sysadmin/profiles/?profile_id=${person.id}`" target="_blank" rel="noopener">
+                                        <div class="min-w-0 flex-1">
+                                            <p class="truncate text-sm font-medium" x-text="person.full_name || person.email"></p>
+                                            <p class="truncate text-xs text-base-content/55" x-text="person.email"></p>
+                                        </div>
+                                        <span class="badge badge-sm badge-ghost" x-show="!person.can_login">can't sign in</span>
+                                        <span class="shrink-0 text-xs text-base-content/55" x-text="lastSignIn(person)"></span>
+                                        <i class="fa-solid fa-arrow-up-right-from-square text-xs text-base-content/40"></i>
+                                    </a>
+                                </li>
+                            </template>
+                            <li class="py-6 text-center text-sm text-base-content/55" x-show="filteredPeople().length === 0">Nobody matches.</li>
+                        </ul>
+                    </div>
+                    <form method="dialog" class="modal-backdrop">
+                        <button @click="peopleOpen = false">close</button>
+                    </form>
+                </dialog>
+
                 <!-- Review -->
                 <dialog class="modal" :class="{ 'modal-open': reviewOpen }">
                     <div class="modal-box max-w-xl">
@@ -462,6 +506,10 @@
                         pending: {},
                         selectedId: null,
                         peekId: null,
+                        rolePickerOpen: false,
+                        roleQuery: '',
+                        peopleOpen: false,
+                        peopleQuery: '',
                         search: '',
                         issuesOnly: false,
                         reviewOpen: false,
@@ -604,10 +652,6 @@
                         grantedPercent() { return this.gatedIds.length ? Math.round(this.grantedCount() / this.gatedIds.length * 100) : 0; },
                         sectionGranted(section) { return section.ids.filter(id => this.has(id)).length; },
                         sectionToggleable(section) { return section.ids.filter(id => this.isToggleable(id)); },
-                        sharedName(person) {
-                            return (this.currentRole()?.profiles || []).filter(other => other.full_name === person.full_name).length > 1;
-                        },
-                        // Tells apart profiles that share a name (and often an email).
                         lastSignIn(person) {
                             if (!person.last_login_at) return 'never signed in';
                             return 'last in ' + new Date(person.last_login_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -685,6 +729,31 @@
                             if (box.top < 0 || box.bottom > window.innerHeight) node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
                         },
                         selectRole(id) { this.roleId = id; this.conflict = ''; },
+                        openRolePicker() {
+                            this.rolePickerOpen = !this.rolePickerOpen;
+                            this.roleQuery = '';
+                            if (this.rolePickerOpen) this.$nextTick(() => this.$refs.roleSearch?.focus());
+                        },
+                        chooseRole(id) {
+                            this.selectRole(id);
+                            this.rolePickerOpen = false;
+                        },
+                        filteredRoles() {
+                            const term = this.roleQuery.trim().toLowerCase();
+                            return term ? this.map.roles.filter(role => role.name.toLowerCase().includes(term)) : this.map.roles;
+                        },
+                        otherRolesStaged() { return this.map.roles.filter(role => role.id !== this.roleId && this.pendingCount(role.id) > 0); },
+                        openPeople() {
+                            this.peopleQuery = '';
+                            this.peopleOpen = true;
+                            this.$nextTick(() => this.$refs.peopleSearch?.focus());
+                        },
+                        filteredPeople() {
+                            const people = this.currentRole()?.profiles || [];
+                            const term = this.peopleQuery.trim().toLowerCase();
+                            if (!term) return people;
+                            return people.filter(person => (person.full_name || '').toLowerCase().includes(term) || (person.email || '').toLowerCase().includes(term));
+                        },
                         stage(id, granted) {
                             if (!this.map.can_apply || !this.isToggleable(id)) return;
                             const roleChanges = { ...(this.pending[this.roleId] || {}) };
