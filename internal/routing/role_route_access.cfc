@@ -127,24 +127,28 @@
                 </cfif>
             </cfloop>
 
-            <cfif arrayLen(conflicts)>
-                <cftransaction action="rollback" />
-                <cfreturn {
-                    success: false,
-                    status_code: 409,
-                    error: "Nothing was applied. " & arrayToList(arrayMap(conflicts, function(conflict) { return "#conflict.url# #conflict.reason#."; }), " ") & " Reload to see the current access.",
-                    conflicts: conflicts
-                } />
+            <!--- All or nothing: every change is checked before any is written, so a conflict leaves
+                  nothing to undo. (No rollback here: RustCFML can't parse a self-closing rollback tag inside
+                  the transaction block, and has no transactionRollback().) --->
+            <cfif NOT arrayLen(conflicts)>
+                <cfloop array="#arguments.changes#" item="change">
+                    <cfif change.granted>
+                        <cfset grant(arguments.role_id, change.route_id, current[change.route_id]) />
+                    <cfelse>
+                        <cfset revoke(arguments.role_id, change.route_id, current[change.route_id]) />
+                    </cfif>
+                </cfloop>
             </cfif>
-
-            <cfloop array="#arguments.changes#" item="change">
-                <cfif change.granted>
-                    <cfset grant(arguments.role_id, change.route_id, current[change.route_id]) />
-                <cfelse>
-                    <cfset revoke(arguments.role_id, change.route_id, current[change.route_id]) />
-                </cfif>
-            </cfloop>
         </cftransaction>
+
+        <cfif arrayLen(conflicts)>
+            <cfreturn {
+                success: false,
+                status_code: 409,
+                error: "Nothing was applied. " & arrayToList(arrayMap(conflicts, function(conflict) { return "#conflict.url# #conflict.reason#."; }), " ") & " Reload to see the current access.",
+                conflicts: conflicts
+            } />
+        </cfif>
 
         <cfreturn { success: true, applied: arrayLen(arguments.changes) } />
     </cffunction>
