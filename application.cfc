@@ -68,6 +68,8 @@
         <cfset application.service.moo_route.initializeRoutesIntoApplicationScope() />
 
         <cfset _setupNavs() />
+        <!--- The System menu: Moopa's own pages, offered to sysadmins in their profile menu rather than in any nav --->
+        <cfset application.system_menu = application.system_routes ? deserializeJSON(fileRead(expandPath("/moopa/sysadmin_nav.json"))) : [] />
 
 
 
@@ -546,8 +548,8 @@
         </cfif>
 
         <cfif arguments.capability EQ "navs">
-            <!--- Navigation follows route-owning packages so filtered navs can resolve their routes. --->
-            <cfreturn listFindNoCase("shared,app", packageKind) GT 0 OR (packageKind EQ "core" AND application.system_routes) />
+            <!--- Menus are the project's. The System menu is not a nav: it is sysadmin_nav.json, shown in a sysadmin's profile menu. --->
+            <cfreturn listFindNoCase("shared,app", packageKind) GT 0 />
         </cfif>
 
         <cfif listFindNoCase("tables,controls,lib", arguments.capability)>
@@ -700,7 +702,7 @@
                 <cfset local.filePath = "#local.physicalDirectory#/#local.qNavFiles.name#" />
 
                 <cfif local.fileName EQ "sysadmin" AND (local.package.kind ?: "") NEQ "core">
-                    <cfthrow type="moopa.systemRoutes.reserved" message="The sysadmin menu is Moopa's: delete #local.filePath# (a copy of, or link to, Moopa's System menu). Hub shows Moopa's own; put project admin pages in their own menu. See moopa/docs/packages.md." />
+                    <cfthrow type="moopa.systemRoutes.reserved" message="The sysadmin menu is Moopa's: delete #local.filePath# (a copy of, or link to, Moopa's System menu). Moopa offers the System pages to sysadmins in their profile menu; put project admin pages in a menu of the project's own. See moopa/docs/packages.md." />
                 </cfif>
 
                 <cffile action="read" file="#local.filePath#" variable="local.jsonContent" />

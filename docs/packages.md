@@ -50,7 +50,7 @@ Moopa scans conventional subdirectories from the active packages.
 Load rules:
 
 - `routes`: loaded from `shared` and the active app, and in Hub also from `moopa` (the System pages).
-- `navs`: loaded from `shared` and the active app, and in Hub also from `moopa` (the System menu).
+- `navs`: loaded from `shared` and the active app. Moopa has no navs: its System menu is offered to sysadmins in the profile menu (below).
 - `tables`, `lib`, `controls`: loaded from `moopa`, `shared`, and the active app.
 
 Missing directories are ignored.
@@ -113,11 +113,21 @@ Every Moopa project should include a `hub` app. Hub is the control-plane/admin a
 
 ### System pages are Moopa's
 
-Hub serves Moopa's System pages (`/sysadmin/*`: roles, routes, route access, profiles, impersonation, error log, schema, app summary) and the System menu straight from `code/moopa/routes/sysadmin` and `code/moopa/navs/sysadmin.json`. Every project gets the same pages, and they change only when Moopa does. No other app serves them.
+Hub serves Moopa's System pages (`/sysadmin/*`: roles, routes, route access, profiles, impersonation, error log, schema, app summary) straight from `code/moopa/routes/sysadmin`. Every project gets the same pages, and they change only when Moopa does. No other app serves them.
+
+The System menu is not part of any nav. Its links are `code/moopa/sysadmin_nav.json`, and a sysadmin reaches them from the profile menu: `application.lib.system.menu()` returns them for a sysadmin in Hub and nothing for anyone else, and the layout lists them in its profile dropdown. A project layout that has a profile menu adds them the same way:
+
+```cfml
+<cfloop array="#application.lib.system.menu()#" item="systemItem">
+    <a href="#systemItem.route#" role="menuitem"><i class="#systemItem.icon#"></i> #encodeForHTML(systemItem.title)#</a>
+</cfloop>
+```
+
+System → Route Access still draws the System pages as a section, from the same file.
 
 The pages render inside Hub's `layout_default` tag and use Tailwind and daisyUI classes, so a project's Hub needs a `layout_default` tag and a Tailwind + daisyUI stylesheet built with `code/moopa` among its sources (`moopa-starter`'s Hub has both). Rebuild that stylesheet after a Moopa update, as pages may use new classes.
 
-They cover Moopa's own features and are never customised per project. `/sysadmin` and the `sysadmin` menu are reserved: a project route under `routes/sysadmin` (in `shared` or any app) or a project `navs/sysadmin.json` stops the application at startup, naming the file. A project needs no symlink or copy; delete any it has.
+They cover Moopa's own features and are never customised per project. `/sysadmin` and the `sysadmin` nav name are reserved: a project route under `routes/sysadmin` (in `shared` or any app) or a project `navs/sysadmin.json` stops the application at startup, naming the file. A project needs no symlink or copy; delete any it has.
 
 Project admin belongs in the project's own Hub routes and menu, for example:
 
@@ -133,7 +143,8 @@ That includes extending a framework feature. A project that keeps more about a p
 1. Move any page the project added under `routes/sysadmin` (one Moopa doesn't have) to a route of its own, such as `/admin/...`, with its own menu entry, and update links to it.
 2. Delete `code/apps/hub/routes/sysadmin` and `code/apps/hub/navs/sysadmin.json`, whether links or copies. A copy's edits to a Moopa page are dropped; anything worth keeping belongs in Moopa (a pull request) or in a project route.
 3. Remove `MOOPA_ENABLE_SYSADMIN` from the environment. Hub no longer reads it.
-4. Re-initialise Hub. Routes are matched to their saved rows by URL, so role grants on the System pages carry over.
+4. If the project's layouts have a profile menu, list `application.lib.system.menu()` in it (above), or sysadmins lose their way to the System pages from project pages.
+5. Re-initialise Hub. Routes are matched to their saved rows by URL, so role grants on the System pages carry over.
 
 ## Routes
 

@@ -339,7 +339,7 @@
 
         <cfif arguments.capability EQ "routes" OR arguments.capability EQ "navs">
             <cfif packageKind EQ "core">
-                <cfreturn application.system_routes ?: false />
+                <cfreturn arguments.capability EQ "routes" AND (application.system_routes ?: false) />
             </cfif>
 
             <cfreturn (listFindNoCase("app,shared", packageKind) GT 0) AND (packageKind NEQ "app" OR (arguments.package.app_name ?: arguments.package.name) EQ (application.app_name ?: "")) />
