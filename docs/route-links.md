@@ -37,7 +37,7 @@ One key per route the package owns, mapped to the sorted list of routes that pag
 ```
 
 - **Keys** are the package's routes, written as Moopa registers them: the path under `routes/` with `.cfc` removed and a trailing `/index` dropped (`routes/index.cfc` is `/`). Dynamic segments keep their folder names: `[customer_id]`.
-- **Every route file in the package is a key**, including routes outside role security (`public`, `bearer`, `logged_in`). A route that links nowhere maps to `[]`. Routes a package reaches through a symlink into another package (the Hub's `routes/sysadmin`) belong to that other package's file.
+- **Every route file in the package is a key**, including routes outside role security (`public`, `bearer`, `logged_in`). A route that links nowhere maps to `[]`. The System pages Hub serves are Moopa's, listed in `moopa/route_links.json`; a project's routes may link to them but never list them.
 - **Values** are the routes Moopa's matcher resolves the link's URL to. The query string, any `#fragment` and a trailing slash are dropped; an exact static route wins, otherwise the dynamic route whose fixed segments match: `/customers/42/customer/?tab=orders` is `/customers/[customer_id]/customer`, whatever the `[...]` folder is called. Shared routes the app serves are routes like any other.
 - Keys and values are sorted, values have no duplicates, and a route never lists itself.
 
@@ -73,3 +73,5 @@ A package's map is valid when:
 1. its keys are exactly the package's route files: none missing, none left over from deleted routes;
 2. every value is a route served by every app that loads the package;
 3. keys and values are sorted and unique, and no route lists itself.
+
+`scripts/assert-route-links.py` checks this. From a project's root, `python3 code/moopa/scripts/assert-route-links.py` checks every app's and shared's file (`--format` sorts and de-duplicates first); from Moopa's root, `python3 scripts/assert-route-links.py .` checks Moopa's. A project runs it in CI on pull requests that touch routes. The `route-map` skill (`.agents/skills/route-map`) is how an agent keeps the files current; `bash scripts/test_assert_route_links.sh` tests the check.
