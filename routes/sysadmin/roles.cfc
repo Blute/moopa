@@ -43,8 +43,10 @@
                 SELECT moo_profile.id
                     , moo_profile.full_name
                     , moo_profile.email
+                    , profile_picture.thumbnail AS avatar_url
                 FROM moo_profile
                 INNER JOIN moo_profile_roles ON moo_profile_roles.primary_id = moo_profile.id
+                LEFT JOIN moo_file profile_picture ON profile_picture.id = moo_profile.profile_picture_id
                 WHERE moo_profile_roles.foreign_id = <cfqueryparam value="#roleId#" cfsqltype="other" />
             ) as data
         </cfquery>
@@ -302,11 +304,20 @@
                                 <div class="divide-y divide-base-200">
                                     <template x-for="user in roleUsers" :key="user.id">
                                         <div class="flex items-center gap-3 py-3">
-                                            <div class="avatar placeholder">
-                                                <div class="bg-neutral text-neutral-content w-10 rounded-full">
-                                                    <span x-text="user.full_name?.charAt(0)?.toUpperCase() || '?'"></span>
+                                            <template x-if="user.avatar_url">
+                                                <div class="avatar">
+                                                    <div class="w-10 rounded-full bg-base-200">
+                                                        <img :src="user.avatar_url" :alt="user.full_name" />
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            </template>
+                                            <template x-if="!user.avatar_url">
+                                                <div class="avatar avatar-placeholder">
+                                                    <div class="bg-neutral text-neutral-content w-10 rounded-full flex items-center justify-center">
+                                                        <span class="text-xs font-semibold" x-text="getInitials(user.full_name)"></span>
+                                                    </div>
+                                                </div>
+                                            </template>
                                             <div class="flex-1 min-w-0">
                                                 <p class="font-medium truncate" x-text="user.full_name || 'Unknown'"></p>
                                                 <p class="text-sm text-base-content/60 truncate" x-text="user.email || '—'"></p>
@@ -418,6 +429,14 @@
 
                         init() {
                             this.search();
+                        },
+
+                        getInitials(name) {
+                            const cleaned = (name || '').trim();
+                            if (!cleaned) return '?';
+                            const parts = cleaned.split(/\s+/).filter(Boolean);
+                            if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+                            return parts.slice(0, 2).map(p => (p[0] || '')).join('').toUpperCase();
                         },
 
                         async search() {

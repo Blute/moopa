@@ -150,13 +150,16 @@
             SELECT COALESCE(jsonb_agg(accessor ORDER BY label)::text, '[]') AS data
             FROM (
                 SELECT
-                    profile_id,
-                    label,
-                    email,
-                    bool_or(can_login) AS can_login,
-                    jsonb_agg(DISTINCT source ORDER BY source) AS sources
+                    effective.profile_id,
+                    effective.label,
+                    effective.email,
+                    bool_or(effective.can_login) AS can_login,
+                    jsonb_agg(DISTINCT effective.source ORDER BY effective.source) AS sources,
+                    profile_picture.thumbnail AS avatar_url
                 FROM effective
-                GROUP BY profile_id, label, email
+                INNER JOIN moo_profile ON moo_profile.id::text = effective.profile_id
+                LEFT JOIN moo_file profile_picture ON profile_picture.id = moo_profile.profile_picture_id
+                GROUP BY effective.profile_id, effective.label, effective.email, profile_picture.thumbnail
             ) accessor
         </cfquery>
 
@@ -519,11 +522,20 @@
                                 <div class="space-y-2 max-h-72 overflow-y-auto">
                                     <template x-for="person in activeAccessors()" :key="person.profile_id">
                                         <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200/50 transition-colors">
-                                            <div class="avatar avatar-placeholder">
-                                                <div class="bg-neutral text-neutral-content w-8 rounded-full flex items-center justify-center">
-                                                    <span class="text-xs font-semibold" x-text="profileInitials(person)"></span>
+                                            <template x-if="person.avatar_url">
+                                                <div class="avatar">
+                                                    <div class="w-8 rounded-full bg-base-200">
+                                                        <img :src="person.avatar_url" :alt="person.label" />
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            </template>
+                                            <template x-if="!person.avatar_url">
+                                                <div class="avatar avatar-placeholder">
+                                                    <div class="bg-neutral text-neutral-content w-8 rounded-full flex items-center justify-center">
+                                                        <span class="text-xs font-semibold" x-text="profileInitials(person)"></span>
+                                                    </div>
+                                                </div>
+                                            </template>
                                             <div class="min-w-0 flex-1">
                                                 <p class="text-sm font-medium truncate" x-text="person.label"></p>
                                                 <p class="text-xs text-base-content/60 truncate">via <span class="font-medium" x-text="accessSources(person)"></span></p>
@@ -548,11 +560,20 @@
                                     <div class="space-y-1.5">
                                         <template x-for="person in inactiveAccessors()" :key="person.profile_id">
                                             <div class="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-base-200/45">
-                                                <div class="avatar avatar-placeholder shrink-0">
-                                                    <div class="bg-base-300 text-base-content/70 w-6 rounded-full flex items-center justify-center">
-                                                        <span class="text-[0.625rem] font-semibold" x-text="profileInitials(person)"></span>
+                                                <template x-if="person.avatar_url">
+                                                    <div class="avatar shrink-0">
+                                                        <div class="w-6 rounded-full bg-base-300 opacity-70">
+                                                            <img :src="person.avatar_url" :alt="person.label" />
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                </template>
+                                                <template x-if="!person.avatar_url">
+                                                    <div class="avatar avatar-placeholder shrink-0">
+                                                        <div class="bg-base-300 text-base-content/70 w-6 rounded-full flex items-center justify-center">
+                                                            <span class="text-[0.625rem] font-semibold" x-text="profileInitials(person)"></span>
+                                                        </div>
+                                                    </div>
+                                                </template>
                                                 <div class="min-w-0 flex-1">
                                                     <p class="truncate font-medium text-base-content/75" x-text="person.label"></p>
                                                     <p class="truncate text-base-content/45" x-text="accessSources(person)"></p>
