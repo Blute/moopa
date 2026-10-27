@@ -7,7 +7,9 @@ description: Generate Moopa table definition CFC files for database schema and U
 
 Table definitions in Moopa serve dual purposes:
 1. **Database schema** - Synced to PostgreSQL via `/schema/` route
-2. **UI form controls** - Rendered via `<cf_table_controls>` tag
+2. **Default UI form behaviour** - Read by `<cf_table_controls>` and rendered through `<cf_control>`
+
+For control runtime architecture, also use the `moopa-controls` skill. Control CFM templates render markup only; shared Alpine behaviour belongs in `/code/www/_static/js/controls.js`.
 
 ## Table Definition Structure
 
@@ -238,7 +240,7 @@ Use the `indexes` block only for composite indexes or non-btree types:
 
 ### cf_table_controls
 
-Renders multiple fields from table definition:
+`<cf_table_controls>` renders an explicit list of fields from a table definition. It is intentionally strict: every requested field must exist, and missing fields should be fixed rather than silently skipped.
 
 ```cfml
 <cf_table_controls 
@@ -259,6 +261,15 @@ With overrides:
         status: {placeholder: "Select status..."}
     } />
 ```
+
+Rules:
+
+- Always pass an explicit `fields` list.
+- Do not rely on table field order to generate whole forms implicitly.
+- Use `html.hidden=true` for fields that should never render through generated table controls.
+- Put reusable default field UI in `html` metadata.
+- Put page-specific workflow and layout in the route/template, not in table definitions.
+- Control CFM templates render markup only; Alpine component definitions live in `/code/www/_static/js/controls.js`. See the `moopa-controls` skill before modifying controls.
 
 ### Layout Options
 

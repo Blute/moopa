@@ -1,6 +1,6 @@
 # Agent skills
 
-Moopa's agent skills live in `.agents/skills/` here: how Moopa routes, tables, queries, search and React islands work, and `route-map`, which keeps `route_links.json` current. They are the reference an agent follows before writing Moopa code.
+Moopa's agent skills live in `.agents/skills/` here: how Moopa routes, tables, controls, queries, search and React islands work, and `route-map`, which keeps `route_links.json` current. They are the reference an agent follows before writing Moopa code.
 
 Agents only look for skills in a repository's own `.agents/skills` (Codex, Cursor, OpenCode) and `.claude/skills` (Claude Code), never inside a submodule. A project therefore links each Moopa skill into its own folder:
 

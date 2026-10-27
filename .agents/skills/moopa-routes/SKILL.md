@@ -202,6 +202,106 @@ Use dots to organize related endpoints:
 
 After adding a new route CFC or renaming/adding functions in an existing route, you must re-initialise the application for Moopa to register the changes. Visit `/init` or restart the app server.
 
+## System Page Filter Layout Standards
+
+Use one of two approved filter layouts for hub/system routes. Do not invent a third ad-hoc filter bar. Icons below are Font Awesome, as on the System pages; use the project's own icon set on project pages.
+
+### Top filter card
+
+Use this by default. It is appropriate for simple table/list pages with one to three controls, such as search plus one select.
+
+Rules:
+
+- Place the filter card between the page header and the data card.
+- Keep page actions such as `New`, `Re-init`, or destructive actions in the page header, not in the filter card.
+- Do not embed filters in the data table card header.
+- Use `card card-border bg-base-100 shadow-sm w-full max-w-5xl`.
+- Use `fieldset` and `fieldset-legend` for every control.
+- Use `xl:flex-row xl:items-end`; stack controls on smaller screens.
+- Put reset/clear buttons in a trailing `flex flex-wrap gap-2` action group.
+
+Standard top layout:
+
+```cfml
+<!-- Filters -->
+<div class="card card-border bg-base-100 shadow-sm w-full max-w-5xl">
+    <div class="card-body gap-4">
+        <div class="flex flex-col gap-4 xl:flex-row xl:items-end">
+            <fieldset class="fieldset w-full xl:max-w-2xl xl:flex-1">
+                <legend class="fieldset-legend">Search</legend>
+                <label class="input input-sm w-full">
+                    <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
+                    <input type="search" placeholder="Search..." x-model="filters.term" @input.debounce.300ms="load()" />
+                </label>
+            </fieldset>
+
+            <fieldset class="fieldset w-full xl:max-w-xs">
+                <legend class="fieldset-legend">Status</legend>
+                <select class="select select-sm w-full" x-model="filters.status" @change="load()">
+                    <option value="">All statuses</option>
+                </select>
+            </fieldset>
+
+            <div class="flex flex-wrap gap-2">
+                <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters()">Reset filters</button>
+            </div>
+        </div>
+    </div>
+</div>
+```
+
+### Left filter sidebar
+
+Use only when filters are complex enough to act as a control panel.
+
+Use a left sidebar when at least one of these is true:
+
+- There are more than three filter controls.
+- Filters are grouped into sections.
+- The filter area includes counts, summaries, or explanatory text.
+- The page is exploratory/faceted rather than a simple table.
+- Keeping filters visible while scanning results is genuinely useful.
+
+Rules:
+
+- Use a 20rem sidebar: `xl:grid-cols-[20rem_minmax(0,1fr)]`.
+- Stack filters above data on small screens.
+- Use `xl:sticky xl:top-6` for desktop persistence.
+- The sidebar title is always `Filters`.
+- Counts and summaries belong below the `Filters` title.
+- Reset actions belong at the bottom of the filter card body.
+
+Standard left layout:
+
+```cfml
+<div class="grid grid-cols-1 gap-5 xl:grid-cols-[20rem_minmax(0,1fr)] xl:items-start">
+    <aside class="card card-border bg-base-100 shadow-sm xl:sticky xl:top-6">
+        <div class="card-body gap-4">
+            <div>
+                <h2 class="card-title text-lg">Filters</h2>
+                <p class="text-sm text-base-content/60">Optional summary/count text.</p>
+            </div>
+
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">Search</legend>
+                <label class="input input-sm w-full">
+                    <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
+                    <input type="search" placeholder="Search..." x-model.debounce="filters.q" />
+                </label>
+            </fieldset>
+
+            <div class="card-actions">
+                <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters()">Reset filters</button>
+            </div>
+        </div>
+    </aside>
+
+    <div class="min-w-0">
+        <!-- Data card/list/tree -->
+    </div>
+</div>
+```
+
 ## Frontend API Calls with req()
 
 The `req()` function in `app.js` calls backend endpoints.
@@ -588,6 +688,53 @@ async searchItems(term) {
     </cfif>
 </cffunction>
 ```
+
+### With New Record ID
+
+```cfml
+<cffunction name="create">
+    <cfset var newRecord = application.lib.db.save(
+        table_name = "my_table",
+        data = request.data,
+        returnFormat = "cfml"
+    ) />
+    <cfreturn {
+        "success": true,
+        "id": newRecord.id,
+        "message": "Created successfully"
+    } />
+</cffunction>
+```
+
+### New Records and Server-Side Mutation
+
+`application.lib.db.getNewObject()` returns serialized JSON by default. If route code needs to modify the returned object before returning it, request CFML explicitly.
+
+Preferred pattern: pass route defaults through `data` and request CFML.
+
+```cfml
+<cffunction name="new">
+    <cfreturn application.lib.db.getNewObject(
+        table_name = "moo_profile",
+        data = {
+            app_name = application.app_name ?: "hub"
+        },
+        returnFormat = "cfml"
+    ) />
+</cffunction>
+```
+
+If you already have the object and need to mutate it server-side, it still must be CFML:
+
+```cfml
+<cfset var record = application.lib.db.getNewObject(
+    table_name = "my_table",
+    returnFormat = "cfml"
+) />
+<cfset record.status = "draft" />
+```
+
+Do not mutate the default JSON/string return from `getNewObject()`. That causes Lucee errors such as `Can't assign value to an Object of this type [String] with key [...]`.
 
 ### With New Record ID
 
