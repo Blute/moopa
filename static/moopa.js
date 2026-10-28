@@ -273,6 +273,27 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
+  // Scroll-edge fade: the edge the sidebar can still scroll towards fades out (moopa.css masks on
+  // .moo-shell-has-top / -has-bottom), and the scrollbar shows briefly while it scrolls.
+  if (nav) {
+    const updateMask = () => {
+      nav.classList.toggle('moo-shell-has-top', nav.scrollTop > 2);
+      nav.classList.toggle('moo-shell-has-bottom', nav.scrollTop + nav.clientHeight < nav.scrollHeight - 2);
+    };
+    let scrollFlash;
+    updateMask();
+    nav.addEventListener('scroll', () => {
+      updateMask();
+      nav.classList.add('moo-shell-scrolling');
+      clearTimeout(scrollFlash);
+      scrollFlash = setTimeout(() => nav.classList.remove('moo-shell-scrolling'), 700);
+    }, { passive: true });
+    // The sidebar's own size, and its rows' (a submenu opening or closing changes how far it can scroll)
+    const resized = new ResizeObserver(updateMask);
+    resized.observe(nav);
+    nav.querySelectorAll(':scope > *').forEach(child => resized.observe(child));
+  }
+
   // Submenus: a parent row flips [data-open] on its wrap. On the collapsed rail it opens the sidebar first.
   sidebar.querySelectorAll('[data-moo-shell-toggle-submenu]').forEach(btn => {
     btn.addEventListener('click', e => {
