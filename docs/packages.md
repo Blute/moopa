@@ -113,7 +113,7 @@ Every Moopa project should include a `hub` app. Hub is the control-plane/admin a
 
 ### System pages are Moopa's
 
-Hub serves Moopa's System pages (`/sysadmin/*`: roles, routes, route access, profiles, impersonation, error log, schema, app summary) straight from `code/moopa/routes/sysadmin`. Every project gets the same pages, and they change only when Moopa does. No other app serves them.
+Hub serves Moopa's System pages (`/sysadmin/*`: roles, routes, route access, profiles, impersonation, error log, theme, schema, app summary) straight from `code/moopa/routes/sysadmin`. Every project gets the same pages, and they change only when Moopa does. No other app serves them.
 
 The System menu is not one of the app's navs. Its links are `code/moopa/sysadmin_nav.json`, and `application.lib.system.menu()` returns them for a sysadmin in Hub and nothing for anyone else. A layout shows them in its sidebar as a System group straight after the app's menus, below a dividing line. A project layout adds them the same way:
 

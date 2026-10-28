@@ -13,5 +13,6 @@
     "/sysadmin/routes/[route_id]"
   ],
   "/sysadmin/routes/[route_id]": [],
-  "/sysadmin/schema": []
+  "/sysadmin/schema": [],
+  "/sysadmin/theme": []
 }

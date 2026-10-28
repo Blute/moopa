@@ -105,6 +105,10 @@ In the project's `Application.cfc`, `onApplicationStart` (it may differ per app,
 - The sidebar is a darker panel than the page, for contrast. It has its own tokens (`--shell-bg`, `--shell-bg-raised`, `--shell-line`, `--shell-edge`, `--shell-ink`, `--shell-ink-secondary`, `--shell-ink-mute`, `--shell-signal`, `--shell-danger`); inside the sidebar and the mobile bar the page tokens point at them, so every primitive used there follows. Override the `--shell-*` tokens to re-colour the panel, for example to a light one.
 - Everything else is a token too: ink and paper, semantic colours, radii, shadows, spacing, control sizes and density (`[data-density="compact"]`), z-index, chart series. Read the `:root` block at the top of `moopa.css`.
 
+### Seeing it
+
+**System → Theme** (`/sysadmin/theme`) shows a project's design as it renders. **Tokens** lists every token in `moopa.css`'s `:root`, grouped as the file groups them, with Moopa's default beside the project's value and each override marked. **Components** shows each primitive live with the project's theme applied, and the markup to copy. Check a theme change there before shipping it.
+
 ### Rules
 
 1. A theme overrides tokens, never rules. If a theme needs a rule changed, the rule should read a token: add the token to Moopa.
