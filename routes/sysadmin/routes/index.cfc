@@ -42,157 +42,89 @@
     </cffunction>
 
     <cffunction name="get">
-      <cf_layout_default>
+      <cfmodule template="/moopa/tags/moopa_layout.cfm" title="Routes">
 
-        <div x-data="routes_tree" x-cloak class="flex flex-col gap-4 lg:gap-5">
-          <!-- Header -->
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div class="min-w-0">
-              <div class="flex items-center gap-3">
-                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
-                  <i class="fa-solid fa-route text-base"></i>
-                </div>
-                <div class="min-w-0">
-                  <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-                    <h1 class="text-[1.625rem] font-semibold leading-none tracking-[-0.03em]">Routes</h1>
-                    <span class="text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-base-content/42" x-text="routeSummary()"></span>
-                  </div>
-                  <p class="mt-1 max-w-[58ch] text-sm leading-5 text-base-content/62">Manage security for this app's routes and shared routes with a clear, navigable tree.</p>
-                </div>
-              </div>
+        <div x-data="routes_tree" x-cloak class="page">
+          <div class="page-header">
+            <div>
+              <div class="eyebrow" x-text="routeSummary()"></div>
+              <h1>Routes</h1>
+              <p class="page-lede">Security for this app's routes and the shared ones, as a tree.</p>
             </div>
           </div>
 
-          <!-- Routes Tree Card -->
-          <div class="min-w-0 overflow-hidden rounded-lg border border-base-300 bg-base-100 md:flex md:max-h-[calc(100vh-9rem)] md:flex-col">
-            <!-- Toolbar -->
-            <div class="border-b border-base-300 px-4 py-3">
-              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-                  <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80">
-                    <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
-                    <input type="search" aria-label="Search routes" placeholder="Search routes" x-model.debounce="filters.q">
-                  </label>
-                  <button type="button" class="btn btn-ghost btn-sm justify-start" @click="reset_filters()" :disabled="!hasActiveFilters()">
-                    Reset
-                  </button>
+          <div class="card">
+            <div class="card-header">
+              <div class="cluster">
+                <div class="input-icon" style="width: 18rem; max-width: 100%">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <input class="input input-sm" type="search" aria-label="Search routes" placeholder="Search routes" x-model.debounce="filters.q">
                 </div>
-                <button class="btn btn-ghost btn-sm gap-2" @click="toggle_all()" :disabled="stats.total === 0">
-                  <i class="fa-solid" :class="is_all_expanded() ? 'fa-compress' : 'fa-expand'"></i>
-                  <span x-text="is_all_expanded() ? 'Collapse all' : 'Expand all'"></span>
-                </button>
+                <button type="button" class="btn btn-ghost btn-sm" @click="reset_filters()" :disabled="!hasActiveFilters()">Reset</button>
               </div>
+              <button type="button" class="btn btn-sm" @click="toggle_all()" :disabled="stats.total === 0">
+                <i class="fa-solid" :class="is_all_expanded() ? 'fa-compress' : 'fa-expand'"></i>
+                <span x-text="is_all_expanded() ? 'Collapse all' : 'Expand all'"></span>
+              </button>
             </div>
 
-            <!-- Header Row -->
-            <div class="border-b border-base-300 px-4 py-2.5">
-              <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-[0.8125rem] font-medium text-base-content/58 lg:grid-cols-[minmax(0,1fr)_5rem_5rem_6.25rem]">
-                <div>Route structure</div>
-                <div class="hidden text-end lg:block">Roles</div>
-                <div class="hidden text-end lg:block">People</div>
-                <div class="text-end">Actions</div>
+            <div class="grid-rows-hover" style="--cols: minmax(0, 1fr) 5rem 5rem 7rem; --cols-narrow: minmax(0, 1fr) auto">
+              <div class="grid-row grid-row-head">
+                <div>Route</div>
+                <div class="wide-only text-right">Roles</div>
+                <div class="wide-only text-right">People</div>
+                <div class="text-right">Security</div>
               </div>
-            </div>
 
-            <!-- Loading State -->
-            <template x-if="loading">
-              <div class="p-6 text-center text-base-content/60">
-                <span class="loading loading-spinner loading-md"></span>
-                <p class="mt-2">Loading routes…</p>
-              </div>
-            </template>
+              <div class="empty" x-show="loading"><i class="fa-solid fa-spinner fa-spin"></i>Loading routes…</div>
 
-            <div class="overflow-visible md:min-h-0 md:flex-1 md:overflow-auto">
-            <!-- Routes List -->
-            <ul class="divide-y divide-base-300">
-                  <template x-for="row in flat_tree()" :key="row.node.id">
-                    <li class="transition-colors hover:bg-base-200/35">
-                      <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 lg:grid-cols-[minmax(0,1fr)_5rem_5rem_6.25rem]" :class="row.node.route ? 'bg-base-100' : 'bg-base-200/20'">
-                        <!-- Route Name & Path -->
-                        <div class="flex min-w-0 items-center" :style="`padding-left: ${row.depth * 18}px`">
-                          <button x-show="row.node.children.length" type="button" class="btn btn-ghost btn-xs btn-square shrink-0 text-base-content/55" @click="toggle(row.node.id)" :aria-label="`${is_expanded(row.node.id) ? 'Collapse' : 'Expand'} ${row.node.name}`">
-                            <i class="fa-solid" :class="is_expanded(row.node.id) ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
-                          </button>
-                          <span x-show="!row.node.children.length" class="w-6 shrink-0"></span>
-                          <span class="mx-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-field border border-base-300 bg-base-100 text-base-content/55" :class="row.node.route ? 'text-base-content/45' : 'text-primary'">
-                            <i class="fa-solid text-sm" :class="row.node.route ? 'fa-file' : (is_expanded(row.node.id) ? 'fa-folder-open' : 'fa-folder')"></i>
-                          </span>
-                          <div class="min-w-0">
-                            <div class="flex min-w-0 items-center gap-2">
-                              <span class="truncate font-medium tracking-[-0.01em]" :class="row.node.route ? 'text-base-content' : 'text-base-content/82'" x-text="route_label(row.node)"></span>
-                              <span x-show="row.node.route && is_shared_route(row.node.route)" class="badge badge-neutral badge-xs hidden uppercase tracking-[0.08em] sm:inline-flex">Shared</span>
-                            </div>
-                            <button x-show="row.node.route" type="button" class="block max-w-full truncate pt-0.5 text-left font-mono text-xs text-base-content/50 hover:text-primary focus:outline-primary/55 focus:outline-offset-2" :title="'Copy ' + (row.node.route?.url || '')" @click.stop="copy_url(row.node.route?.url)" x-text="row.node.route?.url"></button>
-                          </div>
-                        </div>
-                        <!-- Roles Count -->
-                        <div class="hidden items-center justify-end lg:flex">
-                          <template x-if="row.node.route">
-                            <span class="badge badge-sm badge-ghost" :title="'Roles'" x-text="row.node.route.role_count||0"></span>
-                          </template>
-                        </div>
-                        <!-- Profiles Count -->
-                        <div class="hidden items-center justify-end lg:flex">
-                          <template x-if="row.node.route">
-                            <span class="badge badge-sm badge-soft badge-info" :title="'Profiles'" x-text="row.node.route.profile_count||0"></span>
-                          </template>
-                        </div>
-                        <!-- Actions -->
-                        <div class="flex items-center justify-end">
-                          <template x-if="row.node.route">
-                            <button class="btn btn-ghost btn-sm gap-2" @click="open_secure(row.node.route)">
-                              <i class="fa-solid fa-shield-halved text-primary"></i>
-                              <span class="hidden sm:inline">Manage</span>
-                            </button>
-                          </template>
-                        </div>
+              <template x-for="row in flat_tree()" :key="row.node.id">
+                <div class="grid-row" :style="row.node.route ? '' : 'background: var(--canvas-cream)'">
+                  <div class="row min0" :style="`padding-left: ${row.depth * 18}px`">
+                    <button x-show="row.node.children.length" type="button" class="btn btn-ghost btn-icon btn-xs" @click="toggle(row.node.id)" :aria-label="`${is_expanded(row.node.id) ? 'Collapse' : 'Expand'} ${row.node.name}`" :aria-expanded="is_expanded(row.node.id)">
+                      <i class="fa-solid" :class="is_expanded(row.node.id) ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+                    </button>
+                    <span x-show="!row.node.children.length" style="width: var(--control-h-xs); flex: 0 0 auto"></span>
+                    <span class="tree-icon" :class="{ 'is-folder': !row.node.route }"><i class="fa-solid" :class="row.node.route ? 'fa-file' : (is_expanded(row.node.id) ? 'fa-folder-open' : 'fa-folder')"></i></span>
+                    <div class="min0">
+                      <div class="row">
+                        <span class="truncate" :class="row.node.route ? 'cell-main' : 'secondary strong'" x-text="route_label(row.node)"></span>
+                        <span x-show="row.node.route && is_shared_route(row.node.route)" class="badge badge-upper">Shared</span>
                       </div>
-                    </li>
-                  </template>
-            </ul>
-
-            <template x-if="!loading && flat_tree().length === 0">
-              <div class="px-6 py-12 text-center">
-                <div class="mx-auto flex max-w-md flex-col items-center gap-3 text-base-content/65">
-                  <i class="fa-solid fa-route text-3xl text-base-content/35"></i>
-                  <div>
-                    <p class="font-medium text-base-content">No routes match these filters.</p>
-                    <p class="mt-1 text-sm">Clear filters or search for a different route.</p>
+                      <button x-show="row.node.route" type="button" class="mono muted small truncate" style="display: block; max-width: 100%; text-align: left" :title="'Copy ' + (row.node.route?.url || '')" @click.stop="copy_url(row.node.route?.url)" x-text="row.node.route?.url"></button>
+                    </div>
                   </div>
-                  <button type="button" class="btn btn-sm" @click="reset_filters()">Reset filters</button>
+                  <div class="wide-only text-right"><template x-if="row.node.route"><span class="badge" title="Roles" x-text="row.node.route.role_count||0"></span></template></div>
+                  <div class="wide-only text-right"><template x-if="row.node.route"><span class="badge badge-info" title="People" x-text="row.node.route.profile_count||0"></span></template></div>
+                  <div class="text-right">
+                    <template x-if="row.node.route">
+                      <button type="button" class="btn btn-ghost btn-sm" @click="open_secure(row.node.route)"><i class="fa-solid fa-shield-halved text-signal"></i> Manage</button>
+                    </template>
+                  </div>
                 </div>
-              </div>
-            </template>
-
+              </template>
             </div>
 
-            <div class="flex flex-col gap-2 border-t border-base-300 bg-base-100/95 px-4 py-1.5 text-[0.6875rem] leading-5 text-base-content/50 sm:flex-row sm:items-center sm:justify-between" x-show="!loading && stats.total > 0">
-              <span><strong class="font-semibold text-base-content" x-text="stats.with_roles"></strong> roles · <strong class="font-semibold text-base-content" x-text="stats.people_total"></strong> people</span>
-              <span><strong class="font-semibold text-base-content" x-text="flat_tree().length"></strong> of <strong class="font-semibold text-base-content" x-text="stats.total"></strong></span>
+            <div class="empty" x-show="!loading && flat_tree().length === 0">
+              <i class="fa-solid fa-route"></i>
+              <p class="strong secondary">No routes match this search.</p>
+              <button type="button" class="btn btn-sm mt-2" @click="reset_filters()">Reset</button>
+            </div>
+
+            <div class="card-footer cluster cluster-between small muted" x-show="!loading && stats.total > 0">
+              <span><strong class="secondary" x-text="stats.with_roles"></strong> with roles · <strong class="secondary" x-text="stats.people_total"></strong> people</span>
+              <span><strong class="secondary" x-text="flat_tree().length"></strong> of <strong class="secondary" x-text="stats.total"></strong></span>
             </div>
           </div>
 
-          <!--- Security Modal --->
-          <dialog x-ref="securityModal" class="modal" @close="security_iframe_src = ''">
-            <div class="modal-box max-w-6xl w-11/12 h-[85vh] p-0 flex flex-col">
-              <div class="flex items-center justify-between px-5 py-3 border-b border-base-200 bg-base-200/30">
-                <h3 class="font-semibold text-lg flex items-center gap-2">
-                  <i class="fa-solid fa-shield-halved text-primary"></i>
-                  Route Security
-                </h3>
-                <form method="dialog">
-                  <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close">
-                    <i class="fa-solid fa-xmark"></i>
-                  </button>
-                </form>
-              </div>
-              <div class="flex-1 overflow-hidden">
-                <iframe :src="security_iframe_src" class="w-full h-full border-0"></iframe>
-              </div>
+          <dialog x-ref="securityModal" class="modal modal-xl" aria-labelledby="route-security-title" @close="security_iframe_src = ''">
+            <div class="modal-header">
+              <h2 id="route-security-title" class="card-title"><i class="fa-solid fa-shield-halved text-signal"></i> Route security</h2>
+              <button type="button" class="btn btn-ghost btn-icon btn-sm" aria-label="Close" @click="$refs.securityModal.close()"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <form method="dialog" class="modal-backdrop">
-              <button>close</button>
-            </form>
+            <div class="modal-body" style="padding: 0; display: flex">
+              <iframe :src="security_iframe_src" title="Route security editor" style="flex: 1 1 auto; width: 100%; border: 0"></iframe>
+            </div>
           </dialog>
 
           <script>
@@ -353,7 +285,7 @@
             });
           </script>
         </div>
-      </cf_layout_default>
+      </cfmodule>
   </cffunction>
 
   </cfcomponent>

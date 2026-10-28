@@ -12,4 +12,14 @@
         <cfreturn application.system_menu />
     </cffunction>
 
+
+    <cffunction name="staticUrl" access="public" returntype="string" output="false" hint="The URL Moopa serves a file of its static/ folder at, versioned by the content of moopa.css and moopa.js so browsers keep it until Moopa changes it.">
+        <cfargument name="path" type="string" required="true" hint="Under static/, e.g. moopa.css" />
+
+        <cfif NOT structKeyExists(variables, "staticVersion")>
+            <cfset variables.staticVersion = left(lCase(hash(fileRead(expandPath("/moopa/static/moopa.css")) & fileRead(expandPath("/moopa/static/moopa.js")), "MD5")), 12) />
+        </cfif>
+        <cfreturn "/_moopa/static/#arguments.path#?v=#variables.staticVersion#" />
+    </cffunction>
+
 </cfcomponent>
