@@ -65,6 +65,10 @@ TODO: need to check if old way works for the following and which has precedence:
  --->
 
             <cfloop query="qRoutes">
+                <cfif routePackage.kind NEQ "core">
+                    <cfset assertNotSystemRoute(replace(replaceNoCase("#qRoutes.directory#/#qRoutes.name#", routePath, ""), "\", "/", "all"), "#qRoutes.directory#/#qRoutes.name#") />
+                </cfif>
+
                 <cfset stRoute = variables.routeDescriptorBuilder.build(
                     location = "#qRoutes.directory#/#qRoutes.name#",
                     routePath = routePath,
@@ -169,7 +173,7 @@ TODO: need to check if old way works for the following and which has precedence:
         <cfset var packageKind = arguments.package.kind ?: "" />
 
         <cfif packageKind EQ "core">
-            <cfreturn sysadminRoutesEnabled() />
+            <cfreturn application.system_routes ?: false />
         </cfif>
 
         <cfif packageKind EQ "shared">
@@ -184,10 +188,13 @@ TODO: need to check if old way works for the following and which has precedence:
     </cffunction>
 
 
-    <cffunction name="sysadminRoutesEnabled" access="private" returntype="boolean" output="false">
-        <cfset var enabled = trim(server.system.environment.MOOPA_ENABLE_SYSADMIN ?: "") />
+    <cffunction name="assertNotSystemRoute" access="private" returntype="void" output="false" hint="Refuse a project route under /sysadmin: those URLs are Moopa's System pages, which Hub serves from the framework.">
+        <cfargument name="relativeFile" type="string" required="true" hint="The route file's path under its package's routes folder, e.g. /sysadmin/schema.cfc" />
+        <cfargument name="file" type="string" required="true" />
 
-        <cfreturn listFindNoCase("true,yes,1,on", enabled) GT 0 />
+        <cfif reFindNoCase("^/sysadmin(/|\.cfc$)", arguments.relativeFile)>
+            <cfthrow type="moopa.systemRoutes.reserved" message="/sysadmin is Moopa's: #arguments.file# can't define a route there. Delete the project's routes/sysadmin folder (a copy of, or link to, Moopa's System pages; Hub serves Moopa's own) and move any project admin page to a route of its own, such as /admin. See moopa/docs/packages.md." />
+        </cfif>
     </cffunction>
 
 

@@ -49,8 +49,8 @@ Moopa scans conventional subdirectories from the active packages.
 
 Load rules:
 
-- `routes`: loaded from `shared` and the active app.
-- `navs`: loaded from `shared` and the active app.
+- `routes`: loaded from `shared` and the active app, and in Hub also from `moopa` (the System pages).
+- `navs`: loaded from `shared` and the active app. Moopa has no navs: its System menu is separate, shown to sysadmins below the app's menus (below).
 - `tables`, `lib`, `controls`: loaded from `moopa`, `shared`, and the active app.
 
 Missing directories are ignored.
@@ -111,14 +111,44 @@ Every Moopa project should include a `hub` app. Hub is the control-plane/admin a
 - route management
 - sysadmin tools
 
-Framework sysadmin routes/navs are exposed by convention through the Hub app. A starter project may symlink:
+### System pages are Moopa's
 
-```txt
-code/apps/hub/routes/sysadmin -> ../../../moopa/routes/sysadmin
-code/apps/hub/navs/sysadmin.json -> ../../../moopa/navs/sysadmin.json
+Hub serves Moopa's System pages (`/sysadmin/*`: roles, routes, route access, profiles, impersonation, error log, schema, app summary) straight from `code/moopa/routes/sysadmin`. Every project gets the same pages, and they change only when Moopa does. No other app serves them.
+
+The System menu is not one of the app's navs. Its links are `code/moopa/sysadmin_nav.json`, and `application.lib.system.menu()` returns them for a sysadmin in Hub and nothing for anyone else. A layout shows them in its sidebar as a System group straight after the app's menus, below a dividing line. A project layout adds them the same way:
+
+```cfml
+<cfset systemItems = application.lib.system.menu() />
+<cfif arrayLen(systemItems)>
+    <!--- a dividing line, then a "System" group, after the app's menus --->
+    <cfloop array="#systemItems#" item="systemItem">
+        <a href="#systemItem.route#"><i class="#systemItem.icon#"></i> #encodeForHTML(systemItem.title)#</a>
+    </cfloop>
+</cfif>
 ```
 
-If a project needs custom sysadmin behavior, replace the symlink with copied app-owned routes/navs.
+System → Route Access still draws the System pages as a section, from the same file.
+
+The pages render inside Hub's `layout_default` tag and use Tailwind and daisyUI classes, so a project's Hub needs a `layout_default` tag and a Tailwind + daisyUI stylesheet built with `code/moopa` among its sources (`moopa-starter`'s Hub has both). Rebuild that stylesheet after a Moopa update, as pages may use new classes.
+
+They cover Moopa's own features and are never customised per project. `/sysadmin` and the `sysadmin` nav name are reserved: a project route under `routes/sysadmin` (in `shared` or any app) or a project `navs/sysadmin.json` stops the application at startup, naming the file. A project needs no symlink or copy; delete any it has.
+
+Project admin belongs in the project's own Hub routes and menu, for example:
+
+```txt
+code/apps/hub/routes/admin/audit.cfc        -> /admin/audit/
+code/apps/hub/navs/admin.json               -> an "Admin" menu
+```
+
+That includes extending a framework feature. A project that keeps more about a person than `moo_profile` holds stores it in its own table and edits it on its own route (say `/admin/people/[profile_id]`), not by changing the System Profiles page.
+
+#### Upgrading a project that linked or copied the System pages
+
+1. Move any page the project added under `routes/sysadmin` (one Moopa doesn't have) to a route of its own, such as `/admin/...`, with its own menu entry, and update links to it.
+2. Delete `code/apps/hub/routes/sysadmin` and `code/apps/hub/navs/sysadmin.json`, whether links or copies. A copy's edits to a Moopa page are dropped; anything worth keeping belongs in Moopa (a pull request) or in a project route.
+3. Remove `MOOPA_ENABLE_SYSADMIN` from the environment. Hub no longer reads it.
+4. Show `application.lib.system.menu()` after the app's menus in the project layouts' sidebars (above), or sysadmins lose their way to the System pages from project pages.
+5. Re-initialise Hub. Routes are matched to their saved rows by URL, so role grants on the System pages carry over.
 
 ## Routes
 

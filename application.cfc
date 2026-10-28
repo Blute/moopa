@@ -49,6 +49,8 @@
         <cfif NOT len(application.app_name)>
             <cfthrow message="APP_NAME is required. Set APP_NAME to the app directory name under code/apps/ (or set this.moopa_app_name in Application.cfc for host-resolved multi-app runtimes)." />
         </cfif>
+        <!--- Hub always serves Moopa's own System routes and menu (/sysadmin) from the framework; no other app does, and no project may define them. --->
+        <cfset application.system_routes = (application.app_name EQ "hub") />
         <cfset application.moopa_packages = _getMoopaPackages() />
         <cfset application.path = {} />
         <cfloop array="#application.moopa_packages#" item="local.package">
@@ -66,6 +68,8 @@
         <cfset application.service.moo_route.initializeRoutesIntoApplicationScope() />
 
         <cfset _setupNavs() />
+        <!--- The System menu: Moopa's own pages, shown to sysadmins after the app's navs, below a dividing line --->
+        <cfset application.system_menu = application.system_routes ? deserializeJSON(fileRead(expandPath("/moopa/sysadmin_nav.json"))) : [] />
 
 
 
@@ -539,13 +543,13 @@
         <cfset var packageKind = arguments.package.kind ?: "" />
 
         <cfif arguments.capability EQ "routes">
-            <!--- Core system routes/navs are opt-in for runtimes that expose system administration. --->
-            <cfreturn listFindNoCase("shared,app", packageKind) GT 0 OR (packageKind EQ "core" AND _sysadminRoutesEnabled()) />
+            <!--- Core routes are the System pages, which only Hub serves. --->
+            <cfreturn listFindNoCase("shared,app", packageKind) GT 0 OR (packageKind EQ "core" AND application.system_routes) />
         </cfif>
 
         <cfif arguments.capability EQ "navs">
-            <!--- Navigation follows route-owning packages so filtered navs can resolve their routes. --->
-            <cfreturn listFindNoCase("shared,app", packageKind) GT 0 OR (packageKind EQ "core" AND _sysadminRoutesEnabled()) />
+            <!--- Menus are the project's. The System menu is not a nav: it is sysadmin_nav.json, which a layout shows sysadmins below the app's menus. --->
+            <cfreturn listFindNoCase("shared,app", packageKind) GT 0 />
         </cfif>
 
         <cfif listFindNoCase("tables,controls,lib", arguments.capability)>
@@ -554,13 +558,6 @@
         </cfif>
 
         <cfreturn false />
-    </cffunction>
-
-
-    <cffunction name="_sysadminRoutesEnabled" access="private" returntype="boolean" output="false">
-        <cfset var enabled = trim(server.system.environment.MOOPA_ENABLE_SYSADMIN ?: "") />
-
-        <cfreturn listFindNoCase("true,yes,1,on", enabled) GT 0 />
     </cffunction>
 
 
@@ -703,6 +700,10 @@
             <cfloop query="local.qNavFiles">
                 <cfset local.fileName = listFirst(local.qNavFiles.name, ".") />
                 <cfset local.filePath = "#local.physicalDirectory#/#local.qNavFiles.name#" />
+
+                <cfif local.fileName EQ "sysadmin" AND (local.package.kind ?: "") NEQ "core">
+                    <cfthrow type="moopa.systemRoutes.reserved" message="The sysadmin menu is Moopa's: delete #local.filePath# (a copy of, or link to, Moopa's System menu). Moopa shows sysadmins its own System menu below the app's; put project admin pages in a menu of the project's own. See moopa/docs/packages.md." />
+                </cfif>
 
                 <cffile action="read" file="#local.filePath#" variable="local.jsonContent" />
 
