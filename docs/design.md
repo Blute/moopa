@@ -74,11 +74,13 @@ In the project's `Application.cfc`, `onApplicationStart` (it may differ per app,
 <!--- Both keys are optional --->
 <cfset application.moopa_theme = {
     icons: "https://kit.fontawesome.com/<kit>.css",
-    css:   [ "/_static/theme.css", "/_static/theme-www.css" ]
+    css:   [ "/_static/theme.css", "/_static/theme-www.css" ],
+    logo:  "/_static/images/logo.png"
 } />
 ```
 
 - **`icons`**: a Font Awesome kit or other icon CSS. Unset, Moopa's vendored Font Awesome Free (solid, regular, brands) loads. A Pro kit makes Pro icon names work on the System pages too.
+- **`logo`**: the project's logo for the dark sidebar and mobile bar, shown instead of its name (`moo-shell-logo`, 3.25rem tall). Pick the version made for dark backgrounds. A project's own shell layout shows the same file.
 - **`css`**: the theme files. Unset, Moopa loads `/_static/theme.css` and then `/_static/theme-<app>.css` (for example `theme-www.css`) when they exist, so a project with one theme needs no configuration at all. Each is versioned by its content, so browsers keep it until it changes.
 
 ### What a theme sets
@@ -97,7 +99,8 @@ In the project's `Application.cfc`, `onApplicationStart` (it may differ per app,
 }
 ```
 
-- `--signal` is the one vivid colour, used for state only: the current menu item, focus, links, selected and primary actions. Focus rings derive from it, so re-branding it re-brands focus too. Set its family together: `-deep` (links, text on soft), `-press` (pressed buttons), `-soft` (selected backgrounds), `-subdued` (borders).
+- `--signal` is the one vivid colour, used for state only: the current menu item, focus, links, selected and primary actions. Focus rings derive from it, so re-branding it re-brands focus too. Set its family together: `-deep` (links, text on soft), `-hover` and `-press` (primary buttons under the pointer and pressed; `-hover` defaults to `-deep`), `-soft` (selected backgrounds), `-subdued` (borders).
+- **A light accent** (a yellow, a pale green): text on it must be dark, so set `--on-signal` (text on primary buttons) to a dark brand colour; keep `--signal-deep` dark enough to read as text on white (4.5:1); set `--signal-hover` to a slightly deeper tone of the accent, not to `-deep`; and point the focus tokens (`--focus-ring`, `--focus-ring-strong`, `--focus-halo`) at `-deep` so focus stays visible.
 - `--font-sans` names the font, `--font-features` its OpenType features, `--heading-tracking` headings' letter-spacing. Moopa loads no web font; a theme that wants one loads it itself (an `@import` or `@font-face` in its theme file).
 - The sidebar is a darker panel than the page, for contrast. It has its own tokens (`--shell-bg`, `--shell-bg-raised`, `--shell-line`, `--shell-edge`, `--shell-ink`, `--shell-ink-secondary`, `--shell-ink-mute`, `--shell-signal`, `--shell-danger`); inside the sidebar and the mobile bar the page tokens point at them, so every primitive used there follows. Override the `--shell-*` tokens to re-colour the panel, for example to a light one.
 - Everything else is a token too: ink and paper, semantic colours, radii, shadows, spacing, control sizes and density (`[data-density="compact"]`), z-index, chart series. Read the `:root` block at the top of `moopa.css`.
