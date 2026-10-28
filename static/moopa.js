@@ -288,7 +288,10 @@ document.addEventListener('DOMContentLoaded', function () {
       clearTimeout(scrollFlash);
       scrollFlash = setTimeout(() => nav.classList.remove('moo-shell-scrolling'), 700);
     }, { passive: true });
-    new ResizeObserver(updateMask).observe(nav);
+    // The sidebar's own size, and its rows' (a submenu opening or closing changes how far it can scroll)
+    const resized = new ResizeObserver(updateMask);
+    resized.observe(nav);
+    nav.querySelectorAll(':scope > *').forEach(child => resized.observe(child));
   }
 
   // Submenus: a parent row flips [data-open] on its wrap. On the collapsed rail it opens the sidebar first.
