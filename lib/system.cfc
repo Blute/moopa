@@ -12,4 +12,16 @@
         <cfreturn application.system_menu />
     </cffunction>
 
+
+    <cffunction name="staticUrl" access="public" returntype="string" output="false" hint="The URL Moopa serves a file of its static/ folder at, versioned by the content of moopa.css and moopa.js so browsers keep it until Moopa changes it.">
+        <cfargument name="path" type="string" required="true" hint="Under static/, e.g. moopa.css" />
+
+        <!--- Worked out once per start, as the files change only with a deploy; in development, on every
+              call, so an edit to moopa.css or moopa.js reaches the browser without a restart --->
+        <cfif NOT structKeyExists(variables, "staticVersion") OR (server.system.environment.APP_ENVIRONMENT ?: "") EQ "development">
+            <cfset variables.staticVersion = left(lCase(hash(fileRead(expandPath("/moopa/static/moopa.css")) & fileRead(expandPath("/moopa/static/moopa.js")), "MD5")), 12) />
+        </cfif>
+        <cfreturn "/_moopa/static/#arguments.path#?v=#variables.staticVersion#" />
+    </cffunction>
+
 </cfcomponent>

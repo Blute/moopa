@@ -7,60 +7,48 @@
     <cffunction name="get">
         <cfset var summary = buildSummary() />
 
-        <cf_layout_default>
+        <cfmodule template="/moopa/tags/moopa_layout.cfm" title="App summary">
             <cfoutput>
-                <div class="flex flex-col gap-5">
-                    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div class="min-w-0">
-                            <div class="flex items-center gap-3">
-                                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
-                                    <i class="fa-solid fa-gear text-base"></i>
-                                </div>
-                                <div class="min-w-0">
-                                    <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-                                        <h1 class="text-[1.625rem] font-semibold leading-none tracking-[-0.03em]">App Summary</h1>
-                                        <span class="text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-base-content/42">#htmlEditFormat(summary.app_name)# runtime</span>
-                                    </div>
-                                    <p class="mt-1 max-w-[68ch] text-sm leading-5 text-base-content/62">Everything Moopa loaded for this app at application start: packages, routes, table services, libraries, controls, navs, and tags.</p>
-                                </div>
-                            </div>
+                <div class="page">
+                    <div class="page-header">
+                        <div>
+                            <div class="eyebrow">#htmlEditFormat(summary.app_name)# runtime</div>
+                            <h1>App summary</h1>
+                            <p class="page-lede">Everything Moopa loaded for this app when it started: packages, routes, table services, libraries, controls, navs and tags.</p>
                         </div>
-                        <a href="/sysadmin/app_summary/?X-Endpoint=load" class="btn btn-ghost btn-sm gap-2">
-                            <i class="fa-solid fa-code text-sm"></i>
-                            JSON
-                        </a>
-                    </div>
-
-                    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        <div class="rounded-lg border border-base-300 bg-base-100 p-4">
-                            <div class="text-xs font-medium uppercase tracking-[0.11em] text-base-content/45">App</div>
-                            <div class="mt-2 text-xl font-semibold tracking-[-0.03em]">#htmlEditFormat(summary.app_title)#</div>
-                            <div class="mt-1 font-mono text-xs text-base-content/55">#htmlEditFormat(summary.app_base_url)#</div>
-                        </div>
-                        <div class="rounded-lg border border-base-300 bg-base-100 p-4">
-                            <div class="text-xs font-medium uppercase tracking-[0.11em] text-base-content/45">Packages</div>
-                            <div class="mt-2 text-xl font-semibold tracking-[-0.03em]">#arrayLen(summary.packages)#</div>
-                            <div class="mt-1 text-xs text-base-content/55">Moopa → shared → active app</div>
-                        </div>
-                        <div class="rounded-lg border border-base-300 bg-base-100 p-4">
-                            <div class="text-xs font-medium uppercase tracking-[0.11em] text-base-content/45">Routes</div>
-                            <div class="mt-2 text-xl font-semibold tracking-[-0.03em]">#summary.totals.routes#</div>
-                            <div class="mt-1 text-xs text-base-content/55">#summary.totals.static_routes# static · #summary.totals.dynamic_routes# dynamic · #summary.totals.route_endpoints# endpoints</div>
-                        </div>
-                        <div class="rounded-lg border border-base-300 bg-base-100 p-4">
-                            <div class="text-xs font-medium uppercase tracking-[0.11em] text-base-content/45">Services</div>
-                            <div class="mt-2 text-xl font-semibold tracking-[-0.03em]">#summary.totals.table_services#</div>
-                            <div class="mt-1 text-xs text-base-content/55">#arrayLen(summary.table_overrides)# intentional table override(s)</div>
+                        <div class="page-actions">
+                            <a href="/sysadmin/app_summary/?X-Endpoint=load" class="btn btn-sm"><i class="fa-solid fa-code"></i> JSON</a>
                         </div>
                     </div>
 
-                    <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-                        <div class="flex flex-col gap-5">
-                            <section class="overflow-hidden rounded-lg border border-base-300 bg-base-100">
-                                <div class="border-b border-base-300 px-4 py-3">
-                                    <h2 class="font-semibold tracking-[-0.02em]">Loaded packages</h2>
-                                </div>
-                                <div class="overflow-x-auto">
+                    <div class="auto-grid" style="--auto-min: 13rem">
+                        <div class="card stat">
+                            <div class="stat-label">App</div>
+                            <div class="stat-value">#htmlEditFormat(summary.app_title)#</div>
+                            <div class="stat-sub mono">#htmlEditFormat(summary.app_base_url)#</div>
+                        </div>
+                        <div class="card stat">
+                            <div class="stat-label">Packages</div>
+                            <div class="stat-value">#arrayLen(summary.packages)#</div>
+                            <div class="stat-sub">Moopa, then shared, then the active app</div>
+                        </div>
+                        <div class="card stat">
+                            <div class="stat-label">Routes</div>
+                            <div class="stat-value">#summary.totals.routes#</div>
+                            <div class="stat-sub">#summary.totals.static_routes# static · #summary.totals.dynamic_routes# dynamic · #summary.totals.route_endpoints# endpoints</div>
+                        </div>
+                        <div class="card stat">
+                            <div class="stat-label">Services</div>
+                            <div class="stat-value">#summary.totals.table_services#</div>
+                            <div class="stat-sub">#arrayLen(summary.table_overrides)# intentional table override(s)</div>
+                        </div>
+                    </div>
+
+                    <div class="split split-end">
+                        <div class="stack" style="--stack-gap: var(--card-gap)">
+                            <section class="card">
+                                <div class="card-header"><h2 class="card-title">Loaded packages</h2></div>
+                                <div class="table-wrap">
                                     <table class="table table-sm">
                                         <thead>
                                             <tr>
@@ -78,9 +66,9 @@
                                         <tbody>
                                             <cfloop array="#summary.packages#" item="packageSummary">
                                                 <tr>
-                                                    <td class="font-medium">#htmlEditFormat(packageSummary.name)#</td>
-                                                    <td><span class="badge badge-ghost badge-sm">#htmlEditFormat(packageSummary.kind)#</span></td>
-                                                    <td class="font-mono text-xs text-base-content/60">#htmlEditFormat(packageSummary.path)#</td>
+                                                    <td class="cell-main">#htmlEditFormat(packageSummary.name)#</td>
+                                                    <td><span class="badge">#htmlEditFormat(packageSummary.kind)#</span></td>
+                                                    <td class="mono muted">#htmlEditFormat(packageSummary.path)#</td>
                                                     <td class="text-right">#packageSummary.capabilities.routes.count#</td>
                                                     <td class="text-right">#packageSummary.capabilities.tables.count#</td>
                                                     <td class="text-right">#packageSummary.capabilities.lib.count#</td>
@@ -94,77 +82,69 @@
                                 </div>
                             </section>
 
-                            <section class="overflow-hidden rounded-lg border border-base-300 bg-base-100">
-                                <div class="border-b border-base-300 px-4 py-3">
-                                    <h2 class="font-semibold tracking-[-0.02em]">Route access mix</h2>
-                                </div>
-                                <div class="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+                            <section class="card">
+                                <div class="card-header"><h2 class="card-title">Route access mix</h2></div>
+                                <div class="card-body auto-grid" style="--auto-min: 9rem">
                                     <cfloop array="#summary.route_access_rows#" item="accessRow">
-                                        <div class="rounded-box border border-base-300 bg-base-200/25 p-3">
-                                            <div class="text-xs font-medium uppercase tracking-[0.11em] text-base-content/45">#htmlEditFormat(accessRow.name)#</div>
-                                            <div class="mt-1 text-2xl font-semibold tracking-[-0.04em]">#accessRow.count#</div>
+                                        <div class="stat" style="padding: var(--sp-3); border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--canvas-cream)">
+                                            <div class="stat-label">#htmlEditFormat(accessRow.name)#</div>
+                                            <div class="stat-value">#accessRow.count#</div>
                                         </div>
                                     </cfloop>
                                 </div>
                             </section>
 
-                            <section class="overflow-hidden rounded-lg border border-base-300 bg-base-100">
-                                <div class="border-b border-base-300 px-4 py-3">
-                                    <h2 class="font-semibold tracking-[-0.02em]">Table definition overrides</h2>
-                                </div>
+                            <section class="card">
+                                <div class="card-header"><h2 class="card-title">Table definition overrides</h2></div>
                                 <cfif arrayLen(summary.table_overrides)>
-                                    <div class="overflow-x-auto">
+                                    <div class="table-wrap">
                                         <table class="table table-sm">
                                             <thead>
-                                                <tr>
-                                                    <th>Table</th>
-                                                    <th>Effective package</th>
-                                                    <th>Overridden package(s)</th>
-                                                </tr>
+                                                <tr><th>Table</th><th>Effective package</th><th>Overridden package(s)</th></tr>
                                             </thead>
                                             <tbody>
                                                 <cfloop array="#summary.table_overrides#" item="overrideRow">
                                                     <tr>
-                                                        <td class="font-mono text-xs">#htmlEditFormat(overrideRow.name)#</td>
-                                                        <td><span class="badge badge-primary badge-sm">#htmlEditFormat(overrideRow.effective_package)#</span></td>
-                                                        <td class="text-xs text-base-content/65">#htmlEditFormat(arrayToList(overrideRow.overridden_packages, ", "))#</td>
+                                                        <td class="mono">#htmlEditFormat(overrideRow.name)#</td>
+                                                        <td><span class="badge badge-signal">#htmlEditFormat(overrideRow.effective_package)#</span></td>
+                                                        <td class="muted small">#htmlEditFormat(arrayToList(overrideRow.overridden_packages, ", "))#</td>
                                                     </tr>
                                                 </cfloop>
                                             </tbody>
                                         </table>
                                     </div>
                                 <cfelse>
-                                    <div class="p-4 text-sm text-base-content/62">No table definitions are overridden in this runtime.</div>
+                                    <div class="card-body small muted">No table definitions are overridden in this runtime.</div>
                                 </cfif>
                             </section>
                         </div>
 
-                        <aside class="flex flex-col gap-5">
-                            <section class="rounded-lg border border-base-300 bg-base-100 p-4">
-                                <h2 class="font-semibold tracking-[-0.02em]">Loaded scopes</h2>
-                                <dl class="mt-3 grid grid-cols-2 gap-3 text-sm">
-                                    <div><dt class="text-base-content/50">Table services</dt><dd class="font-semibold">#summary.totals.table_services#</dd></div>
-                                    <div><dt class="text-base-content/50">Libraries</dt><dd class="font-semibold">#summary.totals.libraries#</dd></div>
-                                    <div><dt class="text-base-content/50">Controls</dt><dd class="font-semibold">#summary.totals.controls#</dd></div>
-                                    <div><dt class="text-base-content/50">Navs</dt><dd class="font-semibold">#summary.totals.navs#</dd></div>
-                                </dl>
+                        <aside class="stack" style="--stack-gap: var(--card-gap)">
+                            <section class="card">
+                                <div class="card-header"><h2 class="card-title">Loaded scopes</h2></div>
+                                <div class="card-body kv-grid">
+                                    <span class="kv-label">Table services</span><span class="kv-value strong">#summary.totals.table_services#</span>
+                                    <span class="kv-label">Libraries</span><span class="kv-value strong">#summary.totals.libraries#</span>
+                                    <span class="kv-label">Controls</span><span class="kv-value strong">#summary.totals.controls#</span>
+                                    <span class="kv-label">Navs</span><span class="kv-value strong">#summary.totals.navs#</span>
+                                </div>
                             </section>
 
-                            <section class="rounded-lg border border-base-300 bg-base-100 p-4">
-                                <h2 class="font-semibold tracking-[-0.02em]">Nav files</h2>
-                                <div class="mt-3 flex flex-wrap gap-2">
+                            <section class="card">
+                                <div class="card-header"><h2 class="card-title">Nav files</h2></div>
+                                <div class="card-body cluster">
                                     <cfloop array="#summary.loaded.navs#" item="navName">
-                                        <span class="badge badge-ghost badge-sm">#htmlEditFormat(navName)#</span>
+                                        <span class="badge">#htmlEditFormat(navName)#</span>
                                     </cfloop>
                                     <cfif NOT arrayLen(summary.loaded.navs)>
-                                        <span class="text-sm text-base-content/60">None</span>
+                                        <span class="muted small">None</span>
                                     </cfif>
                                 </div>
                             </section>
 
-                            <section class="rounded-lg border border-base-300 bg-base-100 p-4">
-                                <h2 class="font-semibold tracking-[-0.02em]">Libraries</h2>
-                                <div class="mt-3 max-h-72 overflow-auto rounded-box border border-base-300 bg-base-200/25 p-3 font-mono text-xs leading-5 text-base-content/68">
+                            <section class="card">
+                                <div class="card-header"><h2 class="card-title">Libraries</h2></div>
+                                <div class="card-body mono small secondary" style="max-height: 18rem; overflow: auto; line-height: 1.7">
                                     <cfloop array="#summary.loaded.libraries#" item="libName">#htmlEditFormat(libName)#<br></cfloop>
                                 </div>
                             </section>
@@ -172,7 +152,7 @@
                     </div>
                 </div>
             </cfoutput>
-        </cf_layout_default>
+        </cfmodule>
     </cffunction>
 
     <cffunction name="buildSummary" access="private" returntype="struct" output="false">

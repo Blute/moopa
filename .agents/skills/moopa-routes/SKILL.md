@@ -202,103 +202,65 @@ Use dots to organize related endpoints:
 
 After adding a new route CFC or renaming/adding functions in an existing route, you must re-initialise the application for Moopa to register the changes. Visit `/init` or restart the app server.
 
-## System Page Filter Layout Standards
+## Filter layouts on Moopa's layout
 
-Use one of two approved filter layouts for hub/system routes. Do not invent a third ad-hoc filter bar. Icons below are Font Awesome, as on the System pages; use the project's own icon set on project pages.
+Pages on Moopa's own layout (the System pages, and project pages using `<cf_moopa_layout>`) use one of two filter layouts, built from `moopa.css` primitives (see `code/moopa/docs/design.md`). Do not invent a third, and do not use Tailwind or daisyUI classes there.
 
-### Top filter card
+### Filters in the card header
 
-Use this by default. It is appropriate for simple table/list pages with one to three controls, such as search plus one select.
-
-Rules:
-
-- Place the filter card between the page header and the data card.
-- Keep page actions such as `New`, `Re-init`, or destructive actions in the page header, not in the filter card.
-- Do not embed filters in the data table card header.
-- Use `card card-border bg-base-100 shadow-sm w-full max-w-5xl`.
-- Use `fieldset` and `fieldset-legend` for every control.
-- Use `xl:flex-row xl:items-end`; stack controls on smaller screens.
-- Put reset/clear buttons in a trailing `flex flex-wrap gap-2` action group.
-
-Standard top layout:
+The default, for a list with one to three controls (a search, maybe one select). Page actions (New, Re-initialise) go in the page header, not beside the filters.
 
 ```cfml
-<!-- Filters -->
-<div class="card card-border bg-base-100 shadow-sm w-full max-w-5xl">
-    <div class="card-body gap-4">
-        <div class="flex flex-col gap-4 xl:flex-row xl:items-end">
-            <fieldset class="fieldset w-full xl:max-w-2xl xl:flex-1">
-                <legend class="fieldset-legend">Search</legend>
-                <label class="input input-sm w-full">
-                    <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
-                    <input type="search" placeholder="Search..." x-model="filters.term" @input.debounce.300ms="load()" />
-                </label>
-            </fieldset>
+<div class="page">
+    <div class="page-header">
+        <div>
+            <div class="eyebrow" x-text="summary()"></div>
+            <h1>Orders</h1>
+            <p class="page-lede">What's waiting to be picked.</p>
+        </div>
+        <div class="page-actions">
+            <button type="button" class="btn btn-primary btn-sm" @click="addNew()"><i class="fa-solid fa-plus"></i> New order</button>
+        </div>
+    </div>
 
-            <fieldset class="fieldset w-full xl:max-w-xs">
-                <legend class="fieldset-legend">Status</legend>
-                <select class="select select-sm w-full" x-model="filters.status" @change="load()">
+    <div class="card">
+        <div class="card-header">
+            <div class="cluster">
+                <div class="input-icon" style="width: 18rem; max-width: 100%">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input class="input input-sm" type="search" placeholder="Search orders" aria-label="Search orders" x-model="filters.term" @input.debounce.300ms="load()" />
+                </div>
+                <select class="select select-sm" style="width: 12rem" aria-label="Status" x-model="filters.status" @change="load()">
                     <option value="">All statuses</option>
                 </select>
-            </fieldset>
-
-            <div class="flex flex-wrap gap-2">
-                <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters()">Reset filters</button>
+                <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters()" :disabled="!hasActiveFilters()">Reset</button>
             </div>
         </div>
+        <div class="table-wrap">
+            <table class="table table-sm table-hover">…</table>
+        </div>
+        <div class="empty" x-show="!records.length"><i class="fa-solid fa-inbox"></i>No orders match.</div>
     </div>
 </div>
 ```
 
-### Left filter sidebar
+### A filter sidebar
 
-Use only when filters are complex enough to act as a control panel.
-
-Use a left sidebar when at least one of these is true:
-
-- There are more than three filter controls.
-- Filters are grouped into sections.
-- The filter area includes counts, summaries, or explanatory text.
-- The page is exploratory/faceted rather than a simple table.
-- Keeping filters visible while scanning results is genuinely useful.
-
-Rules:
-
-- Use a 20rem sidebar: `xl:grid-cols-[20rem_minmax(0,1fr)]`.
-- Stack filters above data on small screens.
-- Use `xl:sticky xl:top-6` for desktop persistence.
-- The sidebar title is always `Filters`.
-- Counts and summaries belong below the `Filters` title.
-- Reset actions belong at the bottom of the filter card body.
-
-Standard left layout:
+Only when the filters are a control panel: more than three controls, grouped sections, counts or explanations, or a faceted page where keeping the filters in view helps. `split` puts an 18rem aside beside the data from 1100px and stacks them below; the aside's title is always "Filters".
 
 ```cfml
-<div class="grid grid-cols-1 gap-5 xl:grid-cols-[20rem_minmax(0,1fr)] xl:items-start">
-    <aside class="card card-border bg-base-100 shadow-sm xl:sticky xl:top-6">
-        <div class="card-body gap-4">
-            <div>
-                <h2 class="card-title text-lg">Filters</h2>
-                <p class="text-sm text-base-content/60">Optional summary/count text.</p>
-            </div>
-
-            <fieldset class="fieldset">
-                <legend class="fieldset-legend">Search</legend>
-                <label class="input input-sm w-full">
-                    <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
-                    <input type="search" placeholder="Search..." x-model.debounce="filters.q" />
-                </label>
-            </fieldset>
-
-            <div class="card-actions">
-                <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters()">Reset filters</button>
+<div class="split">
+    <aside class="card">
+        <div class="card-header"><div><h2 class="card-title">Filters</h2><p class="card-sub" x-text="`${records.length} shown`"></p></div></div>
+        <div class="card-body stack">
+            <div class="field">
+                <label class="label" for="orders-search">Search</label>
+                <input id="orders-search" class="input input-sm" type="search" x-model.debounce="filters.q" />
             </div>
         </div>
+        <div class="card-footer"><button type="button" class="btn btn-ghost btn-sm" @click="resetFilters()">Reset filters</button></div>
     </aside>
-
-    <div class="min-w-0">
-        <!-- Data card/list/tree -->
-    </div>
+    <div class="card">…</div>
 </div>
 ```
 

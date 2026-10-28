@@ -129,7 +129,7 @@ The System menu is not one of the app's navs. Its links are `code/moopa/sysadmin
 
 System → Route Access still draws the System pages as a section, from the same file.
 
-The pages render inside Hub's `layout_default` tag and use Tailwind and daisyUI classes, so a project's Hub needs a `layout_default` tag and a Tailwind + daisyUI stylesheet built with `code/moopa` among its sources (`moopa-starter`'s Hub has both). Rebuild that stylesheet after a Moopa update, as pages may use new classes.
+They render in Moopa's own layout with Moopa's own stylesheet, scripts and icons ([design](design.md)), so they need nothing from the project: no `layout_default` tag, Tailwind build or icon kit.
 
 They cover Moopa's own features and are never customised per project. `/sysadmin` and the `sysadmin` nav name are reserved: a project route under `routes/sysadmin` (in `shared` or any app) or a project `navs/sysadmin.json` stops the application at startup, naming the file. A project needs no symlink or copy; delete any it has.
 

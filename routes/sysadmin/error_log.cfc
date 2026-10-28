@@ -28,143 +28,88 @@
 
 
     <cffunction name="get">
-        <cf_layout_default>
+        <cfmodule template="/moopa/tags/moopa_layout.cfm" title="Error log">
 
-            <div x-data="error_log" x-cloak class="flex flex-col gap-4 lg:gap-5">
-                <!-- Header -->
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-3">
-                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
-                                <i class="fa-solid fa-triangle-exclamation text-base"></i>
-                            </div>
-                            <div class="min-w-0">
-                                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-                                    <h1 class="text-[1.625rem] font-semibold leading-none tracking-[-0.03em]">Error Log</h1>
-                                    <span class="text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-base-content/42" x-text="errorSummary()"></span>
-                                </div>
-                                <p class="mt-1 max-w-[58ch] text-sm leading-5 text-base-content/62">Review captured application errors and inspect request context.</p>
-                            </div>
-                        </div>
+            <div x-data="error_log" x-cloak class="page">
+                <div class="page-header">
+                    <div>
+                        <div class="eyebrow" x-text="errorSummary()"></div>
+                        <h1>Error log</h1>
+                        <p class="page-lede">Captured application errors with their request context.</p>
                     </div>
                 </div>
 
-                <!-- Results -->
-                <div class="overflow-hidden rounded-lg border border-base-300 bg-base-100 md:flex md:max-h-[calc(100vh-9rem)] md:flex-col">
-                    <div class="border-b border-base-300 px-4 py-3">
-                        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                            <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-                                <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80">
-                                    <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
-                                    <input type="search" aria-label="Search error log" placeholder="Search messages or lines" x-model="filters.term" @input.debounce.300ms="search()" />
-                                </label>
-                                <button type="button" class="btn btn-ghost btn-sm justify-start" @click="resetFilter(); search();" :disabled="!hasActiveFilters()">
-                                    Reset
-                                </button>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="cluster">
+                            <div class="input-icon" style="width: 20rem; max-width: 100%">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input class="input input-sm" type="search" aria-label="Search error log" placeholder="Search messages or lines" x-model="filters.term" @input.debounce.300ms="search()" />
                             </div>
+                            <button type="button" class="btn btn-ghost btn-sm" @click="resetFilter(); search();" :disabled="!hasActiveFilters()">Reset</button>
                         </div>
+                        <span class="muted small" x-text="latestSummary()"></span>
                     </div>
 
-                    <div class="hidden overflow-auto md:block md:min-h-0 md:flex-1">
-                        <table class="table table-sm table-fixed w-full">
-                            <thead>
-                                <tr class="border-base-300 text-[0.8125rem] text-base-content/58">
-                                    <th class="w-36 font-medium">Date</th>
-                                    <th class="w-[52%] font-medium">Message</th>
-                                    <th class="w-[36%] font-medium">Line</th>
-                                </tr>
-                            </thead>
+                    <div class="table-wrap" x-show="records.length > 0">
+                        <table class="table table-sm table-hover table-clickable table-fixed">
+                            <colgroup><col style="width: 10.5rem"><col><col style="width: 36%"></colgroup>
+                            <thead><tr><th>Date</th><th>Message</th><th>Line</th></tr></thead>
                             <tbody>
                                 <template x-for="item in records" :key="item.id">
-                                    <tr class="border-base-200 hover:bg-base-200/35 cursor-pointer outline-none focus-visible:bg-base-200/45 focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-inset" role="button" tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)" @keydown.space.prevent="select(item)" :aria-label="`Inspect error ${item.message || 'error'}`">
-                                        <td><span class="block truncate font-mono text-xs text-base-content/70" x-text="formatDateTime(item.created_at)"></span></td>
-                                        <td><span class="block truncate font-medium tracking-[-0.01em]" x-text="item.message || '—'" :title="item.message || '—'"></span></td>
-                                        <td><span class="block truncate font-mono text-xs text-base-content/65" x-text="item.line || '—'" :title="item.line || '—'"></span></td>
+                                    <tr tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)" :aria-label="`Inspect error ${item.message || 'error'}`">
+                                        <td class="mono muted nowrap" x-text="formatDateTime(item.created_at)"></td>
+                                        <td><span class="cell-main truncate" style="display: block" x-text="item.message || '—'" :title="item.message || '—'"></span></td>
+                                        <td><span class="mono muted truncate" style="display: block" x-text="item.line || '—'" :title="item.line || '—'"></span></td>
                                     </tr>
                                 </template>
                             </tbody>
                         </table>
                     </div>
 
-                    <div class="divide-y divide-base-300 md:hidden">
-                        <template x-for="item in records" :key="item.id">
-                            <article class="p-4 cursor-pointer outline-none transition-colors hover:bg-base-200/35 focus-visible:bg-base-200/45 focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-inset" role="button" tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)" @keydown.space.prevent="select(item)" :aria-label="`Inspect error ${item.message || 'error'}`">
-                                <p class="text-xs font-mono text-base-content/55" x-text="formatDateTime(item.created_at)"></p>
-                                <h3 class="mt-1 font-medium leading-tight tracking-[-0.01em]" x-text="item.message || '—'"></h3>
-                                <p class="mt-3 truncate font-mono text-xs text-base-content/65" x-text="item.line || '—'"></p>
-                            </article>
-                        </template>
+                    <div class="empty" x-show="records.length === 0">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <p class="strong secondary" x-text="hasActiveFilters() ? 'No errors match this search.' : 'No errors logged.'"></p>
+                        <p class="small" x-text="hasActiveFilters() ? 'Clear the search, or try a different message or line.' : 'Captured application errors will appear here.'"></p>
                     </div>
 
-                    <template x-if="records.length === 0">
-                        <div class="px-6 py-12 text-center">
-                            <div class="mx-auto flex max-w-md flex-col items-center gap-3 text-base-content/65">
-                                <i class="fa-solid fa-triangle-exclamation text-3xl text-base-content/35"></i>
-                                <div>
-                                    <p class="font-medium text-base-content" x-text="hasActiveFilters() ? 'No errors match these filters.' : 'No errors logged.'"></p>
-                                    <p class="mt-1 text-sm" x-text="hasActiveFilters() ? 'Clear filters or search for a different message or line.' : 'Captured application errors will appear here.'"></p>
-                                </div>
-                                <button type="button" class="btn btn-sm" @click="resetFilter(); search();" x-show="hasActiveFilters()">Reset filters</button>
-                            </div>
-                        </div>
-                    </template>
-
-                    <div class="flex flex-col gap-2 border-t border-base-300 bg-base-100/95 px-4 py-1.5 text-[0.6875rem] leading-5 text-base-content/50 sm:flex-row sm:items-center sm:justify-between" x-show="records.length > 0">
+                    <div class="card-footer cluster cluster-between small muted" x-show="records.length > 0">
                         <span x-text="latestSummary()"></span>
-                        <span><strong class="font-semibold text-base-content" x-text="records.length"></strong> records</span>
+                        <span><strong class="secondary" x-text="records.length"></strong> records</span>
                     </div>
                 </div>
 
-                <!-- Detail drawer -->
-                <div class="fixed inset-0 z-[1000]" x-show="drawer_open" x-cloak style="display: none;" @keydown.escape.window="closeDrawer()">
-                    <button type="button" class="absolute inset-0 bg-base-content/20" aria-label="Close error details" @click="closeDrawer()"></button>
-                    <aside class="absolute right-0 top-0 flex h-full w-full max-w-3xl flex-col border-l border-base-300 bg-base-100 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="error-drawer-title" tabindex="-1" x-ref="drawerPanel" x-trap.noscroll="drawer_open" x-show="drawer_open" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full">
-                        <header class="flex items-start justify-between gap-4 border-b border-base-300 px-6 py-5">
-                            <div class="min-w-0">
-                                <p class="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-base-content/45" x-text="formatDateTime(current_record.created_at)"></p>
-                                <h2 id="error-drawer-title" class="mt-1 text-xl font-semibold leading-tight tracking-[-0.026em]" x-text="current_record.message || 'Error details'"></h2>
-                                <div class="mt-1 flex min-w-0 items-center gap-2">
-                                    <p class="truncate font-mono text-xs text-base-content/62" x-text="current_record.line || 'No line captured.'"></p>
-                                    <button type="button" class="btn btn-ghost btn-xs shrink-0" @click="copyToClipboard()" :disabled="!current_record.line">
-                                        <i class="fa-solid fa-copy"></i>
-                                        Copy line
-                                    </button>
-                                </div>
+                <dialog class="modal modal-xl" x-ref="detail" aria-labelledby="error-detail-title" @close="drawer_open = false">
+                    <div class="modal-header">
+                        <div>
+                            <div class="eyebrow" x-text="formatDateTime(current_record.created_at)"></div>
+                            <h2 id="error-detail-title" class="card-title" x-text="current_record.message || 'Error details'"></h2>
+                            <div class="row">
+                                <span class="mono muted truncate small" x-text="current_record.line || 'No line captured.'"></span>
+                                <button type="button" class="btn btn-ghost btn-xs" @click="copyToClipboard()" :disabled="!current_record.line"><i class="fa-solid fa-copy"></i> Copy line</button>
                             </div>
-                            <button type="button" class="btn btn-ghost btn-sm btn-circle shrink-0" @click="closeDrawer()" aria-label="Close error details">
-                                <i class="fa-solid fa-xmark"></i>
-                            </button>
-                        </header>
-
-                        <div class="flex-1 overflow-y-auto px-6 py-5">
-                            <div class="mb-4 flex flex-wrap gap-2">
-                                <template x-for="tab in detailTabs" :key="tab.key">
-                                    <button type="button" class="btn btn-sm" :class="activeTab === tab.key ? 'btn-primary' : 'btn-ghost'" @click="activeTab = tab.key" x-text="tab.label"></button>
-                                </template>
-                            </div>
+                        </div>
+                        <button type="button" class="btn btn-ghost btn-icon btn-sm" @click="closeDrawer()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div class="modal-body stack">
+                        <div class="tabs" role="tablist">
                             <template x-for="tab in detailTabs" :key="tab.key">
-                                <section x-show="activeTab === tab.key">
-                                    <template x-if="tab.key === 'summary'">
-                                        <div class="space-y-3">
-                                            <div class="flex flex-col gap-3 rounded-lg border border-base-300 bg-base-200/35 px-4 py-3 text-sm leading-6 text-base-content/70 sm:flex-row sm:items-center sm:justify-between">
-                                                <span>Markdown formatted for pasting into an LLM agent.</span>
-                                                <button type="button" class="btn btn-primary btn-sm shrink-0" @click="copySummaryToClipboard()" :disabled="!hasCurrentRecord()">
-                                                    <i class="fa-solid fa-copy"></i>
-                                                    Copy prompt
-                                                </button>
-                                            </div>
-                                            <pre class="min-h-96 overflow-auto rounded-lg bg-neutral p-4 text-xs leading-relaxed text-neutral-content"><code x-text="errorSummaryMarkdown()"></code></pre>
-                                        </div>
-                                    </template>
-                                    <template x-if="tab.key !== 'summary'">
-                                        <pre class="min-h-96 overflow-auto rounded-lg bg-neutral p-4 text-xs leading-relaxed text-neutral-content"><code x-text="formatJsonValue(current_record[tab.key])"></code></pre>
-                                    </template>
-                                </section>
+                                <button type="button" class="tab" role="tab" :aria-selected="activeTab === tab.key" @click="activeTab = tab.key" x-text="tab.label"></button>
                             </template>
                         </div>
-
-                    </aside>
-                </div>
+                        <template x-for="tab in detailTabs" :key="tab.key">
+                            <section x-show="activeTab === tab.key" class="stack stack-sm">
+                                <template x-if="tab.key === 'summary'">
+                                    <div class="cluster cluster-between">
+                                        <span class="muted small">Markdown, ready to paste into an LLM agent.</span>
+                                        <button type="button" class="btn btn-primary btn-sm" @click="copySummaryToClipboard()" :disabled="!hasCurrentRecord()"><i class="fa-solid fa-copy"></i> Copy prompt</button>
+                                    </div>
+                                </template>
+                                <pre class="code-block" style="min-height: 20rem"><code x-text="tab.key === 'summary' ? errorSummaryMarkdown() : formatJsonValue(current_record[tab.key])"></code></pre>
+                            </section>
+                        </template>
+                    </div>
+                </dialog>
             </div>
 
             <script>
@@ -224,11 +169,11 @@
                             });
                             this.activeTab = 'summary';
                             this.drawer_open = true;
-                            this.$nextTick(() => this.$refs.drawerPanel?.focus());
+                            this.$refs.detail.showModal();
                         },
 
                         closeDrawer() {
-                            this.drawer_open = false;
+                            this.$refs.detail.close();
                         },
 
                         hasCurrentRecord() {
@@ -442,7 +387,7 @@
                 });
             </script>
 
-        </cf_layout_default>
+        </cfmodule>
     </cffunction>
 
 </cfcomponent>

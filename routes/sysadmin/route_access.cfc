@@ -48,46 +48,57 @@
 
 
     <cffunction name="get">
-        <cf_layout_default title="Route Access">
+        <cfmodule template="/moopa/tags/moopa_layout.cfm" title="Route Access">
 
             <style>
-                .ra-node { display: flex; width: 100%; align-items: center; gap: 0.5rem; text-align: left; border: 1px solid var(--color-base-300); background: var(--color-base-100); border-radius: var(--radius-field); padding: 0.375rem 0.5625rem; cursor: pointer; color: color-mix(in oklch, var(--color-base-content) 55%, transparent); transition: box-shadow .3s, border-color .3s, background-color .3s, color .3s, opacity .3s; }
-                .ra-node:hover { border-color: color-mix(in oklch, var(--color-base-content) 45%, transparent); }
-                .ra-node:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
-                .ra-node .ra-dot { width: 0.5rem; height: 0.5rem; flex: none; border-radius: 9999px; background: var(--color-base-300); transition: background-color .3s, box-shadow .3s; }
-                .ra-node .ra-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8125rem; font-weight: 500; }
-                .ra-node .ra-label.ra-url { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.75rem; white-space: normal; overflow-wrap: break-word; }
-                .ra-node.ra-off { border-style: dashed; opacity: .8; }
-                .ra-node.ra-on { color: var(--color-base-content); border-color: color-mix(in oklch, var(--color-success) 65%, white); background: color-mix(in oklch, var(--color-success) 9%, var(--color-base-100)); box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-success) 30%, transparent), 0 0 16px -3px color-mix(in oklch, var(--color-success) 55%, transparent); }
-                .ra-node.ra-on .ra-dot { background: var(--color-success); box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-success) 22%, transparent); }
-                .ra-node.ra-pending { outline: 2px dashed var(--color-primary); outline-offset: 2px; }
-                .ra-node.ra-issue.ra-off { opacity: 1; border-color: color-mix(in oklch, var(--color-warning) 70%, var(--color-base-300)); }
+                .ra-node { display: flex; width: 100%; align-items: center; gap: 0.5rem; text-align: left; border: 1px solid var(--hairline); background: var(--surface); border-radius: var(--radius-sm); padding: 0.375rem 0.5625rem; cursor: pointer; color: var(--ink-mute); transition: box-shadow .3s, border-color .3s, background-color .3s, color .3s, opacity .3s; }
+                .ra-node:hover { border-color: var(--ink-mute-2); }
+                .ra-node:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+                .ra-node .ra-dot { width: 0.5rem; height: 0.5rem; flex: none; border-radius: 50%; background: var(--hairline-strong); transition: background-color .3s, box-shadow .3s; }
+                .ra-node .ra-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); font-weight: 500; }
+                .ra-node .ra-label.ra-url { font-family: var(--font-mono); font-size: var(--text-xs); white-space: normal; overflow-wrap: anywhere; }
+                .ra-node.ra-off { border-style: dashed; opacity: .85; }
+                .ra-node.ra-on { color: var(--ink); border-color: var(--success-border); background: var(--success-surface); box-shadow: 0 0 0 1px color-mix(in oklab, var(--success) 25%, transparent), 0 0 14px -4px color-mix(in oklab, var(--success) 55%, transparent); }
+                .ra-node.ra-on .ra-dot { background: var(--success); box-shadow: 0 0 0 3px color-mix(in oklab, var(--success) 22%, transparent); }
+                .ra-node.ra-pending { outline: 2px dashed var(--signal); outline-offset: 2px; }
+                .ra-node.ra-issue.ra-off { opacity: 1; border-color: var(--warning-border); }
                 .ra-node.ra-locked, .ra-node.ra-fixed { cursor: default; border-style: solid; }
-                .ra-node.ra-selected { box-shadow: 0 0 0 2px var(--color-base-content); }
-                .ra-node.ra-on.ra-selected { box-shadow: 0 0 0 2px var(--color-base-content), 0 0 16px -3px color-mix(in oklch, var(--color-success) 55%, transparent); }
+                .ra-node.ra-selected { box-shadow: 0 0 0 2px var(--ink); }
+                .ra-node.ra-on.ra-selected { box-shadow: 0 0 0 2px var(--ink), 0 0 14px -4px color-mix(in oklab, var(--success) 55%, transparent); }
                 .ra-node.ra-dim { opacity: .22; }
-                .ra-node.ra-peek { opacity: 1; outline: 2px solid var(--color-primary); outline-offset: 2px; animation: ra-pulse 1.1s ease-out infinite; }
-                @keyframes ra-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--color-primary) 45%, transparent); } 100% { box-shadow: 0 0 0 12px transparent; } }
+                .ra-node.ra-peek { opacity: 1; outline: 2px solid var(--signal); outline-offset: 2px; animation: ra-pulse 1.1s ease-out infinite; }
+                @keyframes ra-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--signal) 45%, transparent); } 100% { box-shadow: 0 0 0 12px transparent; } }
                 @media (prefers-reduced-motion: reduce) { .ra-node.ra-peek { animation: none; } }
                 .ra-child { position: relative; }
-                .ra-child::before { content: ""; position: absolute; top: -0.25rem; left: -0.6875rem; width: 0.5625rem; height: 1.125rem; border-left: 1.5px solid var(--color-base-300); border-bottom: 1.5px solid var(--color-base-300); border-bottom-left-radius: 0.375rem; transition: border-color .3s; }
-                .ra-child.ra-live::before { border-color: var(--color-success); }
-                .ra-child.ra-dead::before { border-color: var(--color-warning); border-style: dashed; }
+                .ra-child::before { content: ""; position: absolute; top: -0.25rem; left: -0.6875rem; width: 0.5625rem; height: 1.125rem; border-left: 1.5px solid var(--hairline-strong); border-bottom: 1.5px solid var(--hairline-strong); border-bottom-left-radius: 0.375rem; transition: border-color .3s; }
+                .ra-child.ra-live::before { border-color: var(--success); }
+                .ra-child.ra-dead::before { border-color: var(--warning); border-style: dashed; }
+                .ra-section { padding: var(--sp-3); }
+                .ra-section.is-complete { border-color: var(--success-border); }
+                .ra-list { display: flex; flex-direction: column; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+                .ra-lane { padding: var(--sp-3); border: 1px dashed var(--hairline-strong); border-radius: var(--radius-lg); }
+                .ra-meter { height: 3px; margin: var(--sp-2) 0 var(--sp-3); overflow: hidden; border-radius: 2px; background: var(--hairline); }
+                .ra-meter > div { height: 100%; background: var(--success); transition: width .3s; }
+                .ra-ring { display: grid; place-items: center; flex: 0 0 auto; width: 3.25rem; height: 3.25rem; border-radius: 50%; }
+                .ra-ring > div { width: 2.5rem; height: 2.5rem; border-radius: 50%; background: var(--surface); }
+                .ra-note { padding: 0.625rem 0.75rem; border-radius: var(--radius-md); background: var(--canvas-soft); color: var(--ink-secondary); font-size: var(--text-xs); line-height: 1.5; }
+                .ra-note-warn { background: var(--warning-surface); color: var(--warning-text); }
+                .ra-state { display: flex; align-items: center; gap: var(--sp-2); padding: 0.625rem 0.75rem; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 500; background: var(--canvas-soft); color: var(--ink-secondary); }
+                .ra-state.is-on { background: var(--success-surface); color: var(--success-text); }
+                .ra-tray { position: fixed; left: 50%; bottom: 1.25rem; z-index: var(--z-bar); transform: translateX(-50%); display: flex; align-items: center; gap: var(--sp-3); padding: 0.5rem 0.5rem 0.5rem 1.25rem; border-radius: var(--radius-lg); background: var(--ink); color: var(--surface); box-shadow: var(--shadow-2); font-size: var(--text-sm); }
+                .ra-tray .btn-ghost { color: var(--surface); }
+                .ra-tray .btn-ghost:hover { background: color-mix(in oklab, var(--surface) 12%, transparent); color: var(--surface); }
+                .ra-menus { display: grid; gap: 0.875rem; grid-template-columns: repeat(auto-fill, minmax(min(17rem, 100%), 1fr)); }
+                .ra-picker { position: absolute; left: 0; top: calc(100% + 0.5rem); z-index: var(--z-popover); width: 20rem; padding: var(--sp-2); border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-2); }
             </style>
 
-            <div x-data="route_access" x-cloak class="flex flex-col gap-4 lg:gap-5 pb-24">
+            <div x-data="route_access" x-cloak class="page" style="padding-bottom: 5rem">
 
-                <!-- Header -->
-                <div class="flex items-center gap-3">
-                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
-                        <i class="fa-solid fa-sitemap text-base"></i>
-                    </div>
-                    <div class="min-w-0">
-                        <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-                            <h1 class="text-[1.625rem] font-semibold leading-none tracking-[-0.03em]">Route Access</h1>
-                            <span class="text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-base-content/42" x-text="summary()"></span>
-                        </div>
-                        <p class="mt-1 max-w-[70ch] text-sm leading-5 text-base-content/62">
+                <div class="page-header">
+                    <div>
+                        <div class="eyebrow" x-text="summary()"></div>
+                        <h1>Route Access</h1>
+                        <p class="page-lede">
                             Every route, laid out the way people reach it: from a menu, through links on those pages, or not at all.
                             <span x-show="map.can_apply">Pick a role, click routes to stage grants and revokes, then review and apply them together.</span>
                             <span x-show="!loading && !map.can_apply">Pick a role to see what it can open. Only sysadmins can change access.</span>
@@ -95,157 +106,140 @@
                     </div>
                 </div>
 
-                <div x-show="loading" class="flex justify-center py-16">
-                    <span class="loading loading-spinner loading-md"></span>
-                </div>
+                <div class="card empty" x-show="loading"><i class="fa-solid fa-spinner fa-spin"></i>Loading the map…</div>
 
                 <template x-if="!loading && map.roles.length === 0">
-                    <div class="rounded-box border border-base-300 bg-base-100 p-10 text-center">
-                        <i class="fa-solid fa-shield-halved mb-3 block text-3xl text-base-content/30"></i>
-                        <p class="font-medium">No roles yet</p>
-                        <p class="mt-1 text-sm text-base-content/60">Create a role on the <a class="link" href="/sysadmin/roles">Roles</a> page, then come back to give it access.</p>
+                    <div class="card empty">
+                        <i class="fa-solid fa-shield-halved"></i>
+                        <p class="strong secondary">No roles yet</p>
+                        <p class="small">Create one on the <a href="/sysadmin/roles">Roles</a> page, then come back to give it access.</p>
                     </div>
                 </template>
 
                 <template x-if="!loading && map.roles.length > 0">
-                    <div class="flex flex-col gap-4 lg:gap-5">
+                    <div class="stack" style="--stack-gap: var(--card-gap)">
 
-                        <!-- Role picker -->
-                        <div class="flex flex-wrap items-center gap-3">
-                            <div class="relative" @keydown.escape="rolePickerOpen = false" @click.outside="rolePickerOpen = false">
-                                <button type="button" class="btn btn-neutral btn-sm gap-2" @click="openRolePicker()" aria-haspopup="listbox" :aria-expanded="rolePickerOpen">
-                                    <i class="fa-solid fa-shield-halved text-xs"></i>
+                        <div class="cluster">
+                            <div style="position: relative" @keydown.escape="rolePickerOpen = false" @click.outside="rolePickerOpen = false">
+                                <button type="button" class="btn btn-sm" style="background: var(--ink); border-color: var(--ink); color: var(--surface)" @click="openRolePicker()" aria-haspopup="listbox" :aria-expanded="rolePickerOpen">
+                                    <i class="fa-solid fa-shield-halved"></i>
                                     <span x-text="currentRole()?.name"></span>
-                                    <span class="badge badge-sm badge-ghost" x-text="currentRole()?.profile_count ?? 0"></span>
-                                    <span class="badge badge-sm badge-primary" x-show="pendingCount(roleId) > 0" x-text="`${pendingCount(roleId)} staged`"></span>
-                                    <i class="fa-solid fa-chevron-down text-[0.625rem] opacity-70"></i>
+                                    <span class="badge" x-text="currentRole()?.profile_count ?? 0"></span>
+                                    <span class="badge badge-signal" x-show="pendingCount(roleId) > 0" x-text="`${pendingCount(roleId)} staged`"></span>
+                                    <i class="fa-solid fa-chevron-down tiny"></i>
                                 </button>
-                                <div class="absolute left-0 z-30 mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg" x-show="rolePickerOpen" x-transition.origin.top.left>
-                                    <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2">
-                                        <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
-                                        <input type="search" placeholder="Find a role" aria-label="Find a role" x-ref="roleSearch" x-model="roleQuery" @keydown.enter.prevent="filteredRoles().length && chooseRole(filteredRoles()[0].id)" />
-                                    </label>
-                                    <ul class="mt-2 flex max-h-80 flex-col gap-0.5 overflow-auto" role="listbox" aria-label="Roles">
+                                <div class="ra-picker" x-show="rolePickerOpen" x-transition.opacity>
+                                    <div class="input-icon">
+                                        <i class="fa-solid fa-magnifying-glass"></i>
+                                        <input class="input input-sm" type="search" placeholder="Find a role" aria-label="Find a role" x-ref="roleSearch" x-model="roleQuery" @keydown.enter.prevent="filteredRoles().length && chooseRole(filteredRoles()[0].id)" />
+                                    </div>
+                                    <ul class="ra-list mt-2" style="max-height: 20rem; overflow: auto" role="listbox" aria-label="Roles">
                                         <template x-for="role in filteredRoles()" :key="role.id">
                                             <li>
-                                                <button type="button" role="option" :aria-selected="role.id === roleId" class="flex w-full items-center gap-2 rounded-field px-2.5 py-1.5 text-left text-sm hover:bg-base-200" :class="role.id === roleId ? 'bg-base-200 font-medium' : ''" @click="chooseRole(role.id)">
-                                                    <span class="min-w-0 flex-1 truncate" x-text="role.name"></span>
-                                                    <span class="badge badge-sm badge-primary" x-show="pendingCount(role.id) > 0" x-text="`${pendingCount(role.id)} staged`"></span>
-                                                    <span class="text-xs tabular-nums text-base-content/50" x-text="`${role.profile_count} ${role.profile_count === 1 ? 'person' : 'people'}`"></span>
+                                                <button type="button" role="option" :aria-selected="role.id === roleId" class="dropdown-item" :class="role.id === roleId ? 'strong' : ''" :style="role.id === roleId ? 'background: var(--canvas-soft); color: var(--ink)' : ''" @click="chooseRole(role.id)">
+                                                    <span class="grow truncate" x-text="role.name"></span>
+                                                    <span class="badge badge-signal" x-show="pendingCount(role.id) > 0" x-text="`${pendingCount(role.id)} staged`"></span>
+                                                    <span class="tiny muted" x-text="`${role.profile_count} ${role.profile_count === 1 ? 'person' : 'people'}`"></span>
                                                 </button>
                                             </li>
                                         </template>
-                                        <li class="px-2.5 py-2 text-sm text-base-content/55" x-show="filteredRoles().length === 0">No role matches.</li>
+                                        <li class="small muted" style="padding: var(--sp-2) var(--sp-3)" x-show="filteredRoles().length === 0">No role matches.</li>
                                     </ul>
                                 </div>
                             </div>
-                            <span class="text-xs text-base-content/55" x-show="otherRolesStaged().length > 0" x-text="`Staged changes in ${otherRolesStaged().length} other role${otherRolesStaged().length === 1 ? '' : 's'}: ${otherRolesStaged().map(role => role.name).join(', ')}`"></span>
+                            <span class="tiny muted" x-show="otherRolesStaged().length > 0" x-text="`Staged changes in ${otherRolesStaged().length} other role${otherRolesStaged().length === 1 ? '' : 's'}: ${otherRolesStaged().map(role => role.name).join(', ')}`"></span>
                         </div>
 
-                        <!-- Problems -->
                         <template x-if="map.problems.length > 0">
-                            <div role="alert" class="alert alert-warning items-start">
-                                <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
-                                <div class="min-w-0">
-                                    <p class="font-medium">The map's sources name routes this app doesn't serve</p>
-                                    <ul class="mt-1 list-disc pl-5 text-sm">
-                                        <template x-for="problem in map.problems" :key="problem.message">
-                                            <li x-text="problem.message"></li>
-                                        </template>
+                            <div role="alert" class="alert alert-warning">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                                <div class="min0">
+                                    <p class="strong">The map's sources name routes this app doesn't serve</p>
+                                    <ul style="margin: var(--sp-1) 0 0; padding-left: 1.25rem">
+                                        <template x-for="problem in map.problems" :key="problem.message"><li x-text="problem.message"></li></template>
                                     </ul>
                                 </div>
                             </div>
                         </template>
 
-                        <!-- Stats -->
-                        <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
-                            <div class="flex items-center gap-4 rounded-box border border-base-300 bg-base-100 px-5 py-4">
-                                <div class="grid h-13 w-13 shrink-0 place-items-center rounded-full" :style="`background: conic-gradient(var(--color-success) ${grantedPercent()}%, var(--color-base-300) 0)`" role="progressbar" aria-label="Share of role-gated routes this role can open" :aria-valuenow="grantedPercent()" aria-valuemin="0" aria-valuemax="100">
-                                    <div class="h-10 w-10 rounded-full bg-base-100"></div>
-                                </div>
+                        <div class="auto-grid" style="--auto-min: 14rem">
+                            <div class="card stat row" style="gap: var(--sp-4)">
+                                <div class="ra-ring" :style="`background: conic-gradient(var(--success) ${grantedPercent()}%, var(--hairline) 0)`" role="progressbar" aria-label="Share of role-gated routes this role can open" :aria-valuenow="grantedPercent()" aria-valuemin="0" aria-valuemax="100"><div></div></div>
                                 <div>
-                                    <p class="text-[1.75rem] font-bold leading-none tracking-[-0.04em]" x-text="grantedCount()"></p>
-                                    <p class="mt-1 text-xs text-base-content/55" x-text="`of ${gatedIds.length} role-gated routes`"></p>
+                                    <div class="stat-value" x-text="grantedCount()"></div>
+                                    <div class="stat-sub" x-text="`of ${gatedIds.length} role-gated routes`"></div>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-3 rounded-box border border-base-300 bg-base-100 px-5 py-4">
-                                <div class="min-w-0">
-                                    <p class="text-[1.75rem] font-bold leading-none tracking-[-0.04em]" x-text="currentRole()?.profile_count ?? 0"></p>
-                                    <p class="mt-1 text-xs text-base-content/55" x-text="(currentRole()?.profile_count ?? 0) === 1 ? 'person holds this role' : 'people hold this role'"></p>
+                            <div class="card stat row">
+                                <div class="grow">
+                                    <div class="stat-value" x-text="currentRole()?.profile_count ?? 0"></div>
+                                    <div class="stat-sub" x-text="(currentRole()?.profile_count ?? 0) === 1 ? 'person holds this role' : 'people hold this role'"></div>
                                 </div>
-                                <button type="button" class="btn btn-xs btn-outline ml-auto shrink-0" x-show="(currentRole()?.profile_count ?? 0) > 0" @click="openPeople()">View people</button>
+                                <button type="button" class="btn btn-xs" x-show="(currentRole()?.profile_count ?? 0) > 0" @click="openPeople()">View people</button>
                             </div>
-                            <div class="flex items-center gap-3 rounded-box border border-base-300 bg-base-100 px-5 py-4">
-                                <div class="min-w-0">
-                                    <p class="text-[1.75rem] font-bold leading-none tracking-[-0.04em]" :class="deadEndIds().length ? 'text-warning' : ''" x-text="deadEndIds().length"></p>
-                                    <p class="mt-1 text-xs text-base-content/55">links that dead-end for this role</p>
+                            <div class="card stat row">
+                                <div class="grow">
+                                    <div class="stat-value" :class="deadEndIds().length ? 'text-warning' : ''" x-text="deadEndIds().length"></div>
+                                    <div class="stat-sub">links that dead-end for this role</div>
                                 </div>
-                                <button type="button" class="btn btn-xs btn-outline ml-auto shrink-0" x-show="map.can_apply && stageableDeadEnds().length > 0" @click="stageDeadEnds()">Stage linked pages</button>
+                                <button type="button" class="btn btn-xs" x-show="map.can_apply && stageableDeadEnds().length > 0" @click="stageDeadEnds()">Stage linked pages</button>
                             </div>
-                            <div class="rounded-box border border-base-300 bg-base-100 px-5 py-4">
-                                <p class="text-[1.75rem] font-bold leading-none tracking-[-0.04em]" x-text="map.ghosts.length"></p>
-                                <p class="mt-1 text-xs text-base-content/55">registry rows with no route file</p>
+                            <div class="card stat">
+                                <div class="stat-value" x-text="map.ghosts.length"></div>
+                                <div class="stat-sub">registry rows with no route file</div>
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
-                            <div class="flex min-w-0 flex-col gap-4">
+                        <div class="split split-end" style="--split-aside: 20rem">
+                            <div class="stack min0">
 
-                                <!-- Toolbar -->
-                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-                                    <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-80">
-                                        <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
-                                        <input type="search" placeholder="Find a route" aria-label="Find a route" x-model="search" />
-                                    </label>
-                                    <label class="flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap text-sm text-base-content/70">
-                                        <input type="checkbox" class="toggle toggle-sm" x-model="issuesOnly" />
-                                        Dead ends only
-                                    </label>
-                                    <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-base-content/55 sm:ml-auto">
-                                        <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-success"></span>Can open</span>
-                                        <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-base-300"></span>Can't open</span>
-                                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-circle-exclamation text-warning"></i>Dead end</span>
-                                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-lock"></i>Endpoint grants</span>
-                                        <span class="flex items-center gap-1.5" x-show="map.can_apply"><span class="h-2.5 w-2.5 rounded-sm border-2 border-dashed border-primary"></span>Staged</span>
+                                <div class="cluster">
+                                    <div class="input-icon" style="width: 18rem; max-width: 100%">
+                                        <i class="fa-solid fa-magnifying-glass"></i>
+                                        <input class="input input-sm" type="search" placeholder="Find a route" aria-label="Find a route" x-model="search" />
+                                    </div>
+                                    <label class="option"><input type="checkbox" class="switch" x-model="issuesOnly" /> Dead ends only</label>
+                                    <div class="cluster tiny muted ml-auto" style="--cluster-gap: var(--sp-1) var(--sp-4)">
+                                        <span class="row" style="gap: var(--sp-1)"><span class="dot dot-success"></span>Can open</span>
+                                        <span class="row" style="gap: var(--sp-1)"><span class="dot"></span>Can't open</span>
+                                        <span class="row" style="gap: var(--sp-1)"><i class="fa-solid fa-circle-exclamation text-warning"></i>Dead end</span>
+                                        <span class="row" style="gap: var(--sp-1)"><i class="fa-solid fa-lock"></i>Endpoint grants</span>
+                                        <span class="row" style="gap: var(--sp-1)" x-show="map.can_apply"><span style="width: 0.625rem; height: 0.625rem; border: 2px dashed var(--signal); border-radius: 2px"></span>Staged</span>
                                     </div>
                                 </div>
 
-                                <!-- Top-level links -->
-                                <div class="flex flex-wrap justify-center gap-2" x-show="topLinkIds.length > 0">
+                                <div class="cluster" style="justify-content: center" x-show="topLinkIds.length > 0">
                                     <template x-for="row in topRows" :key="row.key">
-                                        <div class="w-56">
+                                        <div style="width: 14rem">
                                         <button type="button" :class="nodeClasses(row.id)" :data-route-id="row.id" :title="routesById[row.id].url" :aria-pressed="map.can_apply && isToggleable(row.id) ? String(has(row.id)) : null">
                                             <span class="ra-dot"></span>
                                             <span class="ra-label" :class="menuTitles(row.id).length ? '' : 'ra-url'" x-text="nodeLabel(row.id)"></span>
-                                            <i class="fa-solid fa-lock text-xs" x-show="isLocked(row.id)" title="Endpoint-level grants"></i>
+                                            <i class="fa-solid fa-lock tiny" x-show="isLocked(row.id)" title="Endpoint-level grants"></i>
                                             <i class="fa-solid fa-circle-exclamation text-warning" x-show="deadEnd(row.id)" title="Dead end for this role"></i>
-                                            <i class="fa-solid fa-circle-question text-xs text-base-content/40" x-show="!routeLinked(row.id)" title="Not in any route_links.json"></i>
+                                            <i class="fa-solid fa-circle-question tiny muted" x-show="!routeLinked(row.id)" title="Not in any route_links.json"></i>
                                         </button>
                                         </div>
                                     </template>
                                 </div>
 
-                                <!-- Menus -->
-                                <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2 2xl:grid-cols-3">
+                                <div class="ra-menus">
                                     <template x-for="section in sections" :key="section.key">
-                                        <section class="rounded-box border bg-base-100 p-3" :class="sectionGranted(section) === section.ids.length ? 'border-success/50' : 'border-base-300'">
-                                            <div class="mb-2 flex items-center gap-2 px-0.5">
-                                                <h2 class="text-sm font-semibold" x-text="section.title"></h2>
-                                                <span class="ml-auto text-xs tabular-nums text-base-content/50" x-text="`${sectionGranted(section)}/${section.ids.length}`"></span>
+                                        <section class="card ra-section" :class="sectionGranted(section) === section.ids.length ? 'is-complete' : ''">
+                                            <div class="row">
+                                                <h2 class="strong small" x-text="section.title"></h2>
+                                                <span class="ml-auto tiny muted" x-text="`${sectionGranted(section)}/${section.ids.length}`"></span>
                                                 <button type="button" class="btn btn-ghost btn-xs" x-show="map.can_apply && sectionToggleable(section).length > 0" @click="stageSection(section)" x-text="sectionToggleable(section).every(id => has(id)) ? 'Revoke all' : 'Grant all'"></button>
                                             </div>
-                                            <div class="mx-0.5 mb-2.5 h-[3px] overflow-hidden rounded bg-base-300">
-                                                <div class="h-full bg-success transition-all duration-300" :style="`width:${section.ids.length ? sectionGranted(section) / section.ids.length * 100 : 0}%`"></div>
-                                            </div>
-                                            <ul class="flex flex-col gap-1">
+                                            <div class="ra-meter"><div :style="`width:${section.ids.length ? sectionGranted(section) / section.ids.length * 100 : 0}%`"></div></div>
+                                            <ul class="ra-list">
                                                 <template x-for="row in section.rows" :key="row.key">
                                                     <li :class="row.depth ? 'ra-child ' + connectorClass(row) : ''" :style="`margin-left:${row.depth * 1.25}rem`">
                                         <button type="button" :class="nodeClasses(row.id)" :data-route-id="row.id" :title="routesById[row.id].url" :aria-pressed="map.can_apply && isToggleable(row.id) ? String(has(row.id)) : null">
                                             <span class="ra-dot"></span>
                                             <span class="ra-label" :class="menuTitles(row.id).length ? '' : 'ra-url'" x-text="nodeLabel(row.id)"></span>
-                                            <i class="fa-solid fa-lock text-xs" x-show="isLocked(row.id)" title="Endpoint-level grants"></i>
+                                            <i class="fa-solid fa-lock tiny" x-show="isLocked(row.id)" title="Endpoint-level grants"></i>
                                             <i class="fa-solid fa-circle-exclamation text-warning" x-show="deadEnd(row.id)" title="Dead end for this role"></i>
-                                            <i class="fa-solid fa-circle-question text-xs text-base-content/40" x-show="!routeLinked(row.id)" title="Not in any route_links.json"></i>
+                                            <i class="fa-solid fa-circle-question tiny muted" x-show="!routeLinked(row.id)" title="Not in any route_links.json"></i>
                                         </button>
                                                     </li>
                                                 </template>
@@ -254,145 +248,130 @@
                                     </template>
                                 </div>
 
-                                <!-- Lanes -->
-                                <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
-                                    <div class="rounded-box border border-dashed border-base-300 p-3">
-                                        <h3 class="flex items-center gap-2 text-sm font-semibold">Orphans <span class="badge badge-sm badge-ghost" x-text="orphanIds.length"></span></h3>
-                                        <p class="mb-2.5 text-xs text-base-content/55">Role-gated routes that no menu item, or page reached from one, links to. Reachable by URL only.</p>
-                                        <div class="flex flex-col gap-1" x-show="orphanIds.length > 0">
+                                <div class="auto-grid" style="--auto-min: 18rem; gap: 0.875rem">
+                                    <div class="ra-lane">
+                                        <h3 class="row strong small">Orphans <span class="badge" x-text="orphanIds.length"></span></h3>
+                                        <p class="help" style="margin: var(--sp-1) 0 var(--sp-3)">Role-gated routes that no menu item, or page reached from one, links to. Reachable by URL only.</p>
+                                        <div class="ra-list" x-show="orphanIds.length > 0">
                                             <template x-for="row in orphanRows" :key="row.key">
                                         <button type="button" :class="nodeClasses(row.id)" :data-route-id="row.id" :title="routesById[row.id].url" :aria-pressed="map.can_apply && isToggleable(row.id) ? String(has(row.id)) : null">
                                             <span class="ra-dot"></span>
                                             <span class="ra-label" :class="menuTitles(row.id).length ? '' : 'ra-url'" x-text="nodeLabel(row.id)"></span>
-                                            <i class="fa-solid fa-lock text-xs" x-show="isLocked(row.id)" title="Endpoint-level grants"></i>
+                                            <i class="fa-solid fa-lock tiny" x-show="isLocked(row.id)" title="Endpoint-level grants"></i>
                                             <i class="fa-solid fa-circle-exclamation text-warning" x-show="deadEnd(row.id)" title="Dead end for this role"></i>
-                                            <i class="fa-solid fa-circle-question text-xs text-base-content/40" x-show="!routeLinked(row.id)" title="Not in any route_links.json"></i>
+                                            <i class="fa-solid fa-circle-question tiny muted" x-show="!routeLinked(row.id)" title="Not in any route_links.json"></i>
                                         </button>
                                             </template>
                                         </div>
-                                        <p class="rounded-field bg-base-200 px-3 py-2 text-xs text-base-content/55" x-show="orphanIds.length === 0">None. Every role-gated route is reachable from a menu.</p>
+                                        <p class="ra-note" x-show="orphanIds.length === 0">None. Every role-gated route is reachable from a menu.</p>
                                     </div>
-                                    <div class="rounded-box border border-dashed border-base-300 p-3">
-                                        <h3 class="flex items-center gap-2 text-sm font-semibold">Unmapped <span class="badge badge-sm" :class="unmappedIds.length ? 'badge-warning' : 'badge-ghost'" x-text="unmappedIds.length"></span></h3>
-                                        <p class="mb-2.5 text-xs text-base-content/55">Routes missing from every route_links.json, so the pages they link to are unknown and may show here as orphans.</p>
-                                        <div class="flex flex-wrap gap-1.5" x-show="unmappedIds.length > 0">
+                                    <div class="ra-lane">
+                                        <h3 class="row strong small">Unmapped <span class="badge" :class="unmappedIds.length ? 'badge-warning' : ''" x-text="unmappedIds.length"></span></h3>
+                                        <p class="help" style="margin: var(--sp-1) 0 var(--sp-3)">Routes missing from every route_links.json, so the pages they link to are unknown and may show here as orphans.</p>
+                                        <div class="cluster" style="--cluster-gap: var(--sp-1)" x-show="unmappedIds.length > 0">
                                             <template x-for="id in unmappedIds" :key="id">
-                                                <button type="button" class="badge badge-outline font-mono text-[0.6875rem]" @click="select(id)" x-text="routesById[id].url"></button>
+                                                <button type="button" class="badge badge-outline mono" @click="select(id)" x-text="routesById[id].url"></button>
                                             </template>
                                         </div>
-                                        <p class="rounded-field bg-base-200 px-3 py-2 text-xs text-base-content/55" x-show="unmappedIds.length === 0">None. Every route's links are recorded.</p>
+                                        <p class="ra-note" x-show="unmappedIds.length === 0">None. Every route's links are recorded.</p>
                                     </div>
-                                    <div class="rounded-box border border-dashed border-base-300 p-3">
-                                        <h3 class="flex items-center gap-2 text-sm font-semibold">Outside role security <span class="badge badge-sm badge-ghost" x-text="outsideIds.length"></span></h3>
-                                        <p class="mb-2.5 text-xs text-base-content/55">Their <code>open_to</code> isn't <code>security</code>, so roles don't apply. It is set in the route file.</p>
-                                        <div class="flex flex-wrap gap-1.5">
+                                    <div class="ra-lane">
+                                        <h3 class="row strong small">Outside role security <span class="badge" x-text="outsideIds.length"></span></h3>
+                                        <p class="help" style="margin: var(--sp-1) 0 var(--sp-3)">Their <code class="code-inline">open_to</code> isn't <code class="code-inline">security</code>, so roles don't apply. It is set in the route file.</p>
+                                        <div class="cluster" style="--cluster-gap: var(--sp-1)">
                                             <template x-for="id in outsideIds" :key="id">
-                                                <button type="button" class="badge badge-ghost gap-1.5 font-mono text-[0.6875rem]" @click="select(id)">
+                                                <button type="button" class="badge mono" @click="select(id)">
                                                     <span x-text="routesById[id].url"></span>
-                                                    <span class="font-sans uppercase tracking-wide text-base-content/50" x-text="routesById[id].open_to"></span>
+                                                    <span class="badge-upper muted" style="font-family: var(--font-sans)" x-text="routesById[id].open_to"></span>
                                                 </button>
                                             </template>
                                         </div>
                                     </div>
-                                    <div class="rounded-box border border-dashed border-base-300 p-3">
-                                        <h3 class="flex items-center gap-2 text-sm font-semibold">Registry rows with no route file <span class="badge badge-sm" :class="map.ghosts.length ? 'badge-warning' : 'badge-ghost'" x-text="map.ghosts.length"></span></h3>
-                                        <p class="mb-2.5 text-xs text-base-content/55">Left in <code>moo_route</code> after their file was deleted or moved. Highlighted rows still carry a grant for this role.</p>
-                                        <div class="flex flex-wrap gap-1.5">
+                                    <div class="ra-lane">
+                                        <h3 class="row strong small">Registry rows with no route file <span class="badge" :class="map.ghosts.length ? 'badge-warning' : ''" x-text="map.ghosts.length"></span></h3>
+                                        <p class="help" style="margin: var(--sp-1) 0 var(--sp-3)">Left in <code class="code-inline">moo_route</code> after their file was deleted or moved. Highlighted rows still carry a grant for this role.</p>
+                                        <div class="cluster" style="--cluster-gap: var(--sp-1)">
                                             <template x-for="ghost in map.ghosts" :key="ghost.id">
-                                                <span class="badge font-mono text-[0.6875rem]" :class="baseHas(ghost.id) ? 'badge-warning' : 'badge-ghost'" :title="baseHas(ghost.id) ? `Still granted to ${currentRole()?.name}` : ''" x-text="ghost.url"></span>
+                                                <span class="badge mono" :class="baseHas(ghost.id) ? 'badge-warning' : ''" :title="baseHas(ghost.id) ? `Still granted to ${currentRole()?.name}` : ''" x-text="ghost.url"></span>
                                             </template>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Inspector -->
-                            <aside class="rounded-box border border-base-300 bg-base-100 p-5 xl:sticky xl:top-4" aria-live="polite">
+                            <aside class="card card-body" aria-live="polite">
                                 <template x-if="!selectedId">
-                                    <p class="text-sm text-base-content/55">Hover or click a route to see who reaches it and what it links to.</p>
+                                    <p class="small muted">Hover or click a route to see who reaches it and what it links to.</p>
                                 </template>
                                 <template x-if="selectedId">
-                                    <div>
-                                        <p class="text-[0.6875rem] uppercase tracking-[0.11em] text-base-content/50" x-text="kindLabel(selectedId)"></p>
-                                        <h3 class="mt-1.5 text-lg font-semibold leading-tight tracking-[-0.02em]" x-text="title(selectedId)"></h3>
-                                        <code class="break-all text-xs text-base-content/60" x-text="routesById[selectedId].url"></code>
+                                    <div class="stack stack-sm">
+                                        <div>
+                                            <div class="eyebrow" x-text="kindLabel(selectedId)"></div>
+                                            <h3 class="card-title" style="margin-top: var(--sp-1)" x-text="title(selectedId)"></h3>
+                                            <code class="mono muted tiny break" x-text="routesById[selectedId].url"></code>
+                                        </div>
 
-                                        <div class="mt-3.5 flex items-center gap-2 rounded-field px-3 py-2.5 text-sm font-medium" :class="has(selectedId) ? 'bg-success/10 text-success' : 'bg-base-200 text-base-content/70'">
-                                            <span class="h-2 w-2 rounded-full" :class="has(selectedId) ? 'bg-success' : 'bg-base-content/40'"></span>
+                                        <div class="ra-state" :class="has(selectedId) ? 'is-on' : ''">
+                                            <span class="dot" :class="has(selectedId) ? 'dot-success' : ''"></span>
                                             <span x-text="stateLabel(selectedId)"></span>
                                         </div>
 
                                         <template x-if="isLocked(selectedId)">
-                                            <div class="mt-2 rounded-field bg-base-200 px-3 py-2.5 text-xs leading-5 text-base-content/70">
-                                                <i class="fa-solid fa-lock mr-1"></i>This route has endpoint-level grants, so its access is managed endpoint by endpoint on its route security page.
-                                            </div>
+                                            <div class="ra-note"><i class="fa-solid fa-lock"></i> This route has endpoint-level grants, so its access is managed endpoint by endpoint on its route security page.</div>
                                         </template>
                                         <template x-if="!isGated(selectedId)">
-                                            <div class="mt-2 rounded-field bg-base-200 px-3 py-2.5 text-xs leading-5 text-base-content/70">
-                                                Open to <strong x-text="routesById[selectedId].open_to"></strong>: roles don't apply. Change <code>open_to</code> in the route file.
-                                            </div>
+                                            <div class="ra-note">Open to <strong x-text="routesById[selectedId].open_to"></strong>: roles don't apply. Change <code class="code-inline">open_to</code> in the route file.</div>
                                         </template>
                                         <template x-if="deadEnd(selectedId)">
-                                            <div class="mt-2 rounded-field bg-warning/15 px-3 py-2.5 text-xs leading-5">
-                                                <strong>Dead end.</strong> <span x-text="`${currentRole()?.name} can open ${openableSources(selectedId).map(id => title(id)).join(', ')}, which links here, but clicking through shows an access error.`"></span>
-                                            </div>
+                                            <div class="ra-note ra-note-warn"><strong>Dead end.</strong> <span x-text="`${currentRole()?.name} can open ${openableSources(selectedId).map(id => title(id)).join(', ')}, which links here, but clicking through shows an access error.`"></span></div>
                                         </template>
                                         <template x-if="has(selectedId) && blockedTargets(selectedId).length > 0">
-                                            <div class="mt-2 rounded-field bg-warning/15 px-3 py-2.5 text-xs leading-5" x-text="`${blockedTargets(selectedId).length} page${blockedTargets(selectedId).length === 1 ? '' : 's'} this links to ${blockedTargets(selectedId).length === 1 ? 'is' : 'are'} closed to ${currentRole()?.name}.`"></div>
+                                            <div class="ra-note ra-note-warn" x-text="`${blockedTargets(selectedId).length} page${blockedTargets(selectedId).length === 1 ? '' : 's'} this links to ${blockedTargets(selectedId).length === 1 ? 'is' : 'are'} closed to ${currentRole()?.name}.`"></div>
                                         </template>
                                         <template x-if="!routeLinked(selectedId)">
-                                            <div class="mt-2 rounded-field bg-base-200 px-3 py-2.5 text-xs leading-5 text-base-content/70">Not in any route_links.json, so the pages it links to are unknown.</div>
+                                            <div class="ra-note">Not in any route_links.json, so the pages it links to are unknown.</div>
                                         </template>
 
-                                        <div class="mt-3 flex flex-col gap-2">
+                                        <div class="stack stack-sm">
                                             <button type="button" class="btn btn-primary btn-sm" x-show="map.can_apply && isToggleable(selectedId)" @click="toggle(selectedId)" x-text="toggleLabel(selectedId)"></button>
-                                            <button type="button" class="btn btn-outline btn-sm" x-show="map.can_apply && isToggleable(selectedId) && has(selectedId) && stageableTargets(selectedId).length > 0" @click="stageGrants(stageableTargets(selectedId))" x-text="`Stage ${stageableTargets(selectedId).length} linked page${stageableTargets(selectedId).length === 1 ? '' : 's'} too`"></button>
-                                            <a class="btn btn-ghost btn-sm" :href="`/sysadmin/routes/${selectedId}`">
-                                                <i class="fa-solid fa-shield-halved"></i>
-                                                Route security
-                                            </a>
+                                            <button type="button" class="btn btn-sm" x-show="map.can_apply && isToggleable(selectedId) && has(selectedId) && stageableTargets(selectedId).length > 0" @click="stageGrants(stageableTargets(selectedId))" x-text="`Stage ${stageableTargets(selectedId).length} linked page${stageableTargets(selectedId).length === 1 ? '' : 's'} too`"></button>
+                                            <a class="btn btn-ghost btn-sm" :href="`/sysadmin/routes/${selectedId}`"><i class="fa-solid fa-shield-halved"></i> Route security</a>
                                         </div>
 
-                                        <dl class="mt-4 flex flex-col gap-3.5 text-sm">
+                                        <div class="stack stack-sm small">
                                             <div>
-                                                <dt class="mb-1 text-[0.6875rem] uppercase tracking-[0.09em] text-base-content/50">Reached from</dt>
-                                                <dd>
-                                                    <p class="text-xs text-base-content/70" x-show="menuTitles(selectedId).length > 0" x-text="`Menu: ${menuTitles(selectedId).join(', ')}`"></p>
-                                                    <ul class="mt-1 flex flex-col gap-1">
-                                                        <template x-for="id in inbound[selectedId] || []" :key="id">
-                                                            <li class="flex items-center gap-1.5 text-xs">
-                                                                <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="openable(id) ? 'bg-success' : 'bg-base-300'"></span>
-                                                                <button type="button" class="link link-hover truncate text-left" @click="select(id)" @mouseenter="peek(id)" @mouseleave="peek(null)" @focus="peek(id)" @blur="peek(null)" x-text="title(id)"></button>
-                                                            </li>
-                                                        </template>
-                                                    </ul>
-                                                    <p class="text-xs text-base-content/50" x-show="menuTitles(selectedId).length === 0 && !(inbound[selectedId] || []).length">Nothing links here.</p>
-                                                </dd>
+                                                <div class="eyebrow">Reached from</div>
+                                                <p class="tiny secondary" x-show="menuTitles(selectedId).length > 0" x-text="`Menu: ${menuTitles(selectedId).join(', ')}`"></p>
+                                                <ul class="ra-list mt-1">
+                                                    <template x-for="id in inbound[selectedId] || []" :key="id">
+                                                        <li class="row tiny">
+                                                            <span class="dot" :class="openable(id) ? 'dot-success' : ''" style="width: 0.375rem; height: 0.375rem"></span>
+                                                            <a href="#" class="truncate" @click.prevent="select(id)" @mouseenter="peek(id)" @mouseleave="peek(null)" @focus="peek(id)" @blur="peek(null)" x-text="title(id)"></a>
+                                                        </li>
+                                                    </template>
+                                                </ul>
+                                                <p class="tiny muted" x-show="menuTitles(selectedId).length === 0 && !(inbound[selectedId] || []).length">Nothing links here.</p>
                                             </div>
                                             <div x-show="(map.links[selectedId] || []).length > 0">
-                                                <dt class="mb-1 text-[0.6875rem] uppercase tracking-[0.09em] text-base-content/50">Links to</dt>
-                                                <dd>
-                                                    <ul class="flex flex-col gap-1">
-                                                        <template x-for="id in map.links[selectedId] || []" :key="id">
-                                                            <li class="flex items-center gap-1.5 text-xs">
-                                                                <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="openable(id) ? 'bg-success' : 'bg-base-300'"></span>
-                                                                <button type="button" class="link link-hover truncate text-left" @click="select(id)" @mouseenter="peek(id)" @mouseleave="peek(null)" @focus="peek(id)" @blur="peek(null)" x-text="title(id)"></button>
-                                                            </li>
-                                                        </template>
-                                                    </ul>
-                                                </dd>
+                                                <div class="eyebrow">Links to</div>
+                                                <ul class="ra-list mt-1">
+                                                    <template x-for="id in map.links[selectedId] || []" :key="id">
+                                                        <li class="row tiny">
+                                                            <span class="dot" :class="openable(id) ? 'dot-success' : ''" style="width: 0.375rem; height: 0.375rem"></span>
+                                                            <a href="#" class="truncate" @click.prevent="select(id)" @mouseenter="peek(id)" @mouseleave="peek(null)" @focus="peek(id)" @blur="peek(null)" x-text="title(id)"></a>
+                                                        </li>
+                                                    </template>
+                                                </ul>
                                             </div>
                                             <div x-show="isGated(selectedId)">
-                                                <dt class="mb-1 text-[0.6875rem] uppercase tracking-[0.09em] text-base-content/50">Other roles that can open it</dt>
-                                                <dd class="flex flex-wrap gap-1">
-                                                    <template x-for="role in otherRoles(selectedId)" :key="role.id">
-                                                        <span class="badge badge-sm badge-outline" x-text="role.name"></span>
-                                                    </template>
-                                                    <span class="badge badge-sm badge-ghost" x-show="otherRoles(selectedId).length === 0">None</span>
-                                                    <span class="badge badge-sm badge-ghost">Sysadmins always</span>
-                                                </dd>
+                                                <div class="eyebrow">Other roles that can open it</div>
+                                                <div class="cluster mt-1" style="--cluster-gap: var(--sp-1)">
+                                                    <template x-for="role in otherRoles(selectedId)" :key="role.id"><span class="badge badge-outline" x-text="role.name"></span></template>
+                                                    <span class="badge" x-show="otherRoles(selectedId).length === 0">None</span>
+                                                    <span class="badge">Sysadmins always</span>
+                                                </div>
                                             </div>
-                                        </dl>
+                                        </div>
                                     </div>
                                 </template>
                             </aside>
@@ -400,100 +379,83 @@
                     </div>
                 </template>
 
-                <!-- Staged changes tray -->
-                <div class="fixed bottom-5 left-1/2 z-40 -translate-x-1/2" x-show="currentPending().length > 0" x-transition>
-                    <div class="flex items-center gap-3 rounded-box bg-neutral py-2.5 pl-5 pr-2.5 text-sm text-neutral-content shadow-xl">
-                        <span x-text="`${currentPending().length} staged change${currentPending().length === 1 ? '' : 's'} for ${currentRole()?.name}`"></span>
-                        <button type="button" class="btn btn-ghost btn-sm text-neutral-content" @click="discard()">Discard</button>
-                        <button type="button" class="btn btn-primary btn-sm" @click="openReview()">Review</button>
-                    </div>
+                <div class="ra-tray" x-show="currentPending().length > 0" x-transition.opacity>
+                    <span x-text="`${currentPending().length} staged change${currentPending().length === 1 ? '' : 's'} for ${currentRole()?.name}`"></span>
+                    <button type="button" class="btn btn-ghost btn-sm" @click="discard()">Discard</button>
+                    <button type="button" class="btn btn-primary btn-sm" @click="openReview()">Review</button>
                 </div>
 
-                <!-- People -->
-                <dialog class="modal" :class="{ 'modal-open': peopleOpen }" @keydown.escape.prevent="peopleOpen = false">
-                    <div class="modal-box flex max-w-2xl flex-col">
-                        <div class="flex items-start justify-between gap-3">
-                            <div>
-                                <h3 class="text-lg font-semibold" x-text="`People in ${currentRole()?.name}`"></h3>
-                                <p class="mt-0.5 text-sm text-base-content/60" x-text="`${peopleHolding()} in this app. Each opens their profile in a new tab.`"></p>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-circle btn-ghost" @click="peopleOpen = false" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+                <dialog class="modal" aria-labelledby="ra-people-title" x-effect="peopleOpen ? ($el.open || $el.showModal()) : ($el.open && $el.close())" @close="peopleOpen = false">
+                    <div class="modal-header">
+                        <div>
+                            <h2 id="ra-people-title" class="card-title" x-text="`People in ${currentRole()?.name}`"></h2>
+                            <p class="card-sub" x-text="`${peopleHolding()} in this app. Each opens their profile in a new tab.`"></p>
                         </div>
-                        <label class="input input-sm mt-4 w-full focus-within:outline-primary/55 focus-within:outline-offset-2">
-                            <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
-                            <input type="search" placeholder="Find a person by name or email" aria-label="Find a person" x-ref="peopleSearch" x-model="peopleQuery" />
-                        </label>
-                        <ul class="mt-3 max-h-[60vh] divide-y divide-base-200 overflow-auto">
-                            <template x-for="person in filteredPeople()" :key="person.id">
-                                <li>
-                                    <a class="flex items-center gap-3 rounded-field px-2 py-2.5 hover:bg-base-200/60" :class="person.can_login ? '' : 'opacity-60'" :href="`/sysadmin/profiles/?profile_id=${person.id}`" target="_blank" rel="noopener">
-                                        <div class="min-w-0 flex-1">
-                                            <p class="truncate text-sm font-medium" x-text="person.full_name || person.email"></p>
-                                            <p class="truncate text-xs text-base-content/55" x-text="person.email"></p>
-                                        </div>
-                                        <span class="badge badge-sm badge-ghost" x-show="!person.can_login">can't sign in</span>
-                                        <span class="shrink-0 text-xs text-base-content/55" x-text="lastSignIn(person)"></span>
-                                        <i class="fa-solid fa-arrow-up-right-from-square text-xs text-base-content/40"></i>
-                                    </a>
-                                </li>
-                            </template>
-                            <li class="py-6 text-center text-sm text-base-content/55" x-show="filteredPeople().length === 0">Nobody matches.</li>
-                        </ul>
+                        <button type="button" class="btn btn-ghost btn-icon btn-sm" @click="peopleOpen = false" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
                     </div>
-                    <form method="dialog" class="modal-backdrop">
-                        <button @click="peopleOpen = false">close</button>
-                    </form>
+                    <div class="modal-body stack">
+                        <div class="input-icon">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input class="input input-sm" type="search" placeholder="Find a person by name or email" aria-label="Find a person" x-ref="peopleSearch" x-model="peopleQuery" />
+                        </div>
+                        <div class="card list-rows" style="box-shadow: none">
+                            <template x-for="person in filteredPeople()" :key="person.id">
+                                <a class="list-row" :style="person.can_login ? '' : 'opacity: 0.6'" :href="`/sysadmin/profiles/?profile_id=${person.id}`" target="_blank" rel="noopener">
+                                    <div class="min0 grow">
+                                        <div class="cell-main truncate" x-text="person.full_name || person.email"></div>
+                                        <div class="cell-sub truncate" x-text="person.email"></div>
+                                    </div>
+                                    <span class="badge" x-show="!person.can_login">can't sign in</span>
+                                    <span class="tiny muted nowrap" x-text="lastSignIn(person)"></span>
+                                    <i class="fa-solid fa-arrow-up-right-from-square tiny muted"></i>
+                                </a>
+                            </template>
+                            <div class="empty" x-show="filteredPeople().length === 0">Nobody matches.</div>
+                        </div>
+                    </div>
                 </dialog>
 
-                <!-- Review -->
-                <dialog class="modal" :class="{ 'modal-open': reviewOpen }">
-                    <div class="modal-box max-w-xl">
-                        <h3 class="text-lg font-semibold" x-text="`Apply ${currentPending().length} change${currentPending().length === 1 ? '' : 's'} to ${currentRole()?.name}`"></h3>
-                        <p class="mt-1 text-sm text-base-content/60" x-text="`${peopleHolding()}. All of these apply together, or none do.`"></p>
-
-                        <div class="mt-4 flex flex-col gap-4">
-                            <div x-show="pendingGrants().length > 0">
-                                <p class="mb-1.5 text-xs font-medium uppercase tracking-[0.09em] text-success">Grant</p>
-                                <ul class="flex flex-col gap-1">
-                                    <template x-for="id in pendingGrants()" :key="id">
-                                        <li class="flex items-center gap-2 text-sm"><i class="fa-solid fa-plus text-xs text-success"></i><span x-text="title(id)"></span><code class="truncate text-xs text-base-content/50" x-text="routesById[id].url"></code></li>
-                                    </template>
-                                </ul>
-                            </div>
-                            <div x-show="pendingRevokes().length > 0">
-                                <p class="mb-1.5 text-xs font-medium uppercase tracking-[0.09em] text-error">Revoke</p>
-                                <ul class="flex flex-col gap-1">
-                                    <template x-for="id in pendingRevokes()" :key="id">
-                                        <li class="flex items-center gap-2 text-sm"><i class="fa-solid fa-minus text-xs text-error"></i><span x-text="title(id)"></span><code class="truncate text-xs text-base-content/50" x-text="routesById[id].url"></code></li>
-                                    </template>
-                                </ul>
-                            </div>
-                            <div class="rounded-field bg-warning/15 px-3 py-2.5 text-sm" x-show="newDeadEnds().length > 0">
-                                <p class="font-medium" x-text="`This leaves ${newDeadEnds().length} new dead end${newDeadEnds().length === 1 ? '' : 's'}:`"></p>
-                                <ul class="mt-1 list-disc pl-5 text-xs">
-                                    <template x-for="id in newDeadEnds()" :key="id">
-                                        <li x-text="`${title(id)}, linked from ${openableSources(id).map(source => title(source)).join(', ')}`"></li>
-                                    </template>
-                                </ul>
-                            </div>
-                            <div role="alert" class="alert alert-error items-start text-sm" x-show="conflict">
-                                <i class="fa-solid fa-circle-xmark mt-0.5"></i>
-                                <p x-text="conflict"></p>
-                            </div>
-                        </div>
-
-                        <div class="modal-action">
-                            <button type="button" class="btn btn-ghost" @click="reviewOpen = false">Back</button>
-                            <button type="button" class="btn btn-outline" x-show="conflict" @click="reloadAfterConflict()">Discard and reload</button>
-                            <button type="button" class="btn btn-primary" x-show="!conflict" :disabled="applying" @click="apply()">
-                                <span class="loading loading-spinner loading-xs" x-show="applying"></span>
-                                Apply
-                            </button>
+                <dialog class="modal" aria-labelledby="ra-review-title" x-effect="reviewOpen ? ($el.open || $el.showModal()) : ($el.open && $el.close())" @close="reviewOpen = false">
+                    <div class="modal-header">
+                        <div>
+                            <h2 id="ra-review-title" class="card-title" x-text="`Apply ${currentPending().length} change${currentPending().length === 1 ? '' : 's'} to ${currentRole()?.name}`"></h2>
+                            <p class="card-sub" x-text="`${peopleHolding()}. All of these apply together, or none do.`"></p>
                         </div>
                     </div>
-                    <form method="dialog" class="modal-backdrop">
-                        <button @click="reviewOpen = false">close</button>
-                    </form>
+                    <div class="modal-body stack">
+                        <div x-show="pendingGrants().length > 0">
+                            <div class="eyebrow text-success">Grant</div>
+                            <ul class="ra-list mt-1">
+                                <template x-for="id in pendingGrants()" :key="id">
+                                    <li class="row small"><i class="fa-solid fa-plus tiny text-success"></i><span x-text="title(id)"></span><code class="mono muted tiny truncate" x-text="routesById[id].url"></code></li>
+                                </template>
+                            </ul>
+                        </div>
+                        <div x-show="pendingRevokes().length > 0">
+                            <div class="eyebrow text-danger">Revoke</div>
+                            <ul class="ra-list mt-1">
+                                <template x-for="id in pendingRevokes()" :key="id">
+                                    <li class="row small"><i class="fa-solid fa-minus tiny text-danger"></i><span x-text="title(id)"></span><code class="mono muted tiny truncate" x-text="routesById[id].url"></code></li>
+                                </template>
+                            </ul>
+                        </div>
+                        <div class="alert alert-warning" style="display: block" x-show="newDeadEnds().length > 0">
+                            <p class="strong" x-text="`This leaves ${newDeadEnds().length} new dead end${newDeadEnds().length === 1 ? '' : 's'}:`"></p>
+                            <ul style="margin: var(--sp-1) 0 0; padding-left: 1.25rem">
+                                <template x-for="id in newDeadEnds()" :key="id">
+                                    <li x-text="`${title(id)}, linked from ${openableSources(id).map(source => title(source)).join(', ')}`"></li>
+                                </template>
+                            </ul>
+                        </div>
+                        <div role="alert" class="alert alert-danger" x-show="conflict"><i class="fa-solid fa-circle-xmark"></i><p x-text="conflict"></p></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-sm" @click="reviewOpen = false">Back</button>
+                        <button type="button" class="btn btn-sm" x-show="conflict" @click="reloadAfterConflict()">Discard and reload</button>
+                        <button type="button" class="btn btn-primary btn-sm" x-show="!conflict" :disabled="applying" @click="apply()">
+                            <i class="fa-solid fa-spinner fa-spin" x-show="applying"></i> Apply
+                        </button>
+                    </div>
                 </dialog>
             </div>
 
@@ -825,7 +787,7 @@
                 });
             </script>
 
-        </cf_layout_default>
+        </cfmodule>
     </cffunction>
 
 </cfcomponent>

@@ -180,6 +180,18 @@
         <cfset stResult.current_route.roles = accessSubjects.roles />
         <cfset stResult.access_subjects = accessSubjects.subjects />
 
+        <!--- The endpoints relation reads back as {id, label} with no name; the matrix rows need the name --->
+        <cfquery name="local.qEndpoints">
+            SELECT id::text AS id, name
+            FROM moo_route_endpoint
+            WHERE route_id = <cfqueryparam cfsqltype="other" value="#arguments.route_id#" />
+            ORDER BY name
+        </cfquery>
+        <cfset stResult.current_route.endpoints = [] />
+        <cfloop query="local.qEndpoints">
+            <cfset arrayAppend(stResult.current_route.endpoints, { id: local.qEndpoints.id, name: local.qEndpoints.name }) />
+        </cfloop>
+
 
         <!--- Initialize endpoint access --->
         <cfloop array="#stResult.current_route.profiles#" item="profile">
@@ -360,247 +372,172 @@
     <cffunction name="get" output="true">
         <cfargument name="route_id" />
 
-        <cf_layout_default show_chrome="false" show_fab="false">
+        <cfmodule template="/moopa/tags/moopa_layout.cfm" title="Route security" chrome="false">
 
         <style>
-            /* Ensure th cells get the full height for the rotated headers */
-            thead th {
-                vertical-align: bottom;
-            }
-            .rotated-th {
-                /**
-                * Since the rotated text is taken out of the DOM flow (position: absolute), we
-                * need to artificially consume vertical space so that the rotated headers
-                * don't overlap with the content above the table.
-                */
-                height: 110px ;
-                position: relative ;
-            }
-            /**
-            * When an element is transform rotated, it still takes up the amount of space that
-            * it would have if not rotated. As such, I'm making the label "position: absolute"
-            * so that it doesn't take up any space ("absolute" takes it out of the DOM flow).
-            * Instead, I'm deferring the space allocation to the parent DIV.
-            */
-            .rotated-th__label {
-                bottom: 5px ;
-
-                position: absolute ;
-                transform: rotate( 45deg ) ;
-                transform-origin: center right ;
-                white-space: nowrap ;
-            }
+            .route-matrix th.subject { vertical-align: bottom; padding: 0; width: 3rem; background: var(--surface); text-transform: none; letter-spacing: 0; }
+            /* rotated subject names take no width: the 7rem box keeps them clear of the content above */
+            .route-matrix .rotated { position: relative; height: 7rem; }
+            /* anchored at the column's centre and leaning left, over the wide first column, so names never leave the table */
+            .route-matrix .rotated > span { position: absolute; right: 50%; bottom: 0.75rem; transform-origin: right center; transform: rotate(45deg); white-space: nowrap; color: var(--ink); font-size: var(--text-sm); font-weight: 500; }
+            .route-matrix td.cell { width: 3rem; padding: 0; text-align: center; border-left: 1px solid var(--hairline); }
+            .route-matrix td.cell > button { width: 100%; min-height: 2.5rem; color: var(--ink-mute-2); }
+            .route-matrix td.cell > button:hover { background: var(--canvas-soft); }
+            .route-matrix .is-on { color: var(--success); }
+            .route-matrix .is-inherited { color: var(--success); opacity: 0.45; }
+            .route-matrix .is-off { color: var(--danger); opacity: 0.55; }
+            .route-matrix .is-unset { opacity: 0.3; }
+            .picker-results { max-height: 12rem; overflow: auto; box-shadow: none; }
         </style>
 
-
-
-        <div x-data="xxx" class="p-6">
+        <div x-data="xxx" class="page">
 
             <cfif session.auth.is_sysadmin?:false>
-                <div x-cloak x-show="showEditRoute" x-transition class="mb-6">
-                    <div class="card card-border bg-base-100 max-w-2xl">
-                        <div class="card-body">
-                            <h3 class="card-title text-base">Edit Route Access</h3>
-                            <div class="flex flex-col gap-4 mt-2">
-                                <cf_table_controls table_name="moo_route" fields="roles,profiles" model_record="route_to_edit"></cf_table_controls>
+                <div x-cloak x-show="showEditRoute" class="card" style="max-width: 44rem">
+                    <div class="card-header"><h2 class="card-title">Edit route access</h2></div>
+                    <div class="card-body stack">
+                        <template x-for="field in ['roles', 'profiles']" :key="field">
+                            <div class="field">
+                                <span class="label" x-text="field === 'roles' ? 'Roles' : 'People'"></span>
+                                <div class="cluster" style="--cluster-gap: var(--sp-1)">
+                                    <template x-for="item in (route_to_edit[field] || [])" :key="item.id">
+                                        <span class="badge badge-signal">
+                                            <span x-text="item.label"></span>
+                                            <button type="button" @click="removePicked(field, item.id)" :aria-label="`Remove ${item.label}`"><i class="fa-solid fa-xmark"></i></button>
+                                        </span>
+                                    </template>
+                                    <span class="muted small" x-show="!(route_to_edit[field] || []).length">None</span>
+                                </div>
+                                <div class="input-icon">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                    <input class="input input-sm" type="search" :placeholder="field === 'roles' ? 'Add a role' : 'Add a person'" :aria-label="field === 'roles' ? 'Add a role' : 'Add a person'"
+                                        x-model="picker[field].q" @input.debounce.250ms="searchPicker(field)" @focus="searchPicker(field)">
+                                </div>
+                                <div class="card list-rows picker-results" x-show="picker[field].results.length">
+                                    <template x-for="item in picker[field].results" :key="item.id">
+                                        <button type="button" class="list-row" @click="addPicked(field, item)">
+                                            <span class="cell-main truncate" x-text="item.label"></span>
+                                            <i class="fa-solid fa-plus muted"></i>
+                                        </button>
+                                    </template>
+                                </div>
                             </div>
-                            <div class="card-actions justify-end mt-4">
-                                <button class="btn btn-ghost" @click="showEditRoute=false">Cancel</button>
-                                <button class="btn btn-primary" @click="save_route">Save</button>
-                            </div>
-                        </div>
+                        </template>
+                    </div>
+                    <div class="card-footer cluster cluster-end">
+                        <button type="button" class="btn btn-sm" @click="showEditRoute=false">Cancel</button>
+                        <button type="button" class="btn btn-primary btn-sm" @click="save_route" :disabled="loadingState === 'loading'"><i class="fa-solid fa-floppy-disk"></i> Save</button>
                     </div>
                 </div>
             </cfif>
 
-            <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-3" x-show="!showEditRoute" x-transition x-cloak>
+            <div class="split split-end" style="--split-aside: 20rem" x-show="!showEditRoute" x-cloak>
 
-                <!--- Permissions Matrix Card --->
-                <div class="lg:col-span-2">
-                    <div class="card card-border bg-base-100">
-                        <div class="card-body p-0">
-                            <div class="flex flex-col gap-3 border-b border-base-200 px-5 pb-4 pt-5 sm:flex-row sm:items-start sm:justify-between">
-                                <div class="min-w-0">
-                                    <h3 class="flex items-center gap-2 font-semibold">
-                                        <i class="fa-solid fa-check text-primary"></i>
-                                        Permission Matrix
-                                    </h3>
-                                    <p class="mt-1 max-w-[64ch] text-sm leading-5 text-base-content/55">Grant route-wide or endpoint-specific access for the profiles and roles shown as columns.</p>
-                                </div>
-                                <cfif session.auth.is_sysadmin?:false>
-                                    <button type="button" class="btn btn-sm btn-primary shrink-0 gap-2" @click="edit_route">
-                                        <i class="fa-solid fa-pen-to-square"></i>
-                                        Edit Access
-                                    </button>
-                                </cfif>
-                            </div>
-
-                            <template x-if="access_subjects.length > 0">
-                                <div class="overflow-x-auto">
-                                    <table class="table w-full">
-                                        <thead>
-                                            <tr class="bg-base-200/50">
-                                                <th class="min-w-56 align-bottom">
-                                                    <div class="flex min-h-[6.75rem] flex-col justify-end gap-2 py-1">
-                                                        <p class="max-w-48 text-xs font-normal leading-4 text-base-content/50">Rows show the route or endpoint each tick grants.</p>
-                                                    </div>
-                                                </th>
-                                                <template x-for="subject in access_subjects" :key="subjectKey(subject)">
-                                                    <th class="text-sm">
-                                                        <div class="rotated-th">
-                                                            <span class="rotated-th__label font-semibold" x-text="subject.label"></span>
-                                                        </div>
-                                                    </th>
-                                                </template>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr class="bg-base-100">
-                                                <th class="min-w-56">
-                                                    <div class="py-1">
-                                                        <div class="flex flex-wrap items-center gap-2">
-                                                            <code class="rounded bg-base-200 px-2 py-0.5 font-mono text-sm font-semibold text-base-content" x-text="current_route.url"></code>
-                                                            <span x-show="route_open_to === 'public'" class="badge badge-success badge-sm">Public</span>
-                                                            <span x-show="route_open_to === 'bearer'" class="badge badge-success badge-sm">Bearer</span>
-                                                            <span x-show="route_open_to === 'logged_in'" class="badge badge-success badge-sm">Logged in</span>
-                                                        </div>
-                                                        <p class="mt-0.5 font-mono text-xs font-normal text-base-content/45" x-show="routeSourcePath()" x-text="routeSourcePath()"></p>
-                                                    </div>
-                                                </th>
-                                                <template x-for="subject in access_subjects" :key="subjectKey(subject)">
-                                                    <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleSubjectAccess(subject)">
-                                                        <i class="fa-solid text-xl" :class="isSubjectAccessSet(subject) ? 'fa-check text-success' : 'fa-check opacity-20'"></i>
-                                                    </td>
-                                                </template>
-                                            </tr>
-
-                                            <template x-for="endpoint in current_route.endpoints" :key="endpoint.id">
-                                                <tr>
-                                                    <th class="min-w-56">
-                                                        <div class="py-1">
-                                                            <p class="text-sm font-medium text-base-content/80" x-text="endpointLabel(endpoint)"></p>
-                                                        </div>
-                                                    </th>
-                                                    <template x-for="subject in access_subjects" :key="subjectKey(subject)">
-                                                        <td class="border border-base-300 p-3 text-center cursor-pointer hover:bg-base-200 transition-colors" @click="toggleSubjectAccess(subject, endpoint.id)">
-                                                            <div x-show="isSubjectAccessSet(subject)">
-                                                                <i class="fa-solid text-xl fa-check text-success/50"></i>
-                                                            </div>
-                                                            <div x-show="!isSubjectAccessSet(subject)">
-                                                                <i class="fa-solid text-xl" :class="isSubjectAccessSet(subject, endpoint.id) ? 'fa-check text-success' : 'fa-xmark text-error/60'"></i>
-                                                            </div>
-                                                        </td>
-                                                    </template>
-                                                </tr>
-                                            </template>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </template>
-
-                            <template x-if="access_subjects.length === 0">
-                                <div class="p-8 text-center text-base-content/50">
-                                    <i class="fa-solid fa-user-shield text-2xl mb-3 block"></i>
-                                    <p>No profiles or roles assigned to this route</p>
-                                    <p class="text-sm mt-1">Click "Edit Roles & Profiles" to add access</p>
-                                </div>
-                            </template>
+                <section class="card">
+                    <div class="card-header card-header-fixed">
+                        <div>
+                            <h2 class="card-title"><i class="fa-solid fa-check text-signal"></i> Permission matrix</h2>
+                            <p class="card-sub">Grant the whole route, or single endpoints, to the people and roles in the columns.</p>
                         </div>
+                        <cfif session.auth.is_sysadmin?:false>
+                            <button type="button" class="btn btn-primary btn-sm" @click="edit_route"><i class="fa-solid fa-pen-to-square"></i> Edit access</button>
+                        </cfif>
                     </div>
-                </div>
 
-                <!--- Effective Access Sidebar --->
-                <div class="lg:col-span-1">
-                    <div class="card card-border bg-base-100 sticky top-4">
-                        <div class="card-body">
-                            <h3 class="font-semibold flex items-center gap-2 mb-3">
-                                <i class="fa-solid fa-users text-secondary"></i>
-                                Profiles With Access
-                            </h3>
-
-                            <template x-if="activeAccessors().length > 0">
-                                <div class="space-y-2 max-h-72 overflow-y-auto">
-                                    <template x-for="person in activeAccessors()" :key="person.profile_id">
-                                        <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200/50 transition-colors">
-                                            <template x-if="person.avatar_url">
-                                                <div class="avatar">
-                                                    <div class="w-8 rounded-full bg-base-200">
-                                                        <img :src="person.avatar_url" :alt="person.label" />
-                                                    </div>
-                                                </div>
-                                            </template>
-                                            <template x-if="!person.avatar_url">
-                                                <div class="avatar avatar-placeholder">
-                                                    <div class="bg-neutral text-neutral-content w-8 rounded-full flex items-center justify-center">
-                                                        <span class="text-xs font-semibold" x-text="profileInitials(person)"></span>
-                                                    </div>
-                                                </div>
-                                            </template>
-                                            <div class="min-w-0 flex-1">
-                                                <p class="text-sm font-medium truncate" x-text="person.label"></p>
-                                                <p class="text-xs text-base-content/60 truncate">via <span class="font-medium" x-text="accessSources(person)"></span></p>
-                                            </div>
-                                        </div>
-                                    </template>
-                                </div>
-                            </template>
-
-                            <template x-if="activeAccessors().length === 0 && inactiveAccessors().length > 0">
-                                <div class="py-2 text-sm text-base-content/55">
-                                    No login-enabled profiles have access.
-                                </div>
-                            </template>
-
-                            <template x-if="inactiveAccessors().length > 0">
-                                <div class="mt-4 border-t border-base-200 pt-3">
-                                    <div class="mb-2 flex items-center justify-between gap-2">
-                                        <p class="text-xs font-semibold uppercase tracking-[0.08em] text-base-content/45">Login disabled</p>
-                                        <span class="badge badge-ghost badge-xs" x-text="inactiveAccessors().length"></span>
-                                    </div>
-                                    <div class="space-y-1.5">
-                                        <template x-for="person in inactiveAccessors()" :key="person.profile_id">
-                                            <div class="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-base-200/45">
-                                                <template x-if="person.avatar_url">
-                                                    <div class="avatar shrink-0">
-                                                        <div class="w-6 rounded-full bg-base-300 opacity-70">
-                                                            <img :src="person.avatar_url" :alt="person.label" />
-                                                        </div>
-                                                    </div>
-                                                </template>
-                                                <template x-if="!person.avatar_url">
-                                                    <div class="avatar avatar-placeholder shrink-0">
-                                                        <div class="bg-base-300 text-base-content/70 w-6 rounded-full flex items-center justify-center">
-                                                            <span class="text-[0.625rem] font-semibold" x-text="profileInitials(person)"></span>
-                                                        </div>
-                                                    </div>
-                                                </template>
-                                                <div class="min-w-0 flex-1">
-                                                    <p class="truncate font-medium text-base-content/75" x-text="person.label"></p>
-                                                    <p class="truncate text-base-content/45" x-text="accessSources(person)"></p>
-                                                </div>
-                                            </div>
+                    <template x-if="access_subjects.length > 0">
+                        <div class="table-wrap">
+                            <table class="table table-sm route-matrix">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 14rem; vertical-align: bottom; text-transform: none; letter-spacing: 0; font-weight: 400">Each row is the route or endpoint a tick grants.</th>
+                                        <template x-for="subject in access_subjects" :key="subjectKey(subject)">
+                                            <th class="subject"><div class="rotated"><span x-text="subject.label"></span></div></th>
                                         </template>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <th scope="row" style="background: var(--surface); text-transform: none; letter-spacing: 0">
+                                            <div class="cluster">
+                                                <code class="code-inline strong" x-text="current_route.url"></code>
+                                                <span x-show="route_open_to === 'public'" class="badge badge-success">Public</span>
+                                                <span x-show="route_open_to === 'bearer'" class="badge badge-success">Bearer</span>
+                                                <span x-show="route_open_to === 'logged_in'" class="badge badge-success">Signed in</span>
+                                            </div>
+                                            <div class="mono muted tiny mt-1" x-show="routeSourcePath()" x-text="routeSourcePath()"></div>
+                                        </th>
+                                        <template x-for="subject in access_subjects" :key="subjectKey(subject)">
+                                            <td class="cell">
+                                                <button type="button" @click="toggleSubjectAccess(subject)" :aria-pressed="isSubjectAccessSet(subject)" :aria-label="`${subject.label}: whole route`">
+                                                    <i class="fa-solid fa-check" :class="isSubjectAccessSet(subject) ? 'is-on' : 'is-unset'"></i>
+                                                </button>
+                                            </td>
+                                        </template>
+                                    </tr>
+                                    <template x-for="endpoint in current_route.endpoints" :key="endpoint.id">
+                                        <tr>
+                                            <th scope="row" class="secondary" style="background: var(--surface); text-transform: none; letter-spacing: 0; font-size: var(--text-sm); font-weight: 400" x-text="endpointLabel(endpoint)"></th>
+                                            <template x-for="subject in access_subjects" :key="subjectKey(subject)">
+                                                <td class="cell">
+                                                    <button type="button" @click="toggleSubjectAccess(subject, endpoint.id)" :aria-label="`${subject.label}: ${endpointLabel(endpoint)}`">
+                                                        <i class="fa-solid" :class="isSubjectAccessSet(subject) ? 'fa-check is-inherited' : (isSubjectAccessSet(subject, endpoint.id) ? 'fa-check is-on' : 'fa-xmark is-off')"></i>
+                                                    </button>
+                                                </td>
+                                            </template>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </template>
+
+                    <template x-if="access_subjects.length === 0">
+                        <div class="empty">
+                            <i class="fa-solid fa-user-shield"></i>
+                            <p class="strong secondary">No people or roles are on this route.</p>
+                            <p class="small">Use Edit access to add them.</p>
+                        </div>
+                    </template>
+                </section>
+
+                <aside class="card">
+                    <div class="card-header"><h2 class="card-title"><i class="fa-solid fa-users text-signal"></i> People with access</h2></div>
+                    <div class="list-rows" style="max-height: 18rem; overflow: auto" x-show="activeAccessors().length > 0">
+                        <template x-for="person in activeAccessors()" :key="person.profile_id">
+                            <div class="list-row" style="justify-content: flex-start">
+                                <span class="avatar">
+                                    <template x-if="person.avatar_url"><img :src="person.avatar_url" :alt="person.label" /></template>
+                                    <template x-if="!person.avatar_url"><span x-text="profileInitials(person)"></span></template>
+                                </span>
+                                <div class="min0">
+                                    <div class="cell-main truncate" x-text="person.label"></div>
+                                    <div class="cell-sub truncate">via <span x-text="accessSources(person)"></span></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="card-body small muted" x-show="activeAccessors().length === 0 && inactiveAccessors().length > 0">No one who can sign in has access.</div>
+                    <template x-if="inactiveAccessors().length > 0">
+                        <div class="card-footer stack stack-sm">
+                            <div class="cluster cluster-between"><span class="eyebrow">Sign-in disabled</span><span class="badge" x-text="inactiveAccessors().length"></span></div>
+                            <template x-for="person in inactiveAccessors()" :key="person.profile_id">
+                                <div class="row" style="opacity: 0.75">
+                                    <span class="avatar avatar-sm">
+                                        <template x-if="person.avatar_url"><img :src="person.avatar_url" :alt="person.label" /></template>
+                                        <template x-if="!person.avatar_url"><span x-text="profileInitials(person)"></span></template>
+                                    </span>
+                                    <div class="min0 small">
+                                        <div class="truncate secondary" x-text="person.label"></div>
+                                        <div class="truncate muted tiny" x-text="accessSources(person)"></div>
                                     </div>
                                 </div>
                             </template>
-
-                            <template x-if="who_has_access.length === 0">
-                                <div class="text-center py-4 text-base-content/50">
-                                    <i class="fa-solid fa-user-slash text-lg mb-2 block"></i>
-                                    <p class="text-sm">No profiles have access</p>
-                                </div>
-                            </template>
                         </div>
-                    </div>
-                </div>
+                    </template>
+                    <div class="empty" x-show="who_has_access.length === 0"><i class="fa-solid fa-user-slash"></i>No one has access.</div>
+                </aside>
 
             </div>
-
-
-
-
-
-
         </div>
 
         <script>
@@ -662,7 +599,25 @@
 
                     edit_route() {
                         this.route_to_edit = JSON.parse(JSON.stringify(this.current_route))
+                        this.picker = { roles: { q: '', results: [] }, profiles: { q: '', results: [] } };
                         this.showEditRoute = true;
+                    },
+
+                    // The roles/profiles pickers on the edit card: search.roles / search.profiles return [{ id, label }]
+                    picker: { roles: { q: '', results: [] }, profiles: { q: '', results: [] } },
+
+                    async searchPicker(field) {
+                        const chosen = (this.route_to_edit[field] || []).map(item => item.id);
+                        this.picker[field].results = await req({ endpoint: `search.${field}`, q: this.picker[field].q.trim(), exclude_ids: chosen, limit: 10 });
+                    },
+
+                    addPicked(field, item) {
+                        this.route_to_edit[field] = [...(this.route_to_edit[field] || []), { id: item.id, label: item.label }];
+                        this.picker[field] = { q: '', results: [] };
+                    },
+
+                    removePicked(field, id) {
+                        this.route_to_edit[field] = (this.route_to_edit[field] || []).filter(item => item.id !== id);
                     },
 
                     async save_route() {
@@ -757,7 +712,7 @@
         </script>
 
 
-        </cf_layout_default>
+        </cfmodule>
     </cffunction>
 
 

@@ -4,223 +4,149 @@
 
         <cfset statements = application.lib.schemaSync.compareDatabaseSchema(application.lib.db.codeSchema) />
 
-        <cf_layout_default title="Schema">
-            <div x-data="coapi" x-cloak class="flex flex-col gap-4 lg:gap-5">
+        <cfmodule template="/moopa/tags/moopa_layout.cfm" title="Schema">
+            <div x-data="coapi" x-cloak class="page">
 
-                <!-- Header -->
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-3">
-                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
-                                <i class="fa-solid fa-database text-base"></i>
-                            </div>
-                            <div class="min-w-0">
-                                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-                                    <h1 class="text-[1.625rem] font-semibold leading-none tracking-[-0.03em]">Schema</h1>
-                                    <span class="text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-base-content/42" x-text="statementSummary()"></span>
-                                </div>
-                                <p class="mt-1 max-w-[58ch] text-sm leading-5 text-base-content/62">Review database changes generated from Moopa table definitions.</p>
-                            </div>
-                        </div>
+                <div class="page-header">
+                    <div>
+                        <div class="eyebrow" x-text="statementSummary()"></div>
+                        <h1>Schema</h1>
+                        <p class="page-lede">The database changes Moopa's table definitions call for. Select statements to review or copy them; Moopa never applies them itself.</p>
+                    </div>
+                    <div class="page-actions">
+                        <!--- Re-initialising is for sysadmins only (application.cfc _reinitAllowed) --->
+                        <cfif application.lib.auth.isSysAdmin()>
+                            <button type="button" class="btn btn-sm" @click="reinit()"><i class="fa-solid fa-rotate-right"></i> Re-initialise</button>
+                        </cfif>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 gap-5">
-
-                    <!-- Statements -->
-                    <div class="min-w-0 overflow-hidden rounded-lg border border-base-300 bg-base-100 md:flex md:max-h-[calc(100vh-9rem)] md:flex-col">
-                        <div class="border-b border-base-300 px-4 py-3">
-                            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-                                    <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80">
-                                        <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
-                                        <input type="search" aria-label="Search schema statements" x-model.debounce.250ms="filter.statement" placeholder="Search statements" />
-                                    </label>
-                                    <select class="select select-sm w-full focus:outline-primary/55 focus:outline-offset-2 sm:w-52" aria-label="Filter statements by table" x-model="filter.table">
-                                        <option value="">All tables</option>
-                                        <template x-for="table in getUniqueTables()" :key="table">
-                                            <option :value="table" x-text="table"></option>
-                                        </template>
-                                    </select>
-                                    <button type="button" class="btn btn-ghost btn-sm justify-start" @click="resetFilters" :disabled="!hasActiveFilters()">
-                                        Reset
-                                    </button>
-                                </div>
-                                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                                    <!--- Re-initialising is for sysadmins only (application.cfc _reinitAllowed) --->
-                                    <cfif application.lib.auth.isSysAdmin()>
-                                        <button type="button" class="btn btn-primary btn-sm gap-2" @click="reinit()">
-                                            <i class="fa-solid fa-rotate-right"></i>
-                                            Re-init
-                                        </button>
-                                    </cfif>
-                                    <button type="button" class="btn btn-ghost btn-sm gap-2" @click="openSqlDrawer()" :disabled="selectedCount === 0">
-                                        <i class="fa-solid fa-code"></i>
-                                        Show SQL
-                                    </button>
-                                    <button type="button" class="btn btn-success btn-sm gap-2" @click="copyToClipboard" :disabled="selectedCount === 0">
-                                        <i class="fa-solid fa-copy"></i>
-                                        Copy SQL
-                                    </button>
-                                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="cluster">
+                            <div class="input-icon" style="width: 18rem; max-width: 100%">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input class="input input-sm" type="search" aria-label="Search schema statements" x-model.debounce.250ms="filter.statement" placeholder="Search statements" />
                             </div>
-                        </div>
-
-                        <div class="overflow-x-auto md:min-h-0 md:flex-1">
-                            <table class="table table-sm w-full">
-                                <thead>
-                                    <tr>
-                                        <th class="w-10">
-                                            <input
-                                                type="checkbox"
-                                                class="checkbox checkbox-sm checkbox-primary"
-                                                aria-label="Toggle filtered statements"
-                                                :checked="filteredCount > 0 && filteredSelectedCount === filteredCount"
-                                                :disabled="filteredCount === 0"
-                                                x-effect="$el.indeterminate = filteredSelectedCount > 0 && filteredSelectedCount < filteredCount"
-                                                @change="toggleFilteredSelection()"
-                                            >
-                                        </th>
-                                        <th class="w-20">Priority</th>
-                                        <th class="w-48">Table</th>
-                                        <th>Statement</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <template x-for="(statement, i) in getFilteredStatements()" :key="statement.statement + '-' + i">
-                                        <tr
-                                            class="hover:bg-base-200/35 align-top cursor-pointer select-none outline-none focus-visible:bg-base-200/45 focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-inset"
-                                            role="button"
-                                            tabindex="0"
-                                            @click="statement.selected = !statement.selected"
-                                            @keydown.enter.prevent="statement.selected = !statement.selected"
-                                            @keydown.space.prevent="statement.selected = !statement.selected"
-                                            :aria-label="`Toggle statement ${statement.title || statement.statement}`"
-                                        >
-                                            <td>
-                                                <input type="checkbox" class="checkbox checkbox-sm checkbox-primary pointer-events-none" x-model="statement.selected" tabindex="-1">
-                                            </td>
-                                            <td>
-                                                <span class="badge badge-ghost badge-sm" x-text="statement.priority"></span>
-                                            </td>
-                                            <td>
-                                                <span class="block truncate font-mono text-xs text-base-content/70" x-text="statement.table_name || 'unknown table'" :title="statement.table_name || 'unknown table'"></span>
-                                            </td>
-                                            <td>
-                                                <div class="flex flex-col gap-2">
-                                                    <div class="flex flex-wrap items-center gap-2">
-                                                        <span class="font-medium" x-text="statement.title"></span>
-                                                        <template x-if="statement.mismatches && statement.mismatches.length > 0">
-                                                            <button type="button" class="badge badge-warning badge-sm gap-1" @click.stop="openMismatch = statement">
-                                                                <span x-text="statement.mismatches.length"></span>
-                                                                diff
-                                                            </button>
-                                                        </template>
-                                                    </div>
-                                                    <code class="block whitespace-pre-wrap break-words rounded-box bg-base-200/70 px-3 py-2 text-xs leading-relaxed" x-text="statement.statement"></code>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    </template>
-                                </tbody>
-                            </table>
-
-                            <template x-if="filteredCount === 0">
-                                <div class="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                                    <i class="fa-solid fa-filter-circle-xmark text-3xl text-base-content/35"></i>
-                                    <div>
-                                        <h3 class="font-semibold" x-text="hasActiveFilters() ? 'No statements match these filters.' : 'No pending schema statements.'"></h3>
-                                        <p class="text-sm text-base-content/60" x-text="hasActiveFilters() ? 'Clear filters or search for a different table or statement.' : 'The database schema matches the code definitions.'"></p>
-                                    </div>
-                                    <button type="button" class="btn btn-sm" @click="resetFilters" x-show="hasActiveFilters()">Reset filters</button>
-                                </div>
-                            </template>
-                        </div>
-
-                        <div class="flex flex-col gap-2 border-t border-base-300 bg-base-100/95 px-4 py-1.5 text-[0.6875rem] leading-5 text-base-content/50 sm:flex-row sm:items-center sm:justify-between" x-show="statements.length > 0">
-                            <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                                <span><strong class="font-semibold text-base-content" x-text="selectedCount"></strong> selected</span>
-                                <button type="button" class="btn btn-ghost btn-xs h-6 min-h-6 px-2" @click="toggleFilteredSelection()" :disabled="filteredCount === 0" x-text="filteredSelectedCount === filteredCount && filteredCount > 0 ? 'Clear visible' : 'Select visible'"></button>
-                            </div>
-                            <span><strong class="font-semibold text-base-content" x-text="filteredCount"></strong> of <strong class="font-semibold text-base-content" x-text="statements.length"></strong></span>
-                        </div>
-                    </div>
-
-                </div>
-
-                <!-- Selected SQL drawer -->
-                <div class="fixed inset-0 z-[1000]" x-show="sqlDrawerOpen" x-cloak style="display: none;" @keydown.escape.window="closeSqlDrawer()">
-                    <button type="button" class="absolute inset-0 bg-base-content/20" aria-label="Close selected SQL drawer" @click="closeSqlDrawer()"></button>
-                    <aside class="absolute right-0 top-0 flex h-full w-full max-w-3xl flex-col border-l border-base-300 bg-base-100 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="selected-sql-drawer-title" tabindex="-1" x-ref="sqlDrawerPanel" x-trap.noscroll="sqlDrawerOpen" x-show="sqlDrawerOpen" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full">
-                        <header class="flex items-start justify-between gap-4 border-b border-base-300 px-6 py-5">
-                            <div class="min-w-0">
-                                <p class="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-base-content/45">Selected SQL</p>
-                                <h2 id="selected-sql-drawer-title" class="mt-1 text-xl font-semibold leading-tight tracking-[-0.026em]">Review generated script</h2>
-                                <p class="mt-1 text-sm leading-5 text-base-content/62">
-                                    <span x-text="selectedCount"></span> statement<span x-show="selectedCount !== 1">s</span> selected.
-                                </p>
-                            </div>
-                            <button type="button" class="btn btn-ghost btn-sm btn-circle" @click="closeSqlDrawer()" aria-label="Close selected SQL drawer">
-                                <i class="fa-solid fa-xmark"></i>
-                            </button>
-                        </header>
-                        <div class="flex-1 overflow-y-auto px-6 py-5">
-                            <template x-if="selectedCount === 0">
-                                <div class="rounded-lg border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60">
-                                    Select statements from the ledger to build an executable SQL script.
-                                </div>
-                            </template>
-                            <template x-if="selectedCount > 0">
-                                <pre class="min-h-full overflow-auto rounded-lg bg-neutral p-4 text-xs leading-relaxed text-neutral-content"><code x-text="selectedSql"></code></pre>
-                            </template>
-                        </div>
-                        <footer class="flex justify-end gap-2 border-t border-base-300 bg-base-100/95 px-6 py-4 shadow-[0_-8px_24px_oklch(19.5%_0.02_41_/_0.06)]">
-                            <button type="button" class="btn btn-ghost btn-sm" @click="closeSqlDrawer()">Close</button>
-                            <button type="button" class="btn btn-success btn-sm gap-2" @click="copyToClipboard" :disabled="selectedCount === 0">
-                                <i class="fa-solid fa-copy"></i>
-                                Copy SQL
-                            </button>
-                        </footer>
-                    </aside>
-                </div>
-
-                <!-- Mismatch modal -->
-                <template x-teleport="body">
-                    <div x-show="openMismatch" x-cloak
-                        class="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
-                        @click.self="openMismatch = null"
-                        x-transition.opacity>
-                        <div class="card w-full max-w-3xl bg-base-100 shadow-xl" @click.stop>
-                            <div class="card-body gap-4">
-                                <div class="flex items-start justify-between gap-4">
-                                    <div>
-                                        <h3 class="card-title" x-text="openMismatch ? openMismatch.title : ''"></h3>
-                                        <p class="text-sm text-base-content/60" x-text="openMismatch ? openMismatch.table_name : ''"></p>
-                                    </div>
-                                    <button type="button" class="btn btn-ghost btn-sm btn-circle" @click.stop="openMismatch = null" aria-label="Close">
-                                        <i class="fa-solid fa-xmark"></i>
-                                    </button>
-                                </div>
-
-                                <template x-for="mismatch in (openMismatch?.mismatches || [])" :key="mismatch.param">
-                                    <div class="rounded-box border border-base-300 p-4">
-                                        <div class="mb-3 font-semibold text-sm" x-text="mismatch.param"></div>
-                                        <div class="grid gap-3 md:grid-cols-2">
-                                            <div class="rounded-box border border-error/20 bg-error/10 p-3">
-                                                <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-error">DB current</div>
-                                                <pre class="whitespace-pre-wrap break-words font-mono text-xs text-error" x-text="mismatch.db || '(empty)'"></pre>
-                                            </div>
-                                            <div class="rounded-box border border-success/20 bg-success/10 p-3">
-                                                <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-success">Code expected</div>
-                                                <pre class="whitespace-pre-wrap break-words font-mono text-xs text-success" x-text="mismatch.code || '(empty)'"></pre>
-                                            </div>
-                                        </div>
-                                    </div>
+                            <select class="select select-sm" style="width: 13rem" aria-label="Filter statements by table" x-model="filter.table">
+                                <option value="">All tables</option>
+                                <template x-for="table in getUniqueTables()" :key="table">
+                                    <option :value="table" x-text="table"></option>
                                 </template>
-                            </div>
+                            </select>
+                            <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters" :disabled="!hasActiveFilters()">Reset</button>
+                        </div>
+                        <div class="cluster">
+                            <button type="button" class="btn btn-sm" @click="openSqlDrawer()" :disabled="selectedCount === 0"><i class="fa-solid fa-code"></i> Show SQL</button>
+                            <button type="button" class="btn btn-primary btn-sm" @click="copyToClipboard" :disabled="selectedCount === 0"><i class="fa-solid fa-copy"></i> Copy SQL</button>
                         </div>
                     </div>
-                </template>
+
+                    <div class="table-wrap" x-show="filteredCount > 0">
+                        <table class="table table-sm table-hover table-clickable table-top">
+                            <thead>
+                                <tr>
+                                    <th style="width: 2.5rem">
+                                        <input type="checkbox" class="checkbox" aria-label="Toggle the statements shown"
+                                            :checked="filteredCount > 0 && filteredSelectedCount === filteredCount"
+                                            :disabled="filteredCount === 0"
+                                            x-effect="$el.indeterminate = filteredSelectedCount > 0 && filteredSelectedCount < filteredCount"
+                                            @change="toggleFilteredSelection()">
+                                    </th>
+                                    <th style="width: 5rem">Priority</th>
+                                    <th style="width: 12rem">Table</th>
+                                    <th>Statement</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="(statement, i) in getFilteredStatements()" :key="statement.statement + '-' + i">
+                                    <tr :class="{ 'is-selected': statement.selected }" tabindex="0"
+                                        @click="statement.selected = !statement.selected"
+                                        @keydown.enter.prevent="statement.selected = !statement.selected"
+                                        @keydown.space.prevent="statement.selected = !statement.selected"
+                                        :aria-label="`Toggle statement ${statement.title || statement.statement}`">
+                                        <td><input type="checkbox" class="checkbox" style="pointer-events: none" x-model="statement.selected" tabindex="-1"></td>
+                                        <td><span class="badge" x-text="statement.priority"></span></td>
+                                        <td><span class="mono muted truncate" style="display: block" x-text="statement.table_name || 'unknown table'" :title="statement.table_name || 'unknown table'"></span></td>
+                                        <td>
+                                            <div class="stack stack-sm">
+                                                <div class="cluster">
+                                                    <span class="cell-main" x-text="statement.title"></span>
+                                                    <template x-if="statement.mismatches && statement.mismatches.length > 0">
+                                                        <button type="button" class="badge badge-warning" @click.stop="openMismatch = statement; $refs.mismatch.showModal()">
+                                                            <span x-text="statement.mismatches.length"></span> diff
+                                                        </button>
+                                                    </template>
+                                                </div>
+                                                <code class="code-inline break" style="display: block; white-space: pre-wrap; padding: var(--sp-2) var(--sp-3)" x-text="statement.statement"></code>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="empty" x-show="filteredCount === 0">
+                        <i class="fa-solid" :class="hasActiveFilters() ? 'fa-filter-circle-xmark' : 'fa-circle-check'"></i>
+                        <p class="strong secondary" x-text="hasActiveFilters() ? 'No statements match these filters.' : 'No pending schema statements.'"></p>
+                        <p class="small" x-text="hasActiveFilters() ? 'Clear the filters, or search for a different table or statement.' : 'The database matches the table definitions.'"></p>
+                    </div>
+
+                    <div class="card-footer cluster cluster-between small muted" x-show="statements.length > 0">
+                        <div class="cluster">
+                            <span><strong class="secondary" x-text="selectedCount"></strong> selected</span>
+                            <button type="button" class="btn btn-ghost btn-xs" @click="toggleFilteredSelection()" :disabled="filteredCount === 0" x-text="filteredSelectedCount === filteredCount && filteredCount > 0 ? 'Clear visible' : 'Select visible'"></button>
+                        </div>
+                        <span><strong class="secondary" x-text="filteredCount"></strong> of <strong class="secondary" x-text="statements.length"></strong></span>
+                    </div>
+                </div>
+
+                <dialog class="modal modal-lg" x-ref="sql" aria-labelledby="selected-sql-title" @close="sqlDrawerOpen = false">
+                    <div class="modal-header">
+                        <div>
+                            <div class="eyebrow">Selected SQL</div>
+                            <h2 id="selected-sql-title" class="card-title">Review the generated script</h2>
+                            <p class="card-sub"><span x-text="selectedCount"></span> statement<span x-show="selectedCount !== 1">s</span> selected.</p>
+                        </div>
+                        <button type="button" class="btn btn-ghost btn-icon btn-sm" @click="closeSqlDrawer()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div class="modal-body">
+                        <pre class="code-block" x-show="selectedCount > 0"><code x-text="selectedSql"></code></pre>
+                        <p class="empty" x-show="selectedCount === 0">Select statements to build a script.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-sm" @click="closeSqlDrawer()">Close</button>
+                        <button type="button" class="btn btn-primary btn-sm" @click="copyToClipboard" :disabled="selectedCount === 0"><i class="fa-solid fa-copy"></i> Copy SQL</button>
+                    </div>
+                </dialog>
+
+                <dialog class="modal modal-lg" x-ref="mismatch" aria-labelledby="mismatch-title" @close="openMismatch = null">
+                    <div class="modal-header">
+                        <div>
+                            <h2 id="mismatch-title" class="card-title" x-text="openMismatch ? openMismatch.title : ''"></h2>
+                            <p class="card-sub mono" x-text="openMismatch ? openMismatch.table_name : ''"></p>
+                        </div>
+                        <button type="button" class="btn btn-ghost btn-icon btn-sm" @click="$refs.mismatch.close()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div class="modal-body stack">
+                        <template x-for="mismatch in (openMismatch?.mismatches || [])" :key="mismatch.param">
+                            <section class="stack stack-sm">
+                                <div class="strong" x-text="mismatch.param"></div>
+                                <div class="auto-grid" style="--auto-min: 16rem">
+                                    <div class="alert alert-danger" style="display: block">
+                                        <div class="eyebrow text-danger">Database now</div>
+                                        <pre class="mono break" style="margin: var(--sp-1) 0 0; white-space: pre-wrap" x-text="mismatch.db || '(empty)'"></pre>
+                                    </div>
+                                    <div class="alert alert-success" style="display: block">
+                                        <div class="eyebrow text-success">Code expects</div>
+                                        <pre class="mono break" style="margin: var(--sp-1) 0 0; white-space: pre-wrap" x-text="mismatch.code || '(empty)'"></pre>
+                                    </div>
+                                </div>
+                            </section>
+                        </template>
+                    </div>
+                </dialog>
             </div>
 
             <cfoutput>
@@ -309,11 +235,11 @@
                         openSqlDrawer() {
                             if (this.selectedCount === 0) return;
                             this.sqlDrawerOpen = true;
-                            this.$nextTick(() => this.$refs.sqlDrawerPanel?.focus());
+                            this.$refs.sql.showModal();
                         },
 
                         closeSqlDrawer() {
-                            this.sqlDrawerOpen = false;
+                            this.$refs.sql.close();
                         },
 
                         async copyToClipboard() {
@@ -325,8 +251,7 @@
 
                             if (window.sonner) {
                                 window.sonner.success("Selected SQL copied", {
-                                    description: `${this.selectedCount} statement${this.selectedCount === 1 ? "" : "s"} copied to clipboard.`,
-                                    icon: "fa-solid fa-check"
+                                    description: `${this.selectedCount} statement${this.selectedCount === 1 ? "" : "s"} copied to clipboard.`
                                 });
                             }
                         }
@@ -335,7 +260,7 @@
             </script>
             </cfoutput>
 
-        </cf_layout_default>
+        </cfmodule>
 
     </cffunction>
 

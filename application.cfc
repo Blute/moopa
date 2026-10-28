@@ -265,6 +265,12 @@
 
     <cffunction name="_moopa" access="private" returntype="void" output="true" hint="THIS IS THE MOOPA FRAMEWORK">
 
+        <!--- Moopa's own CSS, JS and fonts (static/), served before anything touches the session or the database --->
+        <cfif left(url.route, 15) EQ "/_moopa/static/">
+            <cfset _serveStatic(mid(url.route, 16, len(url.route))) />
+            <cfreturn />
+        </cfif>
+
         <cfif !structKeyExists(application, "lib")>
             <h1>Application not initialized correctly</h1>
             <cfset applicationStop() /><cfabort>
@@ -382,6 +388,41 @@
             <cfoutput>#trim(routeContent)#</cfoutput>
         </cfif>
     </cffunction>
+
+
+    <cffunction name="_serveStatic" access="private" returntype="void" output="true" hint="Serves a file from Moopa's static/ folder at /_moopa/static/{path}: the System pages' stylesheet, script and vendored libraries. Versioned URLs (?v=, or a versioned vendor/ folder) are cached for a year.">
+        <cfargument name="path" type="string" required="true" hint="The path under static/, e.g. moopa.css" />
+
+        <cfset var types = {
+            "css": "text/css; charset=utf-8",
+            "js": "text/javascript; charset=utf-8",
+            "woff2": "font/woff2",
+            "svg": "image/svg+xml",
+            "png": "image/png",
+            "txt": "text/plain; charset=utf-8"
+        } />
+        <cfset var extension = lCase(listLast(arguments.path, ".")) />
+        <cfset var file = expandPath("/moopa/static/") & arguments.path />
+
+        <cfif NOT reFind("^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*(/[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*)*$", arguments.path)
+            OR NOT structKeyExists(types, extension)
+            OR NOT fileExists(file)>
+            <cfheader statuscode="404" statustext="Not Found" />
+            <cfheader name="Cache-Control" value="no-store" />
+            <cfcontent type="text/plain" reset="true" />
+            <cfoutput>Not found</cfoutput>
+            <cfreturn />
+        </cfif>
+
+        <cfif len(url.v ?: "") OR left(arguments.path, 7) EQ "vendor/">
+            <cfheader name="Cache-Control" value="public, max-age=31536000, immutable" />
+        <cfelse>
+            <cfheader name="Cache-Control" value="public, max-age=300" />
+        </cfif>
+        <cfheader name="X-Content-Type-Options" value="nosniff" />
+        <cfcontent type="#types[extension]#" file="#file#" reset="true" />
+    </cffunction>
+
 
 
 

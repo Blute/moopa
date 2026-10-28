@@ -251,172 +251,147 @@
 
 
     <cffunction name="get">
-        <cf_layout_default>
-            <div x-data="sysadmin_impersonation" x-cloak class="flex flex-col gap-4 lg:gap-5">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-3">
-                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
-                                <i class="fa-solid fa-user-secret text-base"></i>
-                            </div>
-                            <div class="min-w-0">
-                                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-                                    <h1 class="text-[1.625rem] font-semibold leading-none tracking-[-0.03em]">Impersonation</h1>
-                                    <span class="text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-base-content/42" x-text="summary()"></span>
-                                </div>
-                                <p class="mt-1 max-w-[68ch] text-sm leading-5 text-base-content/62">Manage who can create impersonation links and review recent grant activity.</p>
-                            </div>
-                        </div>
+        <cfmodule template="/moopa/tags/moopa_layout.cfm" title="Impersonation">
+            <div x-data="sysadmin_impersonation" x-cloak class="page">
+                <div class="page-header">
+                    <div>
+                        <div class="eyebrow" x-text="summary()"></div>
+                        <h1>Impersonation</h1>
+                        <p class="page-lede">Who can create impersonation links, and recent link activity.</p>
                     </div>
-                    <button class="btn btn-primary btn-sm gap-2" @click="$refs.targetModal.showModal()">
-                        <i class="fa-solid fa-mask"></i>
-                        Create link
-                    </button>
-                </div>
-
-                <template x-if="loading">
-                    <div class="rounded-lg border border-base-300 bg-base-100 p-8 text-center text-base-content/60">
-                        <span class="loading loading-spinner loading-md"></span>
-                        <p class="mt-2">Loading impersonation access…</p>
-                    </div>
-                </template>
-
-                <div x-show="!loading" class="grid gap-4 md:grid-cols-4">
-                    <div class="stats rounded-lg border border-base-300 bg-base-100 shadow-none md:col-span-4">
-                        <div class="stat">
-                            <div class="stat-title">Effective impersonators</div>
-                            <div class="stat-value text-primary" x-text="accessors.effective_profiles?.length || 0"></div>
-                        </div>
-                        <div class="stat">
-                            <div class="stat-title">Sysadmins</div>
-                            <div class="stat-value" x-text="accessors.sysadmins?.length || 0"></div>
-                        </div>
-                        <div class="stat">
-                            <div class="stat-title">Direct grants</div>
-                            <div class="stat-value" x-text="accessors.direct_profiles?.length || 0"></div>
-                        </div>
-                        <div class="stat">
-                            <div class="stat-title">Role grants</div>
-                            <div class="stat-value" x-text="accessors.roles?.length || 0"></div>
-                        </div>
+                    <div class="page-actions">
+                        <button type="button" class="btn btn-primary btn-sm" @click="$refs.targetModal.showModal()"><i class="fa-solid fa-mask"></i> Create link</button>
                     </div>
                 </div>
 
-                <div x-show="!loading" class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
-                    <section class="overflow-hidden rounded-lg border border-base-300 bg-base-100">
-                        <div class="border-b border-base-300 px-4 py-3 flex items-center justify-between gap-3">
+                <div class="card empty" x-show="loading"><i class="fa-solid fa-spinner fa-spin"></i>Loading impersonation access…</div>
+
+                <div class="auto-grid" style="--auto-min: 11rem" x-show="!loading">
+                    <div class="card stat"><div class="stat-label">Effective impersonators</div><div class="stat-value text-signal" x-text="accessors.effective_profiles?.length || 0"></div></div>
+                    <div class="card stat"><div class="stat-label">Sysadmins</div><div class="stat-value" x-text="accessors.sysadmins?.length || 0"></div></div>
+                    <div class="card stat"><div class="stat-label">Direct grants</div><div class="stat-value" x-text="accessors.direct_profiles?.length || 0"></div></div>
+                    <div class="card stat"><div class="stat-label">Role grants</div><div class="stat-value" x-text="accessors.roles?.length || 0"></div></div>
+                </div>
+
+                <div class="split split-end" style="--split-aside: 22rem" x-show="!loading">
+                    <section class="card">
+                        <div class="card-header">
                             <div>
-                                <h2 class="font-semibold">Who can impersonate</h2>
-                                <p class="text-sm text-base-content/58">Resolved from sysadmin status, direct endpoint grants, and role endpoint grants.</p>
+                                <h2 class="card-title">Who can impersonate</h2>
+                                <p class="card-sub">From sysadmin status, direct endpoint grants and role endpoint grants.</p>
                             </div>
                         </div>
-                        <div class="overflow-auto">
-                            <table class="table table-sm w-full">
+                        <div class="table-wrap">
+                            <table class="table table-sm">
                                 <thead><tr><th>Person</th><th>App</th><th>Source</th></tr></thead>
                                 <tbody>
                                     <template x-for="person in accessors.effective_profiles || []" :key="person.id">
                                         <tr>
+                                            <td><div class="cell-main" x-text="person.full_name || 'Unnamed profile'"></div><div class="cell-sub" x-text="person.email"></div></td>
+                                            <td><span class="badge mono" x-text="person.app_name || '—'"></span></td>
                                             <td>
-                                                <div class="font-medium" x-text="person.full_name || 'Unnamed profile'"></div>
-                                                <div class="text-xs text-base-content/55" x-text="person.email"></div>
-                                            </td>
-                                            <td><span class="badge badge-ghost badge-sm font-mono" x-text="person.app_name || '—'"></span></td>
-                                            <td>
-                                                <div class="flex flex-wrap gap-1">
+                                                <div class="cluster" style="--cluster-gap: var(--sp-1)">
                                                     <template x-for="source in person.sources" :key="source">
-                                                        <span class="badge badge-sm" :class="source === 'Sysadmin' ? 'badge-primary' : 'badge-soft badge-neutral'" x-text="source"></span>
+                                                        <span class="badge" :class="source === 'Sysadmin' ? 'badge-signal' : ''" x-text="source"></span>
                                                     </template>
                                                 </div>
                                             </td>
                                         </tr>
                                     </template>
-                                    <tr x-show="!(accessors.effective_profiles || []).length"><td colspan="3" class="py-8 text-center text-base-content/50">No delegated impersonators found.</td></tr>
+                                    <tr x-show="!(accessors.effective_profiles || []).length"><td colspan="3" class="empty">No delegated impersonators.</td></tr>
                                 </tbody>
                             </table>
                         </div>
                     </section>
 
-                    <aside class="space-y-4">
-                        <section class="rounded-lg border border-base-300 bg-base-100 p-4">
-                            <h2 class="font-semibold">Grant access</h2>
-                            <p class="mt-1 text-sm text-base-content/58">Sysadmins always have access. These controls delegate the create-grant endpoint.</p>
-                            <div class="mt-4 space-y-4">
-                                <div>
-                                    <label class="input input-sm input-bordered flex items-center gap-2">
-                                        <i class="fa-solid fa-user text-base-content/40"></i>
-                                        <input class="grow" x-model="profile_search" placeholder="Search profile to toggle" @input.debounce.300ms="searchProfiles()">
-                                    </label>
-                                    <div class="mt-2 max-h-48 overflow-auto divide-y divide-base-300 rounded-lg border border-base-300" x-show="profile_results.length">
-                                        <template x-for="profile in profile_results" :key="profile.id">
-                                            <button type="button" class="w-full px-3 py-2 text-left hover:bg-base-200/60" @click="toggleProfileAccess(profile)">
-                                                <span class="block truncate text-sm font-medium" x-text="profile.full_name || 'Unnamed profile'"></span>
-                                                <span class="block truncate text-xs text-base-content/55" x-text="`${profile.email || '—'} · ${profile.app_name || '—'}`"></span>
-                                            </button>
-                                        </template>
-                                    </div>
+                    <aside class="card">
+                        <div class="card-header">
+                            <div>
+                                <h2 class="card-title">Grant access</h2>
+                                <p class="card-sub">Sysadmins always have access. These delegate the create-link endpoint.</p>
+                            </div>
+                        </div>
+                        <div class="card-body stack">
+                            <div class="field">
+                                <label class="label" for="impersonation-profile-search">Profile</label>
+                                <div class="input-icon">
+                                    <i class="fa-solid fa-user"></i>
+                                    <input id="impersonation-profile-search" class="input input-sm" x-model="profile_search" placeholder="Search a profile to toggle" @input.debounce.300ms="searchProfiles()">
                                 </div>
-                                <div>
-                                    <label class="input input-sm input-bordered flex items-center gap-2">
-                                        <i class="fa-solid fa-shield-halved text-base-content/40"></i>
-                                        <input class="grow" x-model="role_search" placeholder="Search role to toggle" @input.debounce.300ms="searchRoles()">
-                                    </label>
-                                    <div class="mt-2 max-h-48 overflow-auto divide-y divide-base-300 rounded-lg border border-base-300" x-show="role_results.length">
-                                        <template x-for="role in role_results" :key="role.id">
-                                            <button type="button" class="w-full px-3 py-2 text-left hover:bg-base-200/60" @click="toggleRoleAccess(role)">
-                                                <span class="block truncate text-sm font-medium" x-text="role.name"></span>
-                                            </button>
-                                        </template>
-                                    </div>
+                                <div class="card list-rows" style="max-height: 12rem; overflow: auto; box-shadow: none" x-show="profile_results.length">
+                                    <template x-for="profile in profile_results" :key="profile.id">
+                                        <button type="button" class="list-row" @click="toggleProfileAccess(profile)">
+                                            <span class="min0"><span class="cell-main truncate" style="display: block" x-text="profile.full_name || 'Unnamed profile'"></span><span class="cell-sub truncate" style="display: block" x-text="`${profile.email || '—'} · ${profile.app_name || '—'}`"></span></span>
+                                        </button>
+                                    </template>
                                 </div>
                             </div>
-                        </section>
+                            <div class="field">
+                                <label class="label" for="impersonation-role-search">Role</label>
+                                <div class="input-icon">
+                                    <i class="fa-solid fa-shield-halved"></i>
+                                    <input id="impersonation-role-search" class="input input-sm" x-model="role_search" placeholder="Search a role to toggle" @input.debounce.300ms="searchRoles()">
+                                </div>
+                                <div class="card list-rows" style="max-height: 12rem; overflow: auto; box-shadow: none" x-show="role_results.length">
+                                    <template x-for="role in role_results" :key="role.id">
+                                        <button type="button" class="list-row" @click="toggleRoleAccess(role)"><span class="cell-main truncate" x-text="role.name"></span></button>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
                     </aside>
                 </div>
 
-                <section x-show="!loading" class="overflow-hidden rounded-lg border border-base-300 bg-base-100">
-                    <div class="border-b border-base-300 px-4 py-3">
-                        <h2 class="font-semibold">Recent activity</h2>
-                        <p class="text-sm text-base-content/58">Last 50 impersonation grants. Tokens are intentionally never displayed.</p>
+                <section class="card" x-show="!loading">
+                    <div class="card-header">
+                        <div>
+                            <h2 class="card-title">Recent activity</h2>
+                            <p class="card-sub">The last 50 impersonation links. Their tokens are never shown.</p>
+                        </div>
                     </div>
-                    <div class="overflow-auto">
-                        <table class="table table-sm w-full">
+                    <div class="table-wrap">
+                        <table class="table table-sm">
                             <thead><tr><th>Created</th><th>Impersonator</th><th>Target</th><th>Status</th><th>IP</th></tr></thead>
                             <tbody>
                                 <template x-for="grant in activity" :key="grant.id">
                                     <tr>
-                                        <td class="font-mono text-xs" x-text="compactDate(grant.created_at)"></td>
-                                        <td><div x-text="grant.impersonator_name"></div><div class="text-xs text-base-content/55" x-text="grant.impersonator_email"></div></td>
-                                        <td><div x-text="grant.target_name"></div><div class="text-xs text-base-content/55"><span x-text="grant.target_email"></span> · <span x-text="grant.target_app_name"></span></div></td>
-                                        <td><span class="badge badge-sm" :class="grant.status === 'consumed' ? 'badge-success' : (grant.status === 'active' ? 'badge-warning' : 'badge-ghost')" x-text="grant.status"></span></td>
-                                        <td class="font-mono text-xs"><span x-text="grant.request_ip || '—'"></span><span x-show="grant.consume_ip"> → </span><span x-text="grant.consume_ip || ''"></span></td>
+                                        <td class="mono muted nowrap" x-text="compactDate(grant.created_at)"></td>
+                                        <td><div class="cell-main" x-text="grant.impersonator_name"></div><div class="cell-sub" x-text="grant.impersonator_email"></div></td>
+                                        <td><div class="cell-main" x-text="grant.target_name"></div><div class="cell-sub"><span x-text="grant.target_email"></span> · <span x-text="grant.target_app_name"></span></div></td>
+                                        <td><span class="badge" :class="grant.status === 'consumed' ? 'badge-success' : (grant.status === 'active' ? 'badge-warning' : '')" x-text="grant.status"></span></td>
+                                        <td class="mono muted"><span x-text="grant.request_ip || '—'"></span><span x-show="grant.consume_ip"> → </span><span x-text="grant.consume_ip || ''"></span></td>
                                     </tr>
                                 </template>
-                                <tr x-show="!activity.length"><td colspan="5" class="py-8 text-center text-base-content/50">No impersonation grants yet.</td></tr>
+                                <tr x-show="!activity.length"><td colspan="5" class="empty">No impersonation links yet.</td></tr>
                             </tbody>
                         </table>
                     </div>
                 </section>
 
-                <dialog x-ref="targetModal" class="modal">
-                    <div class="modal-box max-w-2xl">
-                        <h3 class="text-lg font-semibold">Create impersonation link</h3>
-                        <p class="mt-1 text-sm text-base-content/60">Search for the user you want to impersonate. Hub profiles are allowed, except configured sysadmins. The link is copied to your clipboard and expires in 5 minutes.</p>
-                        <label class="input input-bordered mt-4 flex items-center gap-2">
-                            <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
-                            <input class="grow" placeholder="Search name or email" x-model="target_search" @input.debounce.300ms="searchTargets()">
-                        </label>
-                        <div class="mt-3 max-h-80 overflow-auto divide-y divide-base-300 rounded-lg border border-base-300">
+                <dialog x-ref="targetModal" class="modal" aria-labelledby="impersonation-target-title">
+                    <div class="modal-header">
+                        <div>
+                            <h2 id="impersonation-target-title" class="card-title">Create an impersonation link</h2>
+                            <p class="card-sub">Find the person to impersonate. Hub profiles are allowed, except the configured sysadmins. The link is copied to your clipboard and expires in 5 minutes.</p>
+                        </div>
+                        <button type="button" class="btn btn-ghost btn-icon btn-sm" @click="$refs.targetModal.close()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div class="modal-body stack">
+                        <div class="input-icon">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input class="input" placeholder="Search name or email" x-model="target_search" @input.debounce.300ms="searchTargets()" aria-label="Search name or email">
+                        </div>
+                        <div class="card list-rows" style="box-shadow: none" x-show="targets.length || target_search">
                             <template x-for="target in targets" :key="target.id">
-                                <button type="button" class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-base-200/60" @click="createGrant(target)">
-                                    <span class="min-w-0"><span class="block truncate font-medium" x-text="target.full_name || 'Unnamed profile'"></span><span class="block truncate text-xs text-base-content/55" x-text="`${target.email || '—'} · ${target.app_name || '—'}`"></span></span>
-                                    <i class="fa-solid fa-copy text-base-content/45"></i>
+                                <button type="button" class="list-row" @click="createGrant(target)">
+                                    <span class="min0"><span class="cell-main truncate" style="display: block" x-text="target.full_name || 'Unnamed profile'"></span><span class="cell-sub truncate" style="display: block" x-text="`${target.email || '—'} · ${target.app_name || '—'}`"></span></span>
+                                    <i class="fa-solid fa-copy muted"></i>
                                 </button>
                             </template>
-                            <div x-show="target_search && !targets.length" class="px-3 py-6 text-center text-sm text-base-content/50">No matching profiles.</div>
+                            <div class="empty" x-show="target_search && !targets.length">No matching profiles.</div>
                         </div>
-                        <div class="modal-action"><form method="dialog"><button class="btn">Close</button></form></div>
                     </div>
-                    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+                    <div class="modal-footer"><button type="button" class="btn btn-sm" @click="$refs.targetModal.close()">Close</button></div>
                 </dialog>
 
                 <script>
@@ -439,7 +414,7 @@
                             this.activity = data.activity || [];
                             this.loading = false;
                         },
-                        summary() { return `${this.accessors.effective_profiles?.length || 0} people`; },
+                        summary() { const n = this.accessors.effective_profiles?.length || 0; return `${n} ${n === 1 ? 'person' : 'people'}`; },
                         compactDate(value) { return value ? new Date(value).toLocaleString() : '—'; },
                         async searchProfiles() {
                             const q = this.profile_search.trim();
@@ -484,7 +459,7 @@
                 });
                 </script>
             </div>
-        </cf_layout_default>
+        </cfmodule>
     </cffunction>
 
 </cfcomponent>

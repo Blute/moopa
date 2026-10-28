@@ -232,250 +232,95 @@
 
 
     <cffunction name="get" output="true">
-        <cf_layout_default>
+        <cfmodule template="/moopa/tags/moopa_layout.cfm" title="Profiles">
 
-            <div x-data="profiles_admin" x-cloak class="flex flex-col gap-4 lg:gap-5">
-                <!-- Header -->
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-3">
-                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-box border border-base-300 bg-base-100 text-primary">
-                                <i class="fa-solid fa-user text-base"></i>
-                            </div>
-                            <div class="min-w-0">
-                                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-                                    <h1 class="text-[1.625rem] font-semibold leading-none tracking-[-0.03em]">Profiles</h1>
-                                    <span class="text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-base-content/42" x-text="resultSummary()"></span>
-                                </div>
-                                <p class="mt-1 max-w-[58ch] text-sm leading-5 text-base-content/62">Manage identities, login access, roles, and authentication links.</p>
-                            </div>
-                        </div>
+            <div x-data="profiles_admin" x-cloak class="page">
+                <div class="page-header">
+                    <div>
+                        <div class="eyebrow" x-text="resultSummary()"></div>
+                        <h1>Profiles</h1>
+                        <p class="page-lede">People: who they are, whether they can sign in, their roles and how they sign in.</p>
                     </div>
-
-
+                    <div class="page-actions">
+                        <button type="button" class="btn btn-primary btn-sm" @click="addNew"><i class="fa-solid fa-plus"></i> New profile</button>
+                    </div>
                 </div>
 
                 <template x-if="load_error">
-                    <div class="alert alert-error text-sm">
+                    <div class="alert alert-danger">
                         <i class="fa-solid fa-triangle-exclamation"></i>
-                        <div>
-                            <p class="font-medium">Profiles could not be loaded.</p>
-                            <p class="text-error-content/80">Try again, or check the server logs if the problem continues.</p>
-                        </div>
+                        <div class="grow"><div class="strong">Profiles could not be loaded.</div><div>Try again, or check the error log if it keeps happening.</div></div>
                         <button type="button" class="btn btn-sm" @click="load()">Retry</button>
                     </div>
                 </template>
 
-                <!-- Results -->
-                <div class="overflow-hidden rounded-lg border border-base-300 bg-base-100 md:flex md:max-h-[calc(100vh-9rem)] md:flex-col" x-show="has_loaded || load_error" x-cloak style="display: none;">
-                    <div class="border-b border-base-300 px-4 py-3">
-                        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                            <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-                                <label class="input input-sm w-full focus-within:outline-primary/55 focus-within:outline-offset-2 sm:w-72 lg:w-80" @input.debounce.500ms="load({ resetOffset: true })" @change.stop>
-                                    <i class="fa-solid fa-magnifying-glass text-base-content/40"></i>
-                                    <input type="search" aria-label="Search profiles" placeholder="Search name, email, or mobile" x-model="filters.term">
-                                </label>
-                                <select class="select select-sm w-full focus:outline-primary/55 focus:outline-offset-2 sm:w-44" aria-label="Filter profiles by app" x-model="filters.app_name" @change="load({ resetOffset: true })">
-                                    <option value="">All apps</option>
-                                    <template x-for="app in app_names" :key="app">
-                                        <option :value="app" x-text="app"></option>
-                                    </template>
-                                </select>
-                                <button type="button" class="btn btn-ghost btn-sm justify-start" @click="resetFilters()" :disabled="!hasActiveFilters()">
-                                    Reset
-                                </button>
+                <div class="card" x-show="has_loaded || load_error">
+                    <div class="card-header">
+                        <div class="cluster">
+                            <div class="input-icon" style="width: 18rem; max-width: 100%" @input.debounce.500ms="load({ resetOffset: true })" @change.stop>
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input class="input input-sm" type="search" aria-label="Search profiles" placeholder="Search name, email or mobile" x-model="filters.term">
                             </div>
-                            <button class="btn btn-primary btn-sm gap-2" @click="addNew">
-                                <i class="fa-solid fa-plus"></i>
-                                New Profile
-                            </button>
+                            <select class="select select-sm" style="width: 10rem" aria-label="Filter profiles by app" x-model="filters.app_name" @change="load({ resetOffset: true })">
+                                <option value="">All apps</option>
+                                <template x-for="app in app_names" :key="app">
+                                    <option :value="app" x-text="app"></option>
+                                </template>
+                            </select>
+                            <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters()" :disabled="!hasActiveFilters()">Reset</button>
                         </div>
                     </div>
 
-                    <div class="overflow-visible md:min-h-0 md:flex-1 md:overflow-auto">
-                    <div class="divide-y divide-base-300 md:hidden">
-                        <template x-for="item in records" :key="item.id">
-                            <article class="p-4 cursor-pointer outline-none transition-colors hover:bg-base-200/35 focus-visible:bg-base-200/45 focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-inset" role="button" tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)" @keydown.space.prevent="select(item)" :aria-label="`Edit profile ${item.full_name || item.email || 'profile'}`">
-                                <div class="flex items-start justify-between gap-3">
-                                    <div class="flex min-w-0 items-start gap-3">
-                                        <template x-if="item.profile_picture_id?.thumbnail">
-                                            <div class="avatar">
-                                                <div class="w-10 rounded-full bg-base-200">
-                                                    <img :src="item.profile_picture_id.thumbnail" :alt="item.full_name" />
-                                                </div>
-                                            </div>
-                                        </template>
-                                        <template x-if="!item.profile_picture_id?.thumbnail">
-                                            <div class="avatar avatar-placeholder">
-                                                <div class="bg-neutral text-neutral-content w-10 rounded-full flex items-center justify-center">
-                                                    <span class="text-xs font-semibold" x-text="getInitials(item.full_name)"></span>
-                                                </div>
-                                            </div>
-                                        </template>
-                                        <div class="min-w-0">
-                                            <div class="flex flex-wrap items-center gap-2">
-                                                <h3 class="font-medium leading-tight tracking-[-0.01em]" x-text="item.full_name || 'Unnamed profile'"></h3>
-                                                <template x-if="isProtectedSysadmin(item)">
-                                                    <span class="badge badge-xs badge-soft badge-primary gap-1">
-                                                        <i class="fa-solid fa-shield-halved"></i>
-                                                        Protected
-                                                    </span>
-                                                </template>
-                                            </div>
-                                            <p class="truncate text-[0.8125rem] leading-5 text-base-content/62" x-text="item.email"></p>
-                                        </div>
-                                    </div>
-                                    <div class="flex shrink-0 items-center gap-1">
-                                        <button class="btn btn-ghost btn-sm btn-square min-h-10 h-10 w-10" @click.stop="select(item)" title="Edit profile" aria-label="Edit profile">
-                                            <i class="fa-solid fa-pen-to-square text-base-content/70"></i>
-                                        </button>
-                                        <!--- Not :disabled — daisyUI disabled buttons get pointer-events:none, so the click
-      would fall through to the row and open the drawer. Keep it clickable and let
-      openDeleteModal toast the protected explanation instead. --->
-                                        <button class="btn btn-ghost btn-sm btn-square min-h-10 h-10 w-10 text-error" :class="isProtectedSysadmin(item) && 'opacity-40 cursor-not-allowed'" @click.stop="openDeleteModal(item)" title="Delete profile" :aria-disabled="isProtectedSysadmin(item)" :aria-label="isProtectedSysadmin(item) ? 'Configured Hub sysadmin profiles cannot be deleted' : 'Delete profile'">
-                                            <i class="fa-solid fa-trash"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                                    <div>
-                                        <dt class="text-xs font-medium text-base-content/45">App</dt>
-                                        <dd class="mt-0.5 font-mono text-xs text-base-content/70" x-text="item.app_name || '—'"></dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-medium text-base-content/45">Login</dt>
-                                        <dd class="mt-0.5 inline-flex items-center gap-1.5 text-xs font-medium" :class="item.can_login ? 'text-success' : 'text-base-content/50'">
-                                            <i class="fa-solid" :class="item.can_login ? 'fa-right-to-bracket' : 'fa-lock'"></i>
-                                            <span x-text="isProtectedSysadmin(item) ? 'Protected' : (item.can_login ? 'Can log in' : 'Login disabled')"></span>
-                                        </dd>
-                                    </div>
-                                    <div class="col-span-2">
-                                        <dt class="text-xs font-medium text-base-content/45">Auth identity</dt>
-                                        <dd class="mt-0.5 truncate font-mono text-xs text-base-content/70" x-text="item.auth_identities?.length ? formatAuthIdentity(item.auth_identities[0]) : '—'"></dd>
-                                    </div>
-                                    <div class="col-span-2">
-                                        <dt class="text-xs font-medium text-base-content/45">Last login</dt>
-                                        <dd class="mt-0.5 font-mono text-xs tabular-nums text-base-content/70" x-text="compactDate(item.last_login_at) || '—'"></dd>
-                                    </div>
-                                </dl>
-                            </article>
-                        </template>
-
-                        <template x-if="!loading && !load_error && records.length === 0">
-                            <div class="px-6 py-12 text-center">
-                                <div class="mx-auto flex max-w-md flex-col items-center gap-3 text-base-content/65">
-                                    <i class="fa-solid fa-users text-3xl text-base-content/35"></i>
-                                    <div>
-                                        <p class="font-medium text-base-content" x-text="hasActiveFilters() ? 'No profiles match these filters.' : 'No profiles yet.'"></p>
-                                        <p class="mt-1 text-sm" x-text="hasActiveFilters() ? 'Clear filters or search for a different name, email, or mobile.' : 'Create the first identity for this app.'"></p>
-                                    </div>
-                                    <button type="button" class="btn btn-sm" @click="hasActiveFilters() ? resetFilters() : addNew()" x-text="hasActiveFilters() ? 'Clear filters' : 'New Profile'"></button>
-                                </div>
-                            </div>
-                        </template>
-                    </div>
-
-                    <div class="hidden overflow-auto md:block">
-                        <table class="table table-sm table-fixed w-full">
-                            <thead class="bg-base-100">
-                                <tr class="border-base-300 text-[0.8125rem] text-base-content/58">
-                                    <th class="w-[27%] font-medium">Identity</th>
-                                    <th class="w-[7%] font-medium">App</th>
-                                    <th class="w-[12%] font-medium">Roles</th>
-                                    <th class="w-[13%] font-medium">Login</th>
-                                    <th class="w-[24%] font-medium">Auth identity</th>
-                                    <th class="w-[10%] font-medium">Last login</th>
-                                    <th class="w-[7%] text-end font-medium">Actions</th>
-                                </tr>
+                    <div class="table-wrap">
+                        <table class="table table-sm table-hover table-clickable">
+                            <thead>
+                                <tr><th>Person</th><th>App</th><th>Roles</th><th>Sign-in</th><th>Signs in with</th><th>Last sign-in</th><th class="actions">Actions</th></tr>
                             </thead>
                             <tbody>
                                 <template x-for="item in records" :key="item.id">
-                                    <tr class="border-base-200 hover:bg-base-200/35 cursor-pointer outline-none focus-visible:bg-base-200/45 focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-inset" role="button" tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)" @keydown.space.prevent="select(item)" :aria-label="`Edit profile ${item.full_name || item.email || 'profile'}`">
+                                    <tr tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)" :aria-label="`Edit profile ${item.full_name || item.email || 'profile'}`">
                                         <td>
-                                            <div class="flex items-center gap-3">
-                                                <template x-if="item.profile_picture_id?.thumbnail">
-                                                    <div class="avatar">
-                                                        <div class="w-9 rounded-full bg-base-200">
-                                                            <img :src="item.profile_picture_id.thumbnail" :alt="item.full_name" />
-                                                        </div>
-                                                    </div>
-                                                </template>
-                                                <template x-if="!item.profile_picture_id?.thumbnail">
-                                                    <div class="avatar avatar-placeholder">
-                                                        <div class="bg-neutral text-neutral-content w-9 rounded-full flex items-center justify-center">
-                                                            <span class="text-xs font-semibold" x-text="getInitials(item.full_name)"></span>
-                                                        </div>
-                                                    </div>
-                                                </template>
-                                                <div class="min-w-0">
-                                                    <div class="flex items-center gap-2">
-                                                        <p class="truncate font-medium leading-5 tracking-[-0.01em]" x-text="item.full_name || 'Unnamed profile'" :title="item.full_name"></p>
+                                            <div class="row" style="gap: var(--sp-3)">
+                                                <span class="avatar">
+                                                    <template x-if="item.profile_picture_id?.thumbnail"><img :src="item.profile_picture_id.thumbnail" :alt="item.full_name" /></template>
+                                                    <template x-if="!item.profile_picture_id?.thumbnail"><span x-text="getInitials(item.full_name)"></span></template>
+                                                </span>
+                                                <div class="min0">
+                                                    <div class="row">
+                                                        <span class="cell-main truncate" x-text="item.full_name || 'Unnamed profile'" :title="item.full_name"></span>
                                                         <template x-if="isProtectedSysadmin(item)">
-                                                            <span class="badge badge-xs badge-soft badge-primary gap-1" title="Configured Hub sysadmin">
-                                                                <i class="fa-solid fa-shield-halved"></i>
-                                                                Protected
-                                                            </span>
+                                                            <span class="badge badge-signal" title="Configured Hub sysadmin"><i class="fa-solid fa-shield-halved"></i> Protected</span>
                                                         </template>
                                                     </div>
-                                                    <p class="truncate text-[0.8125rem] leading-4 text-base-content/62" x-text="item.email" :title="item.email"></p>
+                                                    <div class="cell-sub truncate" x-text="item.email" :title="item.email"></div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td><span class="text-xs font-mono text-base-content/70" x-text="item.app_name || '—'"></span></td>
+                                        <td><span class="mono muted" x-text="item.app_name || '—'"></span></td>
                                         <td>
-                                            <div class="flex flex-wrap gap-1">
-                                                <template x-for="role in item.role_labels" :key="role">
-                                                    <span class="badge badge-sm badge-soft badge-neutral" x-text="role"></span>
-                                                </template>
-                                                <template x-if="!item.role_labels?.length">
-                                                    <span class="text-base-content/40 text-sm">—</span>
-                                                </template>
+                                            <div class="cluster" style="--cluster-gap: var(--sp-1)">
+                                                <template x-for="role in item.role_labels" :key="role"><span class="badge" x-text="role"></span></template>
+                                                <span class="muted" x-show="!item.role_labels?.length">—</span>
                                             </div>
                                         </td>
                                         <td>
-                                            <div class="flex flex-col gap-1">
-                                                <span class="inline-flex items-center gap-1.5 text-xs font-medium" :class="item.can_login ? 'text-success' : 'text-base-content/50'">
+                                            <div class="stack stack-xs">
+                                                <span class="row small" :class="item.can_login ? 'text-success' : 'muted'">
                                                     <i class="fa-solid" :class="item.can_login ? 'fa-right-to-bracket' : 'fa-lock'"></i>
-                                                    <span x-text="isProtectedSysadmin(item) ? 'Protected' : (item.can_login ? 'Can log in' : 'Login disabled')"></span>
+                                                    <span x-text="isProtectedSysadmin(item) ? 'Protected' : (item.can_login ? 'Can sign in' : 'Sign-in off')"></span>
                                                 </span>
-                                                <template x-if="item.is_employee">
-                                                    <span class="badge badge-xs badge-soft badge-info capitalize" x-text="item.employee_type || 'employee'"></span>
-                                                </template>
+                                                <template x-if="item.is_employee"><span class="badge badge-info" x-text="item.employee_type || 'employee'"></span></template>
                                             </div>
                                         </td>
-                                        <td class="min-w-0">
-                                            <template x-if="item.auth_identities?.length">
-                                                <span class="block truncate text-xs font-mono text-base-content/70" x-text="formatAuthIdentity(item.auth_identities[0])" :title="authIdentityTitle(item.auth_identities)"></span>
-                                            </template>
-                                            <template x-if="!item.auth_identities?.length">
-                                                <span class="text-xs text-base-content/40">—</span>
-                                            </template>
+                                        <td style="max-width: 16rem">
+                                            <span class="mono muted truncate" style="display: block" x-show="item.auth_identities?.length" x-text="item.auth_identities?.length ? formatAuthIdentity(item.auth_identities[0]) : ''" :title="authIdentityTitle(item.auth_identities || [])"></span>
+                                            <span class="muted" x-show="!item.auth_identities?.length">—</span>
                                         </td>
-                                        <td><span class="block truncate font-mono text-xs tabular-nums text-base-content/70" x-text="compactDate(item.last_login_at) || '—'" :title="prettyDateTitle(item.last_login_at) || '—'"></span></td>
-                                        <td>
-                                            <div class="flex items-center justify-end gap-1">
-                                                <button class="btn btn-ghost btn-sm btn-square min-h-9 h-9 w-9" @click.stop="select(item)" title="Edit profile" aria-label="Edit profile">
-                                                    <i class="fa-solid fa-pen-to-square text-base-content/70"></i>
-                                                </button>
-                                                <button class="btn btn-ghost btn-sm btn-square min-h-9 h-9 w-9 text-error" :class="isProtectedSysadmin(item) && 'opacity-40 cursor-not-allowed'" @click.stop="openDeleteModal(item)" title="Delete profile" :aria-disabled="isProtectedSysadmin(item)" :aria-label="isProtectedSysadmin(item) ? 'Configured Hub sysadmin profiles cannot be deleted' : 'Delete profile'">
-                                                    <i class="fa-solid fa-trash"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </template>
-
-                                <template x-if="!loading && !load_error && records.length === 0">
-                                    <tr>
-                                        <td colspan="7" class="px-6 py-12 text-center">
-                                            <div class="mx-auto flex max-w-md flex-col items-center gap-3 text-base-content/65">
-                                                <i class="fa-solid fa-users text-3xl text-base-content/35"></i>
-                                                <div>
-                                                    <p class="font-medium text-base-content" x-text="hasActiveFilters() ? 'No profiles match these filters.' : 'No profiles yet.'"></p>
-                                                    <p class="mt-1 text-sm" x-text="hasActiveFilters() ? 'Clear filters or search for a different name, email, or mobile.' : 'Create the first identity for this app.'"></p>
-                                                </div>
-                                                <button type="button" class="btn btn-sm" @click="hasActiveFilters() ? resetFilters() : addNew()" x-text="hasActiveFilters() ? 'Clear filters' : 'New Profile'"></button>
-                                            </div>
+                                        <td><span class="mono muted nowrap" x-text="compactDate(item.last_login_at) || '—'" :title="prettyDateTitle(item.last_login_at) || '—'"></span></td>
+                                        <td class="actions">
+                                            <button type="button" class="btn btn-ghost btn-icon btn-sm" @click.stop="select(item)" title="Edit profile" aria-label="Edit profile"><i class="fa-solid fa-pen-to-square"></i></button>
+                                            <!--- Not :disabled: keep it clickable so openDeleteModal can explain why a protected profile can't go --->
+                                            <button type="button" class="btn btn-ghost btn-icon btn-sm text-danger" :style="isProtectedSysadmin(item) ? 'opacity: 0.4; cursor: not-allowed' : ''" @click.stop="openDeleteModal(item)" title="Delete profile" :aria-disabled="isProtectedSysadmin(item)" :aria-label="isProtectedSysadmin(item) ? 'Configured Hub sysadmin profiles cannot be deleted' : 'Delete profile'"><i class="fa-solid fa-trash"></i></button>
                                         </td>
                                     </tr>
                                 </template>
@@ -483,188 +328,165 @@
                         </table>
                     </div>
 
+                    <div class="empty" x-show="!loading && !load_error && records.length === 0">
+                        <i class="fa-solid fa-users"></i>
+                        <p class="strong secondary" x-text="hasActiveFilters() ? 'No profiles match these filters.' : 'No profiles yet.'"></p>
+                        <p class="small" x-text="hasActiveFilters() ? 'Clear the filters, or search for a different name, email or mobile.' : 'Create the first one for this app.'"></p>
+                        <button type="button" class="btn btn-sm mt-2" @click="hasActiveFilters() ? resetFilters() : addNew()" x-text="hasActiveFilters() ? 'Clear filters' : 'New profile'"></button>
                     </div>
 
-                    <div class="flex flex-col gap-2 border-t border-base-300 bg-base-100/95 px-4 py-1.5 text-[0.6875rem] leading-5 text-base-content/50 shadow-[0_-8px_20px_oklch(19.5%_0.02_41_/_0.035)] sm:flex-row sm:items-center sm:justify-between" x-show="!loading && !load_error && total_count > 0">
-                        <span class="hidden text-base-content/45 sm:block">&nbsp;</span>
-                        <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 sm:justify-end">
-                            <label class="flex items-center gap-1.5">
-                                <span class="font-medium uppercase tracking-[0.08em] text-base-content/42">Rows</span>
-                                <select class="select h-7 min-h-7 w-14 rounded-md border-base-300 bg-base-100 px-2 text-xs focus:outline-primary/55 focus:outline-offset-2" x-model.number="limit" @change="load({ resetOffset: true })" aria-label="Profiles per page">
-                                    <option :value="20">20</option>
-                                    <option :value="50">50</option>
-                                    <option :value="100">100</option>
-                                </select>
+                    <div class="card-footer cluster cluster-end small muted" x-show="!loading && !load_error && total_count > 0">
+                        <label class="row">
+                            <span class="eyebrow">Rows</span>
+                            <select class="select select-sm" style="width: 4.5rem" x-model.number="limit" @change="load({ resetOffset: true })" aria-label="Profiles per page">
+                                <option :value="20">20</option>
+                                <option :value="50">50</option>
+                                <option :value="100">100</option>
+                            </select>
+                        </label>
+                        <span><strong class="secondary" x-text="rangeStart()"></strong>–<strong class="secondary" x-text="records.length"></strong> of <strong class="secondary" x-text="total_count"></strong></span>
+                        <button type="button" class="btn btn-ghost btn-xs" x-show="canShowMore()" @click="showMore()">More</button>
+                    </div>
+                </div>
+
+                <dialog class="modal modal-lg" aria-labelledby="profile-editor-title"
+                    x-effect="drawer_open ? ($el.open || $el.showModal()) : ($el.open && $el.close())"
+                    @cancel.prevent="closeDrawer()" @close="editorClosed($el)">
+                    <div class="modal-header">
+                        <div>
+                            <div class="eyebrow" x-text="current_record.id ? 'Profile' : 'New profile'"></div>
+                            <h2 id="profile-editor-title" class="card-title" x-text="current_record.id ? (current_record.full_name || 'Unnamed profile') : 'Create a profile'"></h2>
+                            <p class="card-sub truncate" x-text="current_record.email || 'Identity and access details.'"></p>
+                        </div>
+                        <button type="button" class="btn btn-ghost btn-icon btn-sm" @click="closeDrawer()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <section class="modal-section stack">
+                            <div><h3 class="strong">Identity</h3><p class="help">Name and contact details.</p></div>
+                            <div class="field">
+                                <label class="label" for="profile-full-name">Full name</label>
+                                <input id="profile-full-name" class="input" type="text" x-model="current_record.full_name" autocomplete="off">
+                            </div>
+                            <div class="auto-grid" style="--auto-min: 14rem">
+                                <div class="field">
+                                    <label class="label" for="profile-email">Email</label>
+                                    <input id="profile-email" class="input" type="email" x-model="current_record.email" autocomplete="off">
+                                </div>
+                                <div class="field">
+                                    <label class="label" for="profile-mobile">Mobile</label>
+                                    <input id="profile-mobile" class="input" type="tel" x-model="current_record.mobile" autocomplete="off">
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="modal-section stack">
+                            <div><h3 class="strong">Picture</h3><p class="help">Shown in menus and lists where there's room.</p></div>
+                            <div class="row" style="gap: var(--sp-4)">
+                                <span class="avatar avatar-lg">
+                                    <template x-if="current_record.profile_picture_id?.thumbnail"><img :src="current_record.profile_picture_id.thumbnail" alt="" /></template>
+                                    <template x-if="!current_record.profile_picture_id?.thumbnail"><span x-text="getInitials(current_record.full_name)"></span></template>
+                                </span>
+                                <div class="cluster">
+                                    <label class="btn btn-sm" :aria-disabled="picture_uploading">
+                                        <i class="fa-solid" :class="picture_uploading ? 'fa-spinner fa-spin' : 'fa-upload'"></i>
+                                        <span x-text="current_record.profile_picture_id?.id ? 'Replace' : 'Upload'"></span>
+                                        <input type="file" accept="image/*" hidden @change="uploadPicture($event)">
+                                    </label>
+                                    <button type="button" class="btn btn-ghost btn-sm" x-show="current_record.profile_picture_id?.id" @click="current_record.profile_picture_id = ''">Remove</button>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="modal-section stack">
+                            <div><h3 class="strong">Access</h3><p class="help">Roles, and whether this profile can sign in.</p></div>
+                            <div class="field">
+                                <span class="label">Roles</span>
+                                <div class="cluster" style="--cluster-gap: var(--sp-1)">
+                                    <template x-for="role in (current_record.roles || [])" :key="role.id">
+                                        <span class="badge badge-signal">
+                                            <span x-text="role.label || role.name"></span>
+                                            <button type="button" @click="removeRole(role.id)" :aria-label="`Remove ${role.label || role.name}`"><i class="fa-solid fa-xmark"></i></button>
+                                        </span>
+                                    </template>
+                                    <span class="muted small" x-show="!(current_record.roles || []).length">None</span>
+                                </div>
+                                <div class="input-icon">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                    <input class="input input-sm" type="search" placeholder="Add a role" aria-label="Add a role" x-model="role_q" @input.debounce.250ms="searchRoles()" @focus="searchRoles()">
+                                </div>
+                                <div class="card list-rows" style="max-height: 12rem; overflow: auto; box-shadow: none" x-show="role_results.length">
+                                    <template x-for="role in role_results" :key="role.id">
+                                        <button type="button" class="list-row" @click="addRole(role)"><span class="cell-main truncate" x-text="role.label"></span><i class="fa-solid fa-plus muted"></i></button>
+                                    </template>
+                                </div>
+                            </div>
+                            <template x-if="isProtectedSysadmin(current_record)">
+                                <div class="alert alert-info"><i class="fa-solid fa-shield-halved"></i><span>A configured Hub sysadmin: it must be able to sign in, and it can't be deleted.</span></div>
+                            </template>
+                            <label class="option" x-show="!isProtectedSysadmin(current_record)">
+                                <input type="checkbox" class="switch" x-model="current_record.can_login">
+                                <span>Can sign in</span>
                             </label>
-                            <span class="tabular-nums">
-                                <strong class="font-semibold text-base-content" x-text="rangeStart()"></strong>–<strong class="font-semibold text-base-content" x-text="records.length"></strong> of <strong class="font-semibold text-base-content" x-text="total_count"></strong>
-                            </span>
-                            <button type="button" class="btn btn-ghost btn-xs h-6 min-h-6 px-2" x-show="canShowMore()" @click="showMore()">
-                                More
-                            </button>
-                        </div>
+                        </section>
+
+                        <section class="modal-section stack">
+                            <div><h3 class="strong">Sign-in identities</h3><p class="help">The local or external identities this profile signs in with.</p></div>
+                            <div class="card list-rows" style="box-shadow: none" x-show="current_record.auth_identities?.length">
+                                <template x-for="identity in (current_record.auth_identities || [])" :key="identity.provider + ':' + identity.provider_subject">
+                                    <div class="list-row mono small secondary break" x-text="formatAuthIdentity(identity)"></div>
+                                </template>
+                            </div>
+                            <p class="muted small" x-show="!current_record.auth_identities?.length">None linked.</p>
+
+                            <div class="stack stack-sm" x-show="current_record.id && current_record.can_login">
+                                <div><button type="button" class="btn btn-sm" @click="generateInvite()" :disabled="generating_invite">
+                                    <i class="fa-solid" :class="generating_invite ? 'fa-spinner fa-spin' : 'fa-key'"></i>
+                                    <span x-text="hasLocalPassword(current_record) ? 'Reset password and invite' : 'Generate a password and invite'"></span>
+                                </button></div>
+                                <template x-if="invite">
+                                    <div class="alert alert-warning" style="display: block">
+                                        <p class="strong">This temporary password is shown once. Copy the invite now and send it.</p>
+                                        <pre class="code-block mt-2" x-text="inviteText()"></pre>
+                                        <button type="button" class="btn btn-primary btn-sm mt-2" @click="copyInvite()"><i class="fa-solid fa-copy"></i> Copy invite</button>
+                                    </div>
+                                </template>
+                            </div>
+                        </section>
                     </div>
-                </div>
 
-
-                <!-- Edit Drawer -->
-                <div class="fixed inset-0 z-[1000]" x-show="drawer_open" x-cloak style="display: none;" @keydown.escape.window="closeDrawer()">
-                    <button type="button" class="absolute inset-0 bg-base-content/20" aria-label="Close profile editor" @click="closeDrawer()"></button>
-                    <aside class="absolute right-0 top-0 flex h-full w-full max-w-2xl flex-col border-l border-base-300 bg-base-100 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="profile-drawer-title" tabindex="-1" x-ref="drawerPanel" x-trap.noscroll="drawer_open" x-show="drawer_open" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full">
-                        <header class="flex items-start justify-between gap-4 border-b border-base-300 px-6 py-5">
-                            <div class="min-w-0">
-                                <p class="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-base-content/45" x-text="current_record.id ? 'Profile details' : 'New profile'"></p>
-                                <h2 id="profile-drawer-title" class="mt-1 text-xl font-semibold leading-tight tracking-[-0.026em]" x-text="current_record.id ? (current_record.full_name || 'Unnamed profile') : 'Create profile'"></h2>
-                                <p class="mt-1 truncate text-sm leading-5 text-base-content/62" x-text="current_record.email || 'Add identity and access details.'"></p>
-                            </div>
-                            <button type="button" class="btn btn-ghost btn-sm btn-circle" @click="closeDrawer()" aria-label="Close profile editor">
-                                <i class="fa-solid fa-xmark"></i>
-                            </button>
-                        </header>
-
-                        <div class="flex-1 overflow-y-auto px-6 py-5">
-                            <div class="space-y-7">
-                                <section class="space-y-4">
-                                    <div>
-                                        <h3 class="text-sm font-semibold">Identity</h3>
-                                        <p class="max-w-[54ch] text-sm leading-5 text-base-content/58">Name, contact details, and the app this profile belongs to.</p>
-                                    </div>
-                                    <cf_table_controls table_name="moo_profile" fields="full_name" />
-                                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                        <cf_table_controls table_name="moo_profile" fields="email,mobile" />
-                                    </div>
-                                </section>
-
-                                <section class="space-y-4 border-t border-base-300 pt-6">
-                                    <div>
-                                        <h3 class="text-sm font-semibold">Profile picture</h3>
-                                        <p class="max-w-[54ch] text-sm leading-5 text-base-content/58">Used in the shell and profile lists where available.</p>
-                                    </div>
-                                    <cf_table_controls table_name="moo_profile" fields="profile_picture_id" />
-                                </section>
-
-                                <section class="space-y-4 border-t border-base-300 pt-6">
-                                    <div>
-                                        <h3 class="text-sm font-semibold">Permissions</h3>
-                                        <p class="max-w-[54ch] text-sm leading-5 text-base-content/58">Roles and login access for this identity.</p>
-                                    </div>
-                                    <cf_table_controls table_name="moo_profile" fields="roles" />
-                                    <template x-if="isProtectedSysadmin(current_record)">
-                                        <div class="alert alert-info text-sm">
-                                            <i class="fa-solid fa-shield-halved"></i>
-                                            <span>Configured Hub sysadmin. Login access is required and this profile cannot be deleted.</span>
-                                        </div>
-                                    </template>
-                                    <div x-show="!isProtectedSysadmin(current_record)">
-                                        <cf_table_controls table_name="moo_profile" fields="can_login" />
-                                    </div>
-                                </section>
-
-                                <section class="space-y-4 border-t border-base-300 pt-6">
-                                    <div>
-                                        <h3 class="text-sm font-semibold">Authentication links</h3>
-                                        <p class="max-w-[54ch] text-sm leading-5 text-base-content/58">External or local identities connected to this profile.</p>
-                                    </div>
-                                    <template x-if="current_record.auth_identities?.length">
-                                        <div class="divide-y divide-base-300 rounded-lg border border-base-300">
-                                            <template x-for="identity in current_record.auth_identities" :key="identity.provider + ':' + identity.provider_subject">
-                                                <div class="px-3 py-2 text-xs font-mono text-base-content/70 break-all" x-text="formatAuthIdentity(identity)"></div>
-                                            </template>
-                                        </div>
-                                    </template>
-                                    <template x-if="!current_record.auth_identities?.length">
-                                        <div class="rounded-lg border border-dashed border-base-300 px-4 py-3 text-sm text-base-content/55">No auth identities linked.</div>
-                                    </template>
-
-                                    <div x-show="current_record.id && current_record.can_login" class="space-y-3">
-                                        <button type="button" class="btn btn-outline btn-sm" @click="generateInvite()" :disabled="generating_invite">
-                                            <span class="loading loading-spinner loading-xs" x-show="generating_invite"></span>
-                                            <i class="fa-solid fa-key" x-show="!generating_invite"></i>
-                                            <span x-text="hasLocalPassword(current_record) ? 'Reset password & new invite' : 'Generate password & invite'"></span>
-                                        </button>
-
-                                        <template x-if="invite">
-                                            <div class="space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3">
-                                                <p class="text-xs font-semibold">This temporary password is shown once. Copy the invite now and send it to the user.</p>
-                                                <pre class="whitespace-pre-wrap break-all rounded-lg bg-base-100 p-3 text-xs" x-text="inviteText()"></pre>
-                                                <button type="button" class="btn btn-primary btn-sm" @click="copyInvite()">
-                                                    <i class="fa-solid fa-copy"></i>
-                                                    Copy invite
-                                                </button>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </section>
-                            </div>
-                        </div>
-
-                        <footer class="flex flex-col-reverse gap-3 border-t border-base-300 bg-base-100/95 px-6 py-4 shadow-[0_-8px_24px_oklch(19.5%_0.02_41_/_0.06)] sm:flex-row sm:items-center sm:justify-between">
-                            <button type="button" class="btn btn-ghost btn-sm text-error" @click="openDeleteModal(current_record)" x-show="current_record.id && !isProtectedSysadmin(current_record)">
-                                <i class="fa-solid fa-trash"></i>
-                                Delete
-                            </button>
-                            <div class="flex justify-end gap-2 sm:ml-auto">
-                                <button type="button" class="btn btn-ghost btn-sm" @click="closeDrawer()">Cancel</button>
-                                <button type="button" class="btn btn-primary btn-sm" @click="handleSave" :disabled="saving">
-                                    <span class="loading loading-spinner loading-xs" x-show="saving"></span>
-                                    <i class="fa-solid fa-check" x-show="!saving"></i>
-                                    Save
-                                </button>
-                            </div>
-                        </footer>
-                    </aside>
-                </div>
-
-                <!-- Discard Changes Modal -->
-                <dialog id="discard_modal" class="modal" x-ref="discardModal">
-                    <div class="modal-box max-w-sm">
-                        <div class="flex items-start gap-3">
-                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-warning/12 text-warning">
-                                <i class="fa-solid fa-triangle-exclamation text-xl"></i>
-                            </div>
-                            <div>
-                                <h3 class="text-lg font-semibold">Discard changes?</h3>
-                                <p class="mt-2 text-sm text-base-content/65">This profile has unsaved edits. Closing now will lose those changes.</p>
-                            </div>
-                        </div>
-                        <div class="modal-action">
-                            <form method="dialog">
-                                <button class="btn btn-ghost">Keep editing</button>
-                            </form>
-                            <button type="button" class="btn btn-warning" @click="discardDrawerChanges()">
-                                Discard changes
-                            </button>
-                        </div>
+                    <div class="modal-footer" x-show="!pending_drawer_close && !confirming_delete">
+                        <button type="button" class="btn btn-ghost btn-sm text-danger" style="margin-right: auto" @click="openDeleteModal(current_record)" x-show="current_record.id && !isProtectedSysadmin(current_record)"><i class="fa-solid fa-trash"></i> Delete</button>
+                        <button type="button" class="btn btn-sm" @click="closeDrawer()">Cancel</button>
+                        <button type="button" class="btn btn-primary btn-sm" @click="handleSave" :disabled="saving || picture_uploading">
+                            <i class="fa-solid" :class="saving ? 'fa-spinner fa-spin' : 'fa-check'"></i> Save
+                        </button>
                     </div>
-                    <form method="dialog" class="modal-backdrop">
-                        <button>close</button>
-                    </form>
+                    <!--- Confirmations stay in the editor: a second modal dialog stacked on this one is fragile in browsers --->
+                    <div class="modal-footer" style="align-items: center" x-show="pending_drawer_close" x-cloak role="alertdialog" aria-label="Discard changes">
+                        <span class="grow row small"><i class="fa-solid fa-triangle-exclamation text-warning"></i> Discard your unsaved changes?</span>
+                        <button type="button" class="btn btn-sm" @click="keepEditing()">Keep editing</button>
+                        <button type="button" class="btn btn-danger-solid btn-sm" @click="discardDrawerChanges()">Discard changes</button>
+                    </div>
+                    <div class="modal-footer" style="align-items: center" x-show="confirming_delete" x-cloak role="alertdialog" aria-label="Delete profile">
+                        <span class="grow row small"><i class="fa-solid fa-trash text-danger"></i> Delete <strong x-text="current_record.full_name || 'this profile'"></strong>? This can't be undone.</span>
+                        <button type="button" class="btn btn-sm" @click="confirming_delete = false">Cancel</button>
+                        <button type="button" class="btn btn-danger-solid btn-sm" @click="deleteRecord"><i class="fa-solid fa-trash"></i> Delete</button>
+                    </div>
                 </dialog>
 
-                <!-- Delete Confirmation Modal -->
-                <dialog id="delete_modal" class="modal" x-ref="deleteModal">
-                    <div class="modal-box max-w-sm text-center">
-                        <div class="py-4">
-                            <i class="fa-solid fa-triangle-exclamation text-3xl text-error mb-4 block"></i>
-                            <h3 class="text-lg font-semibold">Delete Profile</h3>
-                            <p class="text-base-content/70 mt-2">
-                                Are you sure you want to delete <span class="font-medium" x-text="current_record.full_name"></span>?
-                            </p>
-                            <p class="text-sm text-error mt-2">This action cannot be undone.</p>
-                        </div>
-                        <div class="modal-action justify-center">
-                            <form method="dialog">
-                                <button class="btn btn-ghost">Cancel</button>
-                            </form>
-                            <button class="btn btn-error" @click="deleteRecord">
-                                <i class="fa-solid fa-trash"></i>
-                                Delete
-                            </button>
+                <dialog id="delete_modal" class="modal modal-sm" x-ref="deleteModal" aria-labelledby="profile-delete-title">
+                    <div class="modal-body row row-top" style="gap: var(--sp-3)">
+                        <span class="avatar" style="background: var(--danger-surface); border-color: var(--danger-border); color: var(--danger)"><i class="fa-solid fa-trash"></i></span>
+                        <div class="stack stack-xs">
+                            <h2 id="profile-delete-title" class="card-title">Delete <span x-text="current_record.full_name || 'this profile'"></span>?</h2>
+                            <p class="muted small">This can't be undone.</p>
                         </div>
                     </div>
-                    <form method="dialog" class="modal-backdrop">
-                        <button>close</button>
-                    </form>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-sm" @click="$refs.deleteModal.close()">Cancel</button>
+                        <button type="button" class="btn btn-danger-solid btn-sm" @click="deleteRecord"><i class="fa-solid fa-trash"></i> Delete</button>
+                    </div>
                 </dialog>
 
                 <script>
@@ -681,6 +503,7 @@
                         drawer_reset_timer: null,
                         drawer_original_record: '',
                         pending_drawer_close: false,
+                        confirming_delete: false,
                         records: [],
                         total_count: 0,
                         limit: 20,
@@ -855,6 +678,48 @@
                             this.$nextTick(() => this.$refs.drawerPanel?.focus());
                         },
 
+                        // Roles on the editor: search.roles returns [{ id, label }]
+                        role_q: '',
+                        role_results: [],
+                        async searchRoles() {
+                            const chosen = new Set((this.current_record.roles || []).map(role => role.id));
+                            const found = await req({ endpoint: 'search.roles', q: this.role_q.trim() });
+                            this.role_results = (found || []).filter(role => !chosen.has(role.id)).slice(0, 10);
+                        },
+                        addRole(role) {
+                            this.current_record.roles = [...(this.current_record.roles || []), { id: role.id, label: role.label }];
+                            this.role_q = '';
+                            this.role_results = [];
+                        },
+                        removeRole(id) {
+                            this.current_record.roles = (this.current_record.roles || []).filter(role => role.id !== id);
+                        },
+
+                        // The picture: the endpoint makes a moo_file and an upload URL, the browser PUTs the file there,
+                        // then the endpoint finishes the record (its thumbnail) — moo_file.uploadFileToServerWithProgress
+                        picture_uploading: false,
+                        async uploadPicture(event) {
+                            const file = event.target.files?.[0];
+                            event.target.value = '';
+                            if (!file) return;
+                            if (!file.type.startsWith('image/')) {
+                                window.toast({ type: 'error', message: 'Choose an image file.' });
+                                return;
+                            }
+                            const endpoint = 'uploadFileToServerWithProgress.profile_picture_id';
+                            this.picture_uploading = true;
+                            try {
+                                const started = await req({ endpoint, body: { file_name: file.name, file_size: file.size, parent_table_name: 'moo_profile', parent_field: 'profile_picture_id', parent_id: this.current_record.id || '' } });
+                                const put = await fetch(started.presignedURL, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+                                if (!put.ok) throw new Error(`The upload failed (${put.status}).`);
+                                this.current_record.profile_picture_id = await req({ endpoint, body: { file_id: started.file.id } });
+                            } catch (error) {
+                                if (!String(error.message).startsWith('{')) window.toast({ type: 'error', title: 'The picture was not uploaded', description: error.message });
+                            } finally {
+                                this.picture_uploading = false;
+                            }
+                        },
+
                         select(item) {
                             clearTimeout(this.drawer_reset_timer);
                             this.invite = null;
@@ -871,11 +736,11 @@
                         closeDrawer(options = {}) {
                             if (!options.force && this.isDrawerDirty()) {
                                 this.pending_drawer_close = true;
-                                this.$refs.discardModal.showModal();
                                 return;
                             }
                             this.drawer_open = false;
                             this.pending_drawer_close = false;
+                            this.confirming_delete = false;
                             clearTimeout(this.drawer_reset_timer);
                             this.drawer_reset_timer = setTimeout(() => {
                                 if (!this.drawer_open) {
@@ -886,9 +751,25 @@
                             }, 220);
                         },
 
+                        keepEditing() {
+                            this.pending_drawer_close = false;
+                        },
+
                         discardDrawerChanges() {
-                            this.$refs.discardModal.close();
                             this.closeDrawer({ force: true });
+                        },
+
+                        // The browser closed the editor itself (Chrome only lets a page hold a dialog open on Esc
+                        // after the person has interacted since). Unsaved edits: reopen it and ask. Otherwise close
+                        // it properly, so drawer_open is false and the editor can open again.
+                        editorClosed(el) {
+                            if (!this.drawer_open) return;
+                            if (this.isDrawerDirty()) {
+                                el.showModal();
+                                this.pending_drawer_close = true;
+                            } else {
+                                this.closeDrawer({ force: true });
+                            }
                         },
 
                         openDeleteModal(item) {
@@ -896,6 +777,12 @@
                                 if (window.toast) {
                                     window.toast({ type: 'error', message: 'Configured Hub sysadmin profiles cannot be deleted.', duration: 3000 });
                                 }
+                                return;
+                            }
+                            // From the open editor, confirm in its footer rather than stacking a second modal on it
+                            if (this.drawer_open) {
+                                this.pending_drawer_close = false;
+                                this.confirming_delete = true;
                                 return;
                             }
                             this.current_record = item;
@@ -975,7 +862,7 @@
                 </script>
             </div>
 
-        </cf_layout_default>
+        </cfmodule>
     </cffunction>
 
 
