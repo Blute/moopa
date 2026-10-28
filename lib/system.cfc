@@ -5,7 +5,7 @@
     </cffunction>
 
 
-    <cffunction name="menu" access="public" returntype="array" output="false" hint="The System menu's links (sysadmin_nav.json) for the signed-in profile: all of them for a sysadmin in Hub, none otherwise. A layout shows them at the bottom of its sidebar, apart from the app's navs.">
+    <cffunction name="menu" access="public" returntype="array" output="false" hint="The System menu's links (sysadmin_nav.json) for the signed-in profile: all of them for a sysadmin in Hub, none otherwise. A layout shows them as a group after the app's navs, below a dividing line.">
         <cfif NOT (application.system_routes ?: false) OR NOT application.lib.auth.isSysAdmin()>
             <cfreturn [] />
         </cfif>

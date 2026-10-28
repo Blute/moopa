@@ -68,7 +68,7 @@
         <cfset application.service.moo_route.initializeRoutesIntoApplicationScope() />
 
         <cfset _setupNavs() />
-        <!--- The System menu: Moopa's own pages, shown to sysadmins at the bottom of the sidebar, apart from the app's navs --->
+        <!--- The System menu: Moopa's own pages, shown to sysadmins after the app's navs, below a dividing line --->
         <cfset application.system_menu = application.system_routes ? deserializeJSON(fileRead(expandPath("/moopa/sysadmin_nav.json"))) : [] />
 
 

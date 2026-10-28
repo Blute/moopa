@@ -115,12 +115,12 @@ Every Moopa project should include a `hub` app. Hub is the control-plane/admin a
 
 Hub serves Moopa's System pages (`/sysadmin/*`: roles, routes, route access, profiles, impersonation, error log, schema, app summary) straight from `code/moopa/routes/sysadmin`. Every project gets the same pages, and they change only when Moopa does. No other app serves them.
 
-The System menu is not one of the app's navs. Its links are `code/moopa/sysadmin_nav.json`, and `application.lib.system.menu()` returns them for a sysadmin in Hub and nothing for anyone else. A layout shows them at the bottom of its sidebar, after the app's menus, as a System group. A project layout adds them the same way:
+The System menu is not one of the app's navs. Its links are `code/moopa/sysadmin_nav.json`, and `application.lib.system.menu()` returns them for a sysadmin in Hub and nothing for anyone else. A layout shows them in its sidebar as a System group straight after the app's menus, below a dividing line. A project layout adds them the same way:
 
 ```cfml
 <cfset systemItems = application.lib.system.menu() />
 <cfif arrayLen(systemItems)>
-    <!--- a "System" group at the bottom of the sidebar --->
+    <!--- a dividing line, then a "System" group, after the app's menus --->
     <cfloop array="#systemItems#" item="systemItem">
         <a href="#systemItem.route#"><i class="#systemItem.icon#"></i> #encodeForHTML(systemItem.title)#</a>
     </cfloop>
@@ -147,7 +147,7 @@ That includes extending a framework feature. A project that keeps more about a p
 1. Move any page the project added under `routes/sysadmin` (one Moopa doesn't have) to a route of its own, such as `/admin/...`, with its own menu entry, and update links to it.
 2. Delete `code/apps/hub/routes/sysadmin` and `code/apps/hub/navs/sysadmin.json`, whether links or copies. A copy's edits to a Moopa page are dropped; anything worth keeping belongs in Moopa (a pull request) or in a project route.
 3. Remove `MOOPA_ENABLE_SYSADMIN` from the environment. Hub no longer reads it.
-4. Show `application.lib.system.menu()` at the bottom of the project layouts' sidebars (above), or sysadmins lose their way to the System pages from project pages.
+4. Show `application.lib.system.menu()` after the app's menus in the project layouts' sidebars (above), or sysadmins lose their way to the System pages from project pages.
 5. Re-initialise Hub. Routes are matched to their saved rows by URL, so role grants on the System pages carry over.
 
 ## Routes
