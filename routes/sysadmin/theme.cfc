@@ -13,7 +13,8 @@
 
         <cfmodule template="/moopa/tags/moopa_layout.cfm" title="Theme">
             <style>
-                .ds-tabs { position: sticky; top: 0; z-index: var(--z-raised); background: var(--canvas); }
+                /* stuck, it sits below the content's top padding: the shadow paints that strip so nothing shows through */
+                .ds-tabs { position: sticky; top: 0; z-index: var(--z-raised); margin-top: calc(var(--sp-6) - var(--card-gap)); background: var(--canvas); box-shadow: 0 calc(-1 * var(--sp-6)) 0 var(--canvas); }
                 .ds-group-title { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
                 .ds-tokens { table-layout: fixed; }
                 .ds-tokens th:nth-child(1) { width: 28%; }
