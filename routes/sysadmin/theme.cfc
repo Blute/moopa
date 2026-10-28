@@ -310,6 +310,7 @@
         <cfset var inner = "" />
         <cfset var name = "" />
         <cfset var fallback = "" />
+        <cfset var resolved = "" />
 
         <cfif arguments.depth GT 8><cfreturn out /></cfif>
         <cfset pos = find("var(", out) />
@@ -325,8 +326,10 @@
             <cfset inner = mid(out, pos + 4, i - pos - 4) />
             <cfset name = trim(listFirst(inner, ",")) />
             <cfset fallback = listLen(inner, ",") GT 1 ? trim(listRest(inner, ",")) : "" />
-            <cfset out = left(out, pos - 1) & resolve(structKeyExists(arguments.tokens, name) ? arguments.tokens[name] : fallback, arguments.tokens, arguments.depth + 1) & mid(out, i + 1, len(out)) />
-            <cfset pos = find("var(", out) />
+            <cfset resolved = resolve(structKeyExists(arguments.tokens, name) ? arguments.tokens[name] : fallback, arguments.tokens, arguments.depth + 1) />
+            <cfset out = left(out, pos - 1) & resolved & mid(out, i + 1, len(out)) />
+            <!--- search on after the substitution: a circular token comes back still holding var() at the depth cap --->
+            <cfset pos = find("var(", out, pos + len(resolved)) />
         </cfloop>
         <cfreturn out />
     </cffunction>
