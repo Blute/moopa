@@ -82,6 +82,19 @@
     <cfreturn arrayToList(classes, " ") />
 </cffunction>
 
+<!--- Whether the current route is anywhere under a nav item, at any depth --->
+<cffunction name="containsCurrent" access="private" returntype="boolean" output="false">
+    <cfargument name="items" type="array" required="true" />
+    <cfset var child = {} />
+    <cfloop array="#arguments.items#" item="child">
+        <cfif (child.route ?: "") EQ currentRoute
+            OR (structKeyExists(child, "items") AND isArray(child.items) AND containsCurrent(child.items))>
+            <cfreturn true />
+        </cfif>
+    </cfloop>
+    <cfreturn false />
+</cffunction>
+
 <!--- A nav item and its children as sidebar rows --->
 <cffunction name="navRow" access="private" returntype="string" output="false">
     <cfargument name="item" type="struct" required="true" />
@@ -101,9 +114,7 @@
     </cfif>
 
     <cfif structKeyExists(arguments.item, "items") AND arrayLen(arguments.item.items)>
-        <cfloop array="#arguments.item.items#" item="child">
-            <cfif (child.route ?: "") EQ currentRoute><cfset hasCurrentChild = true /></cfif>
-        </cfloop>
+        <cfset hasCurrentChild = containsCurrent(arguments.item.items) />
         <cfset subId = "moo-shell-sub-" & lCase(left(hash(serializeJSON(arguments.item) & arguments.depth, "MD5"), 10)) />
         <cfset html &= '<div class="moo-shell-nav-row-wrap" data-moo-shell-submenu#hasCurrentChild ? ' data-open="true"' : ''#>' />
         <cfset html &= '<button type="button" class="moo-shell-nav-row#hasCurrentChild ? ' moo-shell-nav-row-parent-current' : ''##depthClass#" data-moo-shell-toggle-submenu aria-expanded="#hasCurrentChild ? 'true' : 'false'#" aria-controls="#subId#">' />
@@ -149,7 +160,8 @@
     <script defer src="#system.staticUrl('vendor/alpine-3.17.5/alpine.min.js')#"></script>
 </head>
 <body>
-<cfif session.auth.is_impersonating ?: false>
+<!--- Not inside a framed page (chrome=false): the page around the frame shows it already --->
+<cfif attributes.chrome AND (session.auth.is_impersonating ?: false)>
     <div class="moo-shell-banner" role="status">
         <i class="fa-solid fa-user-secret"></i>
         <span>Impersonating <strong>#encodeForHTML((session.auth.profile ?: {}).full_name ?: 'Unknown')#</strong>, by #encodeForHTML((session.auth.impersonator ?: {}).full_name ?: 'Unknown')#</span>

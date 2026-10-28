@@ -351,7 +351,7 @@
 
                 <dialog class="modal modal-lg" aria-labelledby="profile-editor-title"
                     x-effect="drawer_open ? ($el.open || $el.showModal()) : ($el.open && $el.close())"
-                    @cancel.prevent="closeDrawer()">
+                    @cancel.prevent="closeDrawer()" @close="editorClosed($el)">
                     <div class="modal-header">
                         <div>
                             <div class="eyebrow" x-text="current_record.id ? 'Profile' : 'New profile'"></div>
@@ -455,26 +455,23 @@
                         </section>
                     </div>
 
-                    <div class="modal-footer">
+                    <div class="modal-footer" x-show="!pending_drawer_close && !confirming_delete">
                         <button type="button" class="btn btn-ghost btn-sm text-danger" style="margin-right: auto" @click="openDeleteModal(current_record)" x-show="current_record.id && !isProtectedSysadmin(current_record)"><i class="fa-solid fa-trash"></i> Delete</button>
                         <button type="button" class="btn btn-sm" @click="closeDrawer()">Cancel</button>
                         <button type="button" class="btn btn-primary btn-sm" @click="handleSave" :disabled="saving || picture_uploading">
                             <i class="fa-solid" :class="saving ? 'fa-spinner fa-spin' : 'fa-check'"></i> Save
                         </button>
                     </div>
-                </dialog>
-
-                <dialog id="discard_modal" class="modal modal-sm" x-ref="discardModal" aria-labelledby="profile-discard-title">
-                    <div class="modal-body row row-top" style="gap: var(--sp-3)">
-                        <span class="avatar" style="background: var(--warning-surface); border-color: var(--warning-border); color: var(--warning-text)"><i class="fa-solid fa-triangle-exclamation"></i></span>
-                        <div class="stack stack-xs">
-                            <h2 id="profile-discard-title" class="card-title">Discard changes?</h2>
-                            <p class="muted small">This profile has unsaved edits. Closing now loses them.</p>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-sm" @click="$refs.discardModal.close()">Keep editing</button>
+                    <!--- Confirmations stay in the editor: a second modal dialog stacked on this one is fragile in browsers --->
+                    <div class="modal-footer" style="align-items: center" x-show="pending_drawer_close" x-cloak role="alertdialog" aria-label="Discard changes">
+                        <span class="grow row small"><i class="fa-solid fa-triangle-exclamation text-warning"></i> Discard your unsaved changes?</span>
+                        <button type="button" class="btn btn-sm" @click="keepEditing()">Keep editing</button>
                         <button type="button" class="btn btn-danger-solid btn-sm" @click="discardDrawerChanges()">Discard changes</button>
+                    </div>
+                    <div class="modal-footer" style="align-items: center" x-show="confirming_delete" x-cloak role="alertdialog" aria-label="Delete profile">
+                        <span class="grow row small"><i class="fa-solid fa-trash text-danger"></i> Delete <strong x-text="current_record.full_name || 'this profile'"></strong>? This can't be undone.</span>
+                        <button type="button" class="btn btn-sm" @click="confirming_delete = false">Cancel</button>
+                        <button type="button" class="btn btn-danger-solid btn-sm" @click="deleteRecord"><i class="fa-solid fa-trash"></i> Delete</button>
                     </div>
                 </dialog>
 
@@ -506,6 +503,7 @@
                         drawer_reset_timer: null,
                         drawer_original_record: '',
                         pending_drawer_close: false,
+                        confirming_delete: false,
                         records: [],
                         total_count: 0,
                         limit: 20,
@@ -738,11 +736,11 @@
                         closeDrawer(options = {}) {
                             if (!options.force && this.isDrawerDirty()) {
                                 this.pending_drawer_close = true;
-                                this.$refs.discardModal.showModal();
                                 return;
                             }
                             this.drawer_open = false;
                             this.pending_drawer_close = false;
+                            this.confirming_delete = false;
                             clearTimeout(this.drawer_reset_timer);
                             this.drawer_reset_timer = setTimeout(() => {
                                 if (!this.drawer_open) {
@@ -753,9 +751,25 @@
                             }, 220);
                         },
 
+                        keepEditing() {
+                            this.pending_drawer_close = false;
+                        },
+
                         discardDrawerChanges() {
-                            this.$refs.discardModal.close();
                             this.closeDrawer({ force: true });
+                        },
+
+                        // The browser closed the editor itself (Chrome only lets a page hold a dialog open on Esc
+                        // after the person has interacted since). Unsaved edits: reopen it and ask. Otherwise close
+                        // it properly, so drawer_open is false and the editor can open again.
+                        editorClosed(el) {
+                            if (!this.drawer_open) return;
+                            if (this.isDrawerDirty()) {
+                                el.showModal();
+                                this.pending_drawer_close = true;
+                            } else {
+                                this.closeDrawer({ force: true });
+                            }
                         },
 
                         openDeleteModal(item) {
@@ -763,6 +777,12 @@
                                 if (window.toast) {
                                     window.toast({ type: 'error', message: 'Configured Hub sysadmin profiles cannot be deleted.', duration: 3000 });
                                 }
+                                return;
+                            }
+                            // From the open editor, confirm in its footer rather than stacking a second modal on it
+                            if (this.drawer_open) {
+                                this.pending_drawer_close = false;
+                                this.confirming_delete = true;
                                 return;
                             }
                             this.current_record = item;
