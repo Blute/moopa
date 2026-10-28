@@ -29,7 +29,8 @@ Everything else (the emailed link, the approve page, the waiting page's polling)
 | Variable | |
 | --- | --- |
 | `BASE_URL` | The app's address. The emailed link is built on it, never on the request's `Host` header, which the person asking controls. Required. |
-| `SYSADMIN_EMAIL` | The hub's sysadmins. Signing in as one of them creates their hub profile, or enables it, so a new project's first sign-in needs no setup. |
+| `SYSADMIN_EMAIL` | The hub's sysadmins. One without a usable hub profile still gets the link; approving it creates their profile, or enables it, so a new project's first sign-in needs no setup. Nothing changes until the link is approved. |
+| `TRUSTED_PROXY` | `cloudflare` (or `digitalocean`) when every request reaches the app through that proxy, which then sets the client headers itself. Only then does sign-in use its client address (for the per-IP limit) and, for Cloudflare with visitor location headers on, show roughly where a request came from. Unset: the connection's address and no location, as a client can send any header. |
 | Email | Sent with `lib/email.cfc` ([email.md](email.md)). Outside production every message goes to `SYSADMIN_EMAIL`. |
 | `APP_ENVIRONMENT=development` | The waiting page also shows the link, so a local stack signs in without email. |
 
@@ -38,11 +39,11 @@ Everything else (the emailed link, the approve page, the waiting page's polling)
 - **Opening the link changes nothing.** Only the Approve button (a POST) approves, so mail scanners that open links can't sign anyone in.
 - **The asking browser is bound to its request** by a secret kept in its session; the emailed link carries a second secret. Only SHA-256 hashes of both are stored.
 - **One use, 15 minutes.** A request is approved or turned down once, signs in once, and is over after 15 minutes.
-- **Nothing says whether an email has an account.** An unknown address waits like any other; no email is sent.
+- **Nothing says whether an email has an account.** An unknown address waits like any other; no email is sent. An email that fails to send is logged and looks the same.
 - **At most 5 requests per email address and 20 per IP address in 15 minutes.**
 - **Signing out ends the 30-day device too.**
 
-A request someone else started still needs the account owner to approve it: the approve page shows the device, roughly where it is (when the site is behind Cloudflare with visitor location headers on) and when it asked, so a request that isn't theirs stands out.
+A request someone else started still needs the account owner to approve it: the approve page shows the device, roughly where it is (with `TRUSTED_PROXY=cloudflare` and Cloudflare's visitor location headers on) and when it asked, so a request that isn't theirs stands out.
 
 ## Inviting someone
 

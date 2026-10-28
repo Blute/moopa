@@ -131,6 +131,9 @@
         </cfif>
 
         <cfset var profileId = profileFor(address) />
+        <!--- A configured hub sysadmin without a usable profile gets the link too; their profile is
+              made or enabled only when the link is approved, which proves they own the mailbox --->
+        <cfset var canSignIn = len(profileId) OR isConfiguredSysadmin(address) />
         <cfset var approveToken = application.lib.core.generateSecureToken(32) />
         <cfset var browserSecret = application.lib.core.generateSecureToken(32) />
         <cfset var userAgent = left(cgi.http_user_agent ?: "", 500) />
@@ -161,16 +164,14 @@
             dev_link = ""
         } />
 
-        <cfif len(profileId)>
+        <cfif canSignIn>
             <cfset var link = approveUrl(approveToken) />
             <cfif isDevelopment()>
                 <cfset session.signin.dev_link = link />
             </cfif>
-            <cfset var sent = sendLink(address, link, describeDevice(userAgent), place) />
-            <cfif NOT sent AND NOT isDevelopment()>
-                <cfset structDelete(session, "signin") />
-                <cfreturn "The email couldn't be sent just now. Try again in a minute." />
-            </cfif>
+            <!--- A failed send is logged (sendLink) and otherwise looks like any other request: saying
+                  so would tell the asker this email has an account --->
+            <cfset sendLink(address, link, describeDevice(userAgent), place) />
         </cfif>
 
         <cfreturn "" />
@@ -256,13 +257,24 @@
             WHERE approve_token_hash = <cfqueryparam cfsqltype="varchar" value="#tokenHash(arguments.token)#" />
               AND status = 'pending'
               AND expires_at > now()
-              AND profile_id IS NOT NULL
-            RETURNING id::text AS id
+              AND (profile_id IS NOT NULL
+                   OR (app_name = 'hub' AND email IN (<cfqueryparam cfsqltype="varchar" value="#sysadminList()#" list="true" />)))
+            RETURNING id::text AS id, COALESCE(profile_id::text, '') AS profile_id, email
         </cfquery>
 
         <cfif NOT arrayLen(local.qDecide)>
             <!--- Decided already, used or expired: the approve page says which --->
             <cfreturn approvePage(arguments.token) />
+        </cfif>
+
+        <!--- A configured sysadmin's first approval: now that they've shown they own the mailbox, give
+              them a hub profile (or enable theirs) and tie the request to it --->
+        <cfif arguments.approve AND NOT len(local.qDecide[1].profile_id)>
+            <cfquery>
+                UPDATE moo_signin_request
+                SET profile_id = <cfqueryparam cfsqltype="other" value="#sysadminProfile(local.qDecide[1].email)#" />
+                WHERE id = <cfqueryparam cfsqltype="other" value="#local.qDecide[1].id#" />
+            </cfquery>
         </cfif>
 
         <!--- Approved in the browser that asked: straight on to Continue --->
@@ -406,7 +418,8 @@
                    floor(extract(epoch FROM now() - created_at))::int AS age_seconds
             FROM moo_signin_request
             WHERE approve_token_hash = <cfqueryparam cfsqltype="varchar" value="#tokenHash(arguments.token)#" />
-              AND profile_id IS NOT NULL
+              AND (profile_id IS NOT NULL
+                   OR (app_name = 'hub' AND email IN (<cfqueryparam cfsqltype="varchar" value="#sysadminList()#" list="true" />)))
         </cfquery>
 
         <cfif NOT arrayLen(local.qRequest)>
@@ -563,31 +576,48 @@
     <!--- ===================================================================================== --->
 
     <cffunction name="profileFor" access="private" returntype="string" output="false"
-        hint="The id of the profile of this app that can sign in with this email, else empty. A configured sysadmin (SYSADMIN_EMAIL) of the hub gets a profile, or has theirs enabled, so a new project's first sign-in needs no setup.">
+        hint="The id of this app's profile that can sign in with this email, else empty. Reads only.">
+        <cfargument name="email" type="string" required="true" />
+
+        <cfquery name="local.qProfile" returntype="array">
+            SELECT id::text AS id
+            FROM moo_profile
+            WHERE app_name = <cfqueryparam cfsqltype="varchar" value="#appName()#" />
+              AND lower(email) = <cfqueryparam cfsqltype="varchar" value="#arguments.email#" />
+              AND can_login = true
+            LIMIT 1
+        </cfquery>
+        <cfreturn arrayLen(local.qProfile) ? local.qProfile[1].id : "" />
+    </cffunction>
+
+
+    <cffunction name="isConfiguredSysadmin" access="private" returntype="boolean" output="false"
+        hint="Whether this email is one of the hub's configured sysadmins (SYSADMIN_EMAIL) and this is the hub.">
+        <cfargument name="email" type="string" required="true" />
+        <cfreturn appName() EQ "hub" AND listFindNoCase(sysadminEmails(), arguments.email) GT 0 />
+    </cffunction>
+
+
+    <cffunction name="sysadminProfile" access="private" returntype="string" output="false"
+        hint="A configured sysadmin's hub profile id, made or enabled. Called only once they've approved an emailed link, so a new project's first sign-in needs no setup.">
         <cfargument name="email" type="string" required="true" />
 
         <cfquery name="local.qProfile" returntype="array">
             SELECT id::text AS id, can_login
             FROM moo_profile
-            WHERE app_name = <cfqueryparam cfsqltype="varchar" value="#appName()#" />
+            WHERE app_name = 'hub'
               AND lower(email) = <cfqueryparam cfsqltype="varchar" value="#arguments.email#" />
             ORDER BY can_login DESC
             LIMIT 1
         </cfquery>
 
-        <cfif arrayLen(local.qProfile) AND local.qProfile[1].can_login>
-            <cfreturn local.qProfile[1].id />
-        </cfif>
-
-        <cfif appName() NEQ "hub" OR NOT listFindNoCase(sysadminEmails(), arguments.email)>
-            <cfreturn "" />
-        </cfif>
-
         <cfif arrayLen(local.qProfile)>
-            <cfquery>
-                UPDATE moo_profile SET can_login = true
-                WHERE id = <cfqueryparam cfsqltype="other" value="#local.qProfile[1].id#" />
-            </cfquery>
+            <cfif NOT local.qProfile[1].can_login>
+                <cfquery>
+                    UPDATE moo_profile SET can_login = true
+                    WHERE id = <cfqueryparam cfsqltype="other" value="#local.qProfile[1].id#" />
+                </cfquery>
+            </cfif>
             <cfreturn local.qProfile[1].id />
         </cfif>
 
@@ -597,6 +627,13 @@
             returnFormat = "cfml"
         ) />
         <cfreturn profile.id />
+    </cffunction>
+
+
+    <cffunction name="sysadminList" access="private" returntype="string" output="false"
+        hint="sysadminEmails() for an IN list, never empty (an empty list would match nothing, but some drivers reject it).">
+        <cfset var list = sysadminEmails() />
+        <cfreturn len(list) ? list : "-" />
     </cffunction>
 
 
@@ -631,14 +668,23 @@
 
 
     <cffunction name="clientIp" access="private" returntype="string" output="false"
-        hint="The asker's address: Cloudflare's or DigitalOcean's header for it when present, else the connection's. Not X-Forwarded-For, whose first entry the client writes.">
+        hint="The asker's address. A proxy's header for it only when TRUSTED_PROXY says the app is behind that proxy (a client can send any header); else the connection's. Never X-Forwarded-For, whose first entry the client writes.">
         <cfset var headers = getHttpRequestData().headers />
-        <cfreturn left(trim(headers["CF-Connecting-IP"] ?: headers["DO-Connecting-IP"] ?: cgi.remote_addr ?: ""), 64) />
+        <cfset var fromProxy = "" />
+        <cfif trustedProxy() EQ "cloudflare">
+            <cfset fromProxy = headers["CF-Connecting-IP"] ?: "" />
+        <cfelseif trustedProxy() EQ "digitalocean">
+            <cfset fromProxy = headers["DO-Connecting-IP"] ?: "" />
+        </cfif>
+        <cfreturn left(trim(len(trim(fromProxy)) ? fromProxy : (cgi.remote_addr ?: "")), 64) />
     </cffunction>
 
 
     <cffunction name="clientPlace" access="private" returntype="string" output="false"
-        hint="Roughly where the asker is, from Cloudflare's visitor location headers when the site is behind it; else empty.">
+        hint="Roughly where the asker is, from Cloudflare's visitor location headers, only when TRUSTED_PROXY=cloudflare; else empty.">
+        <cfif trustedProxy() NEQ "cloudflare">
+            <cfreturn "" />
+        </cfif>
         <cfset var headers = getHttpRequestData().headers />
         <cfset var parts = [] />
         <cfloop list="CF-IPCity,CF-Region,CF-IPCountry" item="local.name">
@@ -648,6 +694,12 @@
             </cfif>
         </cfloop>
         <cfreturn left(arrayToList(parts, ", "), 120) />
+    </cffunction>
+
+
+    <cffunction name="trustedProxy" access="private" returntype="string" output="false"
+        hint="TRUSTED_PROXY: cloudflare or digitalocean when every request reaches the app through that proxy, which sets its client headers itself; else empty.">
+        <cfreturn lCase(trim(server.system.environment.TRUSTED_PROXY ?: "")) />
     </cffunction>
 
 
