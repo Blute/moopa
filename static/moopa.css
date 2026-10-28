@@ -126,14 +126,14 @@
 
   /* shell panel — the sidebar is a darker panel than the page, for contrast. Its own tokens, so a
      project can re-colour the panel without touching the page. */
-  --shell-bg:            oklch(29% 0.028 265);
-  --shell-bg-raised:     oklch(33.5% 0.030 265);
-  --shell-line:          oklch(38% 0.028 265);
-  --shell-edge:          oklch(24% 0.024 265);
-  --shell-ink:           oklch(96.5% 0.006 265);
-  --shell-ink-secondary: oklch(87% 0.012 265);
-  --shell-ink-mute:      oklch(72% 0.020 265);
-  --shell-ink-mute-2:    oklch(64% 0.020 265);
+  --shell-bg:            #293042;   /* Titan's sidebar panel, so a project's shell and Moopa's match */
+  --shell-bg-raised:     #333b50;
+  --shell-line:          #3a4257;
+  --shell-edge:          #1f2534;
+  --shell-ink:           #f4f5f8;
+  --shell-ink-secondary: #d5d9e2;
+  --shell-ink-mute:      #9aa3b5;
+  --shell-ink-mute-2:    #7f889b;
   --shell-signal:        oklch(74% 0.120 258);   /* the accent, lifted to read on the dark panel */
   --shell-danger:        oklch(75% 0.140 22);
 
@@ -625,12 +625,12 @@ button.list-row { width: 100%; text-align: left; }
   overflow-x: hidden;
 }
 @media (min-width: 768px) { .moo-shell-sidebar { z-index: var(--z-popover); } }
-.moo-shell-brand-row { position: relative; flex: 0 0 auto; display: flex; align-items: center; height: 4rem; padding-left: 1.25rem; padding-right: 55px; }
-.moo-shell-brand-text { display: inline-block; flex: 1 1 auto; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); font-size: 1rem; font-weight: 500; letter-spacing: -0.02em; transition: opacity 120ms var(--ease), max-width var(--t) var(--ease); }
+.moo-shell-brand-row { position: relative; flex: 0 0 auto; display: flex; align-items: center; height: 5rem; padding-left: 1.5rem; padding-right: 55px; }
+.moo-shell-brand-text { display: inline-block; flex: 1 1 auto; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); font-size: 1.0625rem; font-weight: 500; letter-spacing: -0.02em; line-height: 1; transition: opacity 120ms var(--ease), max-width var(--t) var(--ease); }
 .moo-shell-brand-text:hover { text-decoration: none; }
 .moo-shell-brand-row .moo-shell-nav-row-wrap { position: absolute; top: 50%; right: 23px; transform: translateY(-50%); }
 
-.moo-shell-nav { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 0 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.125rem; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.moo-shell-nav { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 0 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.25rem; scrollbar-width: thin; scrollbar-color: transparent transparent; }
 .moo-shell-sidebar:hover .moo-shell-nav { scrollbar-color: var(--shell-scrollbar) transparent; }
 
 .moo-shell-mobile-bar { display: none; }
@@ -697,7 +697,7 @@ html.moo-shell-collapsed .moo-shell-sub-nav { grid-template-rows: 0fr !important
 .moo-shell-profile-dropdown.moo-shell-open { opacity: 1; transform: scale(1); pointer-events: auto; }
 .moo-shell-profile-dropdown-header { margin-bottom: 0.25rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--hairline); }
 .moo-shell-menu-heading { padding: 0.5rem 0.75rem 0.25rem; color: var(--ink-mute); font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
-.moo-shell-menu-item { display: flex; align-items: center; gap: 0.625rem; width: 100%; padding: 0.4375rem 0.75rem; color: var(--ink-secondary); font-size: 0.8125rem; text-align: left; text-decoration: none; transition: background-color 150ms ease, color 150ms ease; }
+.moo-shell-menu-item { display: flex; align-items: center; gap: 0.625rem; width: 100%; padding: 0.5rem 0.75rem; color: var(--ink-secondary); font-size: 0.8125rem; text-align: left; text-decoration: none; transition: background-color 150ms ease, color 150ms ease; }
 .moo-shell-menu-item:hover, .moo-shell-menu-item:focus-visible { color: var(--ink); background: var(--canvas-soft); text-decoration: none; outline: none; }
 .moo-shell-menu-item[aria-current="page"] { color: var(--ink); font-weight: 500; }
 .moo-shell-menu-item[aria-current="page"] .moo-shell-menu-item-icon { color: var(--signal); }
@@ -727,7 +727,11 @@ body.moo-shell-mobile-open .moo-shell-backdrop { opacity: 1; pointer-events: aut
 @media (max-width: 767.98px) {
   .moo-shell-sidebar { position: fixed !important; top: 0; left: 0; height: 100dvh; z-index: var(--z-sidebar); width: min(var(--sb-w), calc(100vw - 3rem)) !important; flex: 0 0 0 !important; transform: translateX(-100%); transition: transform var(--t) var(--ease) !important; box-shadow: var(--shadow-2); }
   .moo-shell-icon-button { width: 2.75rem; height: 2.75rem; }
-  .moo-shell-nav-row { min-height: 2.75rem; }
+  .moo-shell-brand-row { height: 4.25rem; padding-left: 1rem; }
+  .moo-shell-brand-row .moo-shell-nav-row-wrap { right: 0.75rem; }
+  .moo-shell-nav-row { min-height: 2.75rem; padding-block: 0.625rem; }
+  .moo-shell-profile-menu { padding: 0.75rem; }
+  .moo-shell-profile-button { min-height: 3.25rem; }
   body:not(.moo-shell-mobile-open) .moo-shell-sidebar { box-shadow: none; visibility: hidden; transition: transform var(--t) var(--ease), visibility 0s var(--t) !important; }
   body.moo-shell-mobile-open .moo-shell-sidebar { transform: translateX(0) !important; }
   body.moo-shell-mobile-open { overflow: hidden; }

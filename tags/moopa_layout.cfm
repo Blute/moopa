@@ -167,7 +167,7 @@
 <cfif showShell>
     <aside id="moo-shell-sidebar" class="moo-shell-sidebar" aria-label="Primary navigation">
         <div class="moo-shell-brand-row">
-            <a class="moo-shell-brand-text" href="#encodeForHTMLAttribute(appHome)#">#encodeForHTML(appTitle)#</a>
+            <a class="moo-shell-brand-text" href="#encodeForHTMLAttribute(appHome)#">#encodeForHTML(projectTitle)#</a>
             <div class="moo-shell-nav-row-wrap">
                 <button id="moo-shell-sidebar-toggle" type="button" class="moo-shell-icon-button" aria-label="Collapse sidebar" aria-controls="moo-shell-sidebar" aria-expanded="true">
                     <i class="fa-solid fa-angles-left ico-expanded"></i>
