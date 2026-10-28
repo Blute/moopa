@@ -122,7 +122,7 @@
     </cffunction>
 
     <cffunction name="getRouteAccessMap" access="public" returntype="struct" output="false" hint="Everything the Route Access page draws for the running app: menus, live routes, route links, roles and what each can open.">
-        <!--- The System menu isn't a nav (sysadmins reach it from their profile menu), but its pages are drawn as a section like any menu's --->
+        <!--- The System menu isn't one of the app's navs, but its pages are drawn as a section like any menu's --->
         <cfset var navs = duplicate(application.navs) />
         <cfif arrayLen(application.system_menu ?: [])>
             <cfset navs["sysadmin"] = [ { title: "System", items: application.system_menu } ] />
