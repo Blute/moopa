@@ -3,8 +3,8 @@
 
     <cfmodule template="/moopa/tags/moopa_status.cfm" code="404" />
 
-    It is a page of its own, not inside moopa_layout: the 500 page may be showing because the database or the
-    session failed, so it reads neither. It sets the response status.
+    It renders in moopa_bare, a page of its own outside moopa_layout: the 500 page may be showing because the
+    database or the session failed, and moopa_bare reads neither. It sets the response status.
 
     Attributes
       code      404, 403 or 500 (default 404)
@@ -31,7 +31,6 @@
 <cfset status = structKeyExists(statuses, attributes.code) ? statuses[attributes.code] : statuses["404"] />
 <cfset heading = len(attributes.title) ? attributes.title : status.title />
 <cfset message = len(attributes.message) ? attributes.message : status.message />
-<cfset projectTitle = application.project_title ?: "Moopa" />
 <!--- Only a path on this site goes in a link: one leading slash, no backslash (browsers read "/\" as "//") or control character; as application.cfc's _localPath --->
 <cfset retryRoute = trim(attributes.route) />
 <cfif left(retryRoute, 1) NEQ "/"
@@ -40,30 +39,10 @@
         OR reFind("[\x00-\x1F\x7F]", retryRoute)>
     <cfset retryRoute = "/" />
 </cfif>
-<cfset brandLogo = structKeyExists(application, "moopa_theme") AND isStruct(application.moopa_theme) AND structKeyExists(application.moopa_theme, "logo") ? application.moopa_theme.logo : "" />
-
-<!--- The theme, if it can be read; Moopa's stylesheet on its own if not --->
-<cftry>
-    <cfset styles = application.lib.system.stylesheets() />
-    <cfcatch>
-        <cfset styles = '<link rel="stylesheet" href="/_moopa/static/moopa.css">' />
-    </cfcatch>
-</cftry>
-
 <cfheader statuscode="#attributes.code#" statustext="#status.text#" />
-<cfcontent type="text/html; charset=utf-8" reset="true" />
-<cfoutput><!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>#encodeForHTML(heading)# - #encodeForHTML(projectTitle)#</title>
-    #styles#
-</head>
-<body>
-<main class="status-page">
+<cfmodule template="/moopa/tags/moopa_bare.cfm" title="#heading#">
+<cfoutput>
     <div class="status-page-body">
-        <a class="status-brand" href="/"><cfif len(brandLogo)><img src="#encodeForHTMLAttribute(brandLogo)#" alt="#encodeForHTMLAttribute(projectTitle)#"><cfelse>#encodeForHTML(projectTitle)#</cfif></a>
         <p class="status-code">#attributes.code#</p>
         <h1>#encodeForHTML(heading)#</h1>
         <p class="status-message">#encodeForHTML(message)#</p>
@@ -79,6 +58,5 @@
         </div>
     </div>
     <cfif len(trim(statusBody))><div class="status-detail">#statusBody#</div></cfif>
-</main>
-</body>
-</html></cfoutput>
+</cfoutput>
+</cfmodule>

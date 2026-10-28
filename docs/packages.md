@@ -194,13 +194,14 @@ code/apps/{app}/routes/login/index.cfc
 code/apps/{app}/routes/login/logout.cfc
 ```
 
-`/login/` is the user-facing login route for the current app. It can delegate to any provider:
+`/login/` is the user-facing login route for the current app. By default it hands its `get` and `post` to Moopa's passwordless sign-in ([signin.md](signin.md)):
 
 ```cfml
-<cfreturn application.lib.auth_local_password.handlePost() />
+<cffunction name="get"><cfreturn application.lib.signin.get() /></cffunction>
+<cffunction name="post"><cfreturn application.lib.signin.post() /></cffunction>
 ```
 
-or:
+An app can delegate to another provider instead, such as Auth0 or Microsoft:
 
 ```cfml
 <cfreturn application.lib.auth_microsoft.handlePost() />

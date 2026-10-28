@@ -217,14 +217,6 @@
         <cfreturn application.lib.db.delete(table_name="moo_profile", id="#url.id#") />
     </cffunction>
 
-    <cffunction name="resetPassword">
-        <cfif NOT structKeyExists(application.lib, "auth_local_password")>
-            <cfthrow type="moopa.auth.providerMissing" message="The local password auth provider is not available in this app." />
-        </cfif>
-        <cfreturn serializeJSON(application.lib.auth_local_password.provisionTempPassword(profile_id=url.id ?: "")) />
-    </cffunction>
-
-
     <cffunction name="search.current_record.roles">
         <cfreturn application.lib.db.search(table_name='moo_role', q="#url.q?:''#") />
     </cffunction>
@@ -444,12 +436,12 @@
 
                             <div class="stack stack-sm" x-show="current_record.id && current_record.can_login">
                                 <div><button type="button" class="btn btn-sm" @click="generateInvite()" :disabled="generating_invite">
-                                    <i class="fa-solid" :class="generating_invite ? 'fa-spinner fa-spin' : 'fa-key'"></i>
-                                    <span x-text="hasLocalPassword(current_record) ? 'Reset password and invite' : 'Generate a password and invite'"></span>
+                                    <i class="fa-solid" :class="generating_invite ? 'fa-spinner fa-spin' : 'fa-paper-plane'"></i>
+                                    <span>Invite</span>
                                 </button></div>
                                 <template x-if="invite">
-                                    <div class="alert alert-warning" style="display: block">
-                                        <p class="strong">This temporary password is shown once. Copy the invite now and send it.</p>
+                                    <div class="alert alert-info" style="display: block">
+                                        <p class="strong">Send this to them. They sign in with their email; there's no password.</p>
                                         <pre class="code-block mt-2" x-text="inviteText()"></pre>
                                         <button type="button" class="btn btn-primary btn-sm mt-2" @click="copyInvite()"><i class="fa-solid fa-copy"></i> Copy invite</button>
                                     </div>
@@ -601,7 +593,7 @@
                                     await this.load();
                                     await this.generateInvite();
                                     if (window.toast) {
-                                        window.toast({ type: 'success', message: 'Profile created — copy the invite below', duration: 4000 });
+                                        window.toast({ type: 'success', message: 'Profile created. Copy the invite below', duration: 4000 });
                                     }
                                     return;
                                 }
@@ -617,29 +609,20 @@
                             }
                         },
 
-                        hasLocalPassword(profile) {
-                            return (profile?.auth_identities || []).some(identity => identity.provider === 'local_password');
-                        },
-
                         async generateInvite() {
                             if (this.generating_invite || !this.current_record.id) return;
-                            if (this.hasLocalPassword(this.current_record)
-                                && !window.confirm('This replaces the existing password. The user will no longer be able to sign in with their old one. Continue?')) {
-                                return;
-                            }
                             this.generating_invite = true;
                             try {
-                                // Persist any pending drawer edits first so the invite reflects the saved profile.
+                                // Persist any pending drawer edits first so the invite names the saved email.
                                 const saved = await req({ endpoint: 'save', body: this.current_record });
                                 const savedRecord = typeof saved === 'string' ? JSON.parse(saved) : saved;
                                 this.current_record = { ...this.current_record, ...savedRecord };
-                                this.invite = await req({ endpoint: 'resetPassword', id: this.current_record.id });
-                                this.current_record.auth_identities = [{ provider: 'local_password', provider_subject: this.invite.email }];
+                                this.invite = { email: this.current_record.email };
                                 this.drawer_original_record = JSON.stringify(this.current_record || {});
                                 await this.load();
                             } catch (error) {
                                 if (window.toast) {
-                                    window.toast({ type: 'error', message: 'Could not save the profile and generate a password.', duration: 3000 });
+                                    window.toast({ type: 'error', message: 'Could not save the profile.', duration: 3000 });
                                 }
                             } finally {
                                 this.generating_invite = false;
@@ -653,9 +636,8 @@
                                 '',
                                 `Sign in: ${window.location.origin}/login/`,
                                 `Email: ${this.invite.email}`,
-                                `Temporary password: ${this.invite.temp_password}`,
                                 '',
-                                "You'll be asked to choose your own password when you first sign in."
+                                'Sign in with this email address. There is no password.'
                             ].join('\n');
                         },
 

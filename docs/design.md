@@ -111,7 +111,7 @@ In the project's `Application.cfc`, `onApplicationStart` (it may differ per app,
 
 ### Status pages
 
-`tags/moopa_status.cfm` is the page for a 404, 403 or 500, in Moopa's design with the project's theme and logo: `<cfmodule template="/moopa/tags/moopa_status.cfm" code="404" />`. It sets the status and stands alone (no shell, no database or session reads), so the 500 page still renders when those are what failed. Moopa's error handler uses it for a 500; a project's `route.cfm` uses it for its 404 and 403 (`route` names the page asked for, which a 403 shows).
+`tags/moopa_status.cfm` is the page for a 404, 403 or 500, in Moopa's design with the project's theme and logo: `<cfmodule template="/moopa/tags/moopa_status.cfm" code="404" />`. It sets the status and renders in `tags/moopa_bare.cfm`, a page of its own (no shell, no database or session reads), so the 500 page still renders when those are what failed. The sign-in pages ([signin.md](signin.md)) render in `moopa_bare` too. Moopa's error handler uses it for a 500; a project's `route.cfm` uses it for its 404 and 403 (`route` names the page asked for, which a 403 shows).
 
 ### Rules
 
