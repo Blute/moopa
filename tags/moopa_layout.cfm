@@ -54,7 +54,7 @@
 <cfset navNames = len(attributes.navs) ? listToArray(attributes.navs) : structKeyArray(builtNavs) />
 <cfif NOT len(attributes.navs)><cfset arraySort(navNames, "textnocase") /></cfif>
 <cfset systemItems = system.menu() />
-<cfset avatarUrl = system.avatarUrl() />
+<cfset avatarUrl = signedIn ? system.avatarUrl(currentProfile.id ?: "") : "" />
 <cfset impersonated = session.auth.profile ?: {} />
 <cfset impersonator = session.auth.impersonator ?: {} />
 

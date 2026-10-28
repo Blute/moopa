@@ -47,17 +47,27 @@
 
 
     <cffunction name="avatarUrl" access="public" returntype="string" output="false" hint="The signed-in profile's picture (its avatar, else its picture) as a small square image URL from the signed-assets Worker, or an empty string when it has none or files are not set up. Kept in the session for 15 minutes per profile, so a change shows without signing out.">
-        <cfargument name="profileId" type="string" default="#session.auth.profile.id ?: ''#" />
+        <cfargument name="profileId" type="string" default="" hint="Empty: the signed-in profile, if there is one." />
         <cfargument name="size" type="numeric" default="64" hint="Pixels; the layout shows it at 2rem." />
 
-        <cfset var cached = session.moopa_avatar ?: {} />
+        <cfset var cached = {} />
         <cfset var avatar = "" />
         <cfset var rows = [] />
 
+        <!--- Signed out (or after a refused login) session.auth may be empty: look each level up safely --->
+        <cfif NOT len(arguments.profileId)
+              AND isDefined("session.auth") AND isStruct(session.auth)
+              AND structKeyExists(session.auth, "profile") AND isStruct(session.auth.profile)
+              AND structKeyExists(session.auth.profile, "id")>
+            <cfset arguments.profileId = session.auth.profile.id />
+        </cfif>
         <cfif NOT len(arguments.profileId)>
             <cfreturn "" />
         </cfif>
-        <cfif (cached.profile_id ?: "") EQ arguments.profileId AND (cached.size ?: 0) EQ arguments.size AND dateDiff("n", cached.fetched_at, now()) LT 15>
+        <cfif isDefined("session.moopa_avatar") AND isStruct(session.moopa_avatar)>
+            <cfset cached = session.moopa_avatar />
+        </cfif>
+        <cfif (cached.profile_id ?: "") EQ arguments.profileId AND (cached.size ?: 0) EQ arguments.size AND isDate(cached.fetched_at ?: "") AND dateDiff("n", cached.fetched_at, now()) LT 15>
             <cfreturn cached.url />
         </cfif>
 
