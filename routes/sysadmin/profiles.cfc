@@ -312,8 +312,8 @@
                                                 <template x-if="item.is_employee"><span class="badge badge-info" x-text="item.employee_type || 'employee'"></span></template>
                                             </div>
                                         </td>
-                                        <td style="max-width: 16rem">
-                                            <span class="mono muted truncate" style="display: block" x-show="item.auth_identities?.length" x-text="item.auth_identities?.length ? formatAuthIdentity(item.auth_identities[0]) : ''" :title="authIdentityTitle(item.auth_identities || [])"></span>
+                                        <td>
+                                            <span class="mono muted truncate" style="display: block; max-width: 16rem" x-show="item.auth_identities?.length" x-text="item.auth_identities?.length ? formatAuthIdentity(item.auth_identities[0]) : ''" :title="authIdentityTitle(item.auth_identities || [])"></span>
                                             <span class="muted" x-show="!item.auth_identities?.length">—</span>
                                         </td>
                                         <td><span class="mono muted nowrap" x-text="compactDate(item.last_login_at) || '—'" :title="prettyDateTitle(item.last_login_at) || '—'"></span></td>
