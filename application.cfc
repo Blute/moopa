@@ -522,47 +522,22 @@
         <cfelse>
 
 
-            <cfheader statuscode="500" statustext="Server Error">
-            <cfcontent type="text/html" reset="true">
-
-
-            <cf_layout_system>
-                <h1 class="display-1 fw-bold">Whoops!</h1>
-
-
-
-                <p class="h2 fw-normal mt-3 mb-4">Administrators have been notififed.</p>
-                <p class="h2 fw-normal mt-3 mb-4">You could try again or wait for us to get in touch.</p>
-                <div class="">
-                    <cfoutput>
-                    <a href="#encodeForHTMLAttribute(url.route?:'')#" class="btn btn-outline-primary btn-lg" id="try-again-button">Try Again</a>
-                    </cfoutput>
-
-                    <a href="/" class="btn btn-primary btn-lg" id="try-again-button">Return home</a>
-                </div>
-
-                <!--- Only show debug information in development environment or if debug parameter is set to 9 --->
+            <!--- Moopa's status page; in development (or with the debug key) the error's details under it --->
+            <cfset local.errorRoute = url.route ?: "" />
+            <cfif len(local.errorRoute) AND left(local.errorRoute, 1) NEQ "/"><cfset local.errorRoute = "/" & local.errorRoute /></cfif>
+            <cfmodule template="/moopa/tags/moopa_status.cfm" code="500" route="#local.errorRoute#">
                 <cfif (server.system.environment.APP_ENVIRONMENT?:'production') EQ 'development' OR (url.debug?:'') EQ (server.system.environment.DEBUG_KEY?:createUUID())>
-                    <hr>
-
-                    <cfoutput>
-                    <p class="h1">#encodeForHTML(arguments.exception.message?:'')#.</p>
-                    </cfoutput>
-                    <hr>
-                    <cfif arrayLen(arguments.exception.tagContext?:[])>
-                        <cfloop array="#arguments.exception.tagContext#" item="item">
-                            <cfoutput>
-                            <h4 class="text-lg text-start">From: #encodeForHTML(item.template?:'')#:#encodeForHTML(item.line?:'')# </h4>
-                            </cfoutput>
-                        </cfloop>
-                    </cfif>
-
-                    <hr>
-
-
-                    <cfdump var="#arguments.exception#" label="arguments.exception" expand="true">
+                    <div class="card">
+                        <div class="card-header"><h2 class="card-title"><cfoutput>#encodeForHTML(arguments.exception.message?:'')#</cfoutput></h2></div>
+                        <div class="card-body stack-sm">
+                            <cfloop array="#arguments.exception.tagContext?:[]#" item="item">
+                                <cfoutput><div><code class="code-inline">#encodeForHTML(item.template?:'')#:#encodeForHTML(item.line?:'')#</code></div></cfoutput>
+                            </cfloop>
+                            <div><cfdump var="#arguments.exception#" label="arguments.exception" expand="false"></div>
+                        </div>
+                    </div>
                 </cfif>
-            </cf_layout_system>
+            </cfmodule>
         </cfif>
     </cffunction>
 
