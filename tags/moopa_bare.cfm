@@ -11,11 +11,17 @@
     Attributes
       title     the page's title, before the project's in the browser tab
       scripts   true: load moopa.js and Alpine, for a page that needs them (default false)
+      welcome   a heading for a brand panel: the page splits into the panel (the project's colours, logo
+                and this) beside the body. On a phone the panel is a header and the body a sheet below it.
+                Empty (the default): the logo above the body, centred.
+      welcomeText  a line under welcome
 --->
 <cfif thisTag.executionMode EQ "start"><cfexit method="exitTemplate"></cfif>
 
 <cfparam name="attributes.title" default="" type="string">
 <cfparam name="attributes.scripts" default="false" type="boolean">
+<cfparam name="attributes.welcome" default="" type="string">
+<cfparam name="attributes.welcomeText" default="" type="string">
 
 <cfset bareBody = thisTag.generatedContent />
 <cfset thisTag.generatedContent = "" />
@@ -46,9 +52,23 @@
     </cfif>
 </head>
 <body>
+<cfset brandMark = len(brandLogo) ? '<img src="#encodeForHTMLAttribute(brandLogo)#" alt="#encodeForHTMLAttribute(projectTitle)#">' : encodeForHTML(projectTitle) />
+<cfif len(attributes.welcome)>
+<div class="auth">
+    <aside class="auth-brand">
+        <a class="auth-logo" href="/">#brandMark#</a>
+        <div class="auth-welcome">
+            <h2>#encodeForHTML(attributes.welcome)#</h2>
+            <cfif len(attributes.welcomeText)><p>#encodeForHTML(attributes.welcomeText)#</p></cfif>
+        </div>
+    </aside>
+    <main class="auth-main">#bareBody#</main>
+</div>
+<cfelse>
 <main class="status-page">
-    <a class="status-brand" href="/"><cfif len(brandLogo)><img src="#encodeForHTMLAttribute(brandLogo)#" alt="#encodeForHTMLAttribute(projectTitle)#"><cfelse>#encodeForHTML(projectTitle)#</cfif></a>
+    <a class="status-brand" href="/">#brandMark#</a>
     #bareBody#
 </main>
+</cfif>
 </body>
 </html></cfoutput>
