@@ -736,23 +736,6 @@ If you already have the object and need to mutate it server-side, it still must 
 
 Do not mutate the default JSON/string return from `getNewObject()`. That causes Lucee errors such as `Can't assign value to an Object of this type [String] with key [...]`.
 
-### With New Record ID
-
-```cfml
-<cffunction name="create">
-    <cfset var newRecord = application.lib.db.save(
-        table_name = "my_table",
-        data = request.data,
-        returnFormat = "cfml"
-    ) />
-    <cfreturn {
-        "success": true,
-        "id": newRecord.id,
-        "message": "Created successfully"
-    } />
-</cffunction>
-```
-
 ## Quick Reference: Accessing Data
 
 | Frontend | Backend |
