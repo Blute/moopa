@@ -248,9 +248,31 @@
         <cfargument name="token" type="string" required="true" />
         <cfargument name="approve" type="boolean" required="true" />
 
+        <!--- A configured sysadmin's first approval: holding the emailed link shows they own the mailbox, so
+              give them a hub profile (or enable theirs) first. The approving statement below then sets the
+              status and the profile together: if making the profile fails, the request is still pending and
+              Approve can be tried again, never approved without a profile. --->
+        <cfset var bootstrapProfileId = "" />
+        <cfif arguments.approve>
+            <cfquery name="local.qWaiting" returntype="array">
+                SELECT email
+                FROM moo_signin_request
+                WHERE approve_token_hash = <cfqueryparam cfsqltype="varchar" value="#tokenHash(arguments.token)#" />
+                  AND status = 'pending'
+                  AND expires_at > now()
+                  AND profile_id IS NULL
+                  AND app_name = 'hub'
+                  AND email IN (<cfqueryparam cfsqltype="varchar" value="#sysadminList()#" list="true" />)
+            </cfquery>
+            <cfif arrayLen(local.qWaiting)>
+                <cfset bootstrapProfileId = sysadminProfile(local.qWaiting[1].email) />
+            </cfif>
+        </cfif>
+
         <cfquery name="local.qDecide" returntype="array">
             UPDATE moo_signin_request
             SET status = <cfqueryparam cfsqltype="varchar" value="#arguments.approve ? 'approved' : 'denied'#" />,
+                profile_id = COALESCE(profile_id, NULLIF(<cfqueryparam cfsqltype="varchar" value="#bootstrapProfileId#" />, '')::uuid),
                 decided_at = now(),
                 decide_ip = <cfqueryparam cfsqltype="varchar" value="#clientIp()#" />,
                 decide_user_agent = <cfqueryparam cfsqltype="varchar" value="#left(cgi.http_user_agent ?: '', 500)#" />
@@ -259,22 +281,14 @@
               AND expires_at > now()
               AND (profile_id IS NOT NULL
                    OR (app_name = 'hub' AND email IN (<cfqueryparam cfsqltype="varchar" value="#sysadminList()#" list="true" />)))
-            RETURNING id::text AS id, COALESCE(profile_id::text, '') AS profile_id, email
+              <!--- Approving needs a profile, now or from just above; turning down doesn't --->
+              <cfif arguments.approve>AND COALESCE(profile_id, NULLIF(<cfqueryparam cfsqltype="varchar" value="#bootstrapProfileId#" />, '')::uuid) IS NOT NULL</cfif>
+            RETURNING id::text AS id
         </cfquery>
 
         <cfif NOT arrayLen(local.qDecide)>
             <!--- Decided already, used or expired: the approve page says which --->
             <cfreturn approvePage(arguments.token) />
-        </cfif>
-
-        <!--- A configured sysadmin's first approval: now that they've shown they own the mailbox, give
-              them a hub profile (or enable theirs) and tie the request to it --->
-        <cfif arguments.approve AND NOT len(local.qDecide[1].profile_id)>
-            <cfquery>
-                UPDATE moo_signin_request
-                SET profile_id = <cfqueryparam cfsqltype="other" value="#sysadminProfile(local.qDecide[1].email)#" />
-                WHERE id = <cfqueryparam cfsqltype="other" value="#local.qDecide[1].id#" />
-            </cfquery>
         </cfif>
 
         <!--- Approved in the browser that asked: straight on to Continue --->
@@ -378,6 +392,7 @@
                     <button type="submit" class="btn btn-primary btn-block" autofocus>Continue to #encodeForHTML(projectTitle())# <i class="fa-solid fa-arrow-right"></i></button>
                 </div>
             </form>
+            <div class="signin-foot" style="border-top: 0; padding-top: 0">#restartForm("Start again")#</div>
         </cfoutput></cfsavecontent>
         <cfreturn page("Sign-in approved", body) />
     </cffunction>
