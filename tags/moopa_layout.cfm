@@ -44,7 +44,7 @@
 <cfset appTitle = structKeyExists(application, "app_titles") AND structKeyExists(application.app_titles, appName) ? application.app_titles[appName] : projectTitle />
 <cfset appHome = structKeyExists(application, "app_homes") AND structKeyExists(application.app_homes, appName) ? application.app_homes[appName] : "/" />
 <!--- The project's logo for the dark panel (application.moopa_theme.logo), else its name --->
-<cfset brandLogo = application.moopa_theme.logo ?: "" />
+<cfset brandLogo = structKeyExists(application, "moopa_theme") AND isStruct(application.moopa_theme) AND structKeyExists(application.moopa_theme, "logo") ? application.moopa_theme.logo : "" />
 
 <!--- The route to mark current: the route's own path, without a query or trailing slash --->
 <cfset currentRoute = trim(len(attributes.current) ? attributes.current : (url.route ?: "/")) />
