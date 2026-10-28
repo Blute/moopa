@@ -35,6 +35,11 @@
     "route": "/sysadmin/error_log"
   },
   {
+    "icon": "fa-solid fa-palette",
+    "title": "Theme",
+    "route": "/sysadmin/theme"
+  },
+  {
     "icon": "fa-solid fa-database",
     "title": "Schema",
     "route": "/sysadmin/schema"
