@@ -32,9 +32,14 @@
 <cfset heading = len(attributes.title) ? attributes.title : status.title />
 <cfset message = len(attributes.message) ? attributes.message : status.message />
 <cfset projectTitle = application.project_title ?: "Moopa" />
-<!--- Only a path on this site goes in a link --->
+<!--- Only a path on this site goes in a link: one leading slash, no backslash (browsers read "/\" as "//") or control character; as application.cfc's _localPath --->
 <cfset retryRoute = trim(attributes.route) />
-<cfif left(retryRoute, 1) NEQ "/" OR left(retryRoute, 2) EQ "//"><cfset retryRoute = "/" /></cfif>
+<cfif left(retryRoute, 1) NEQ "/"
+        OR left(retryRoute, 2) EQ "//"
+        OR find("\", retryRoute)
+        OR reFind("[\x00-\x1F\x7F]", retryRoute)>
+    <cfset retryRoute = "/" />
+</cfif>
 <cfset brandLogo = structKeyExists(application, "moopa_theme") AND isStruct(application.moopa_theme) AND structKeyExists(application.moopa_theme, "logo") ? application.moopa_theme.logo : "" />
 
 <!--- The theme, if it can be read; Moopa's stylesheet on its own if not --->
