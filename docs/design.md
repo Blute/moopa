@@ -41,7 +41,9 @@ Moopa serves `static/` itself at `/_moopa/static/…`, answered before the sessi
 
 The sidebar shows the app's menus, then, for a sysadmin, a dividing line and a System group with Moopa's pages from `sysadmin_nav.json` (never one of the app's navs). It opens by itself on a System page. A sysadmin's profile menu has Re-initialise. The System pages call the layout as `<cfmodule template="/moopa/tags/moopa_layout.cfm">`, so no project tag of the same name can stand in for it there.
 
-The sidebar's icons are Font Awesome Free. A menu item using a Pro style (`fat`, `fal`, `fad`, sharp) falls back to the Free solid icon of the same name, which shows if Free has that icon.
+The sidebar is dark, so its icons are always solid: `application.lib.system.solidIcon()` turns any style (`fat`, `fal`, `far`, `fad`, sharp ...) into `fa-solid` and keeps brand icons as `fa-brands`. A project's own shell layout should use it for its sidebar too. The System pages load Font Awesome Free, so a Pro-only icon name shows nothing there.
+
+The profile button shows the signed-in profile's picture (its avatar, else its picture) from `application.lib.system.avatarUrl()`, a small square image through the signed-assets Worker, kept in the session for 15 minutes. The picture lies over the initials and removes itself if it fails to load, so the initials show when there is no picture, files are not set up, or the image cannot be fetched.
 
 ## Theming
 
