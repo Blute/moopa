@@ -118,9 +118,8 @@
             </cfif>
 
             <cfcatch type="any">
-                <cfcontent reset="true" />
-                <cfdump var="#cfcatch#"><cfabort>
-                <cfreturn false />
+                <!--- The error handler logs it and shows the status page; details only for a sysadmin --->
+                <cfrethrow />
             </cfcatch>
         </cftry>
 

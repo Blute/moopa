@@ -528,6 +528,17 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .empty { padding: var(--sp-8) var(--sp-4); text-align: center; color: var(--ink-mute); }
 .empty > i { display: block; margin: 0 auto var(--sp-2); font-size: 1.5rem; color: var(--ink-mute-2); }
 
+/* status page (tags/moopa_status.cfm): 404, 403, 500 */
+.status-page { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-6); padding: var(--sp-8) var(--sp-4); text-align: center; }
+.status-page-body { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); max-width: 28rem; }
+.status-brand { display: inline-flex; align-items: center; margin-bottom: var(--sp-6); padding: 0.625rem 1rem; border-radius: var(--radius-lg); background: var(--shell-bg); color: var(--shell-ink); font-weight: 600; text-decoration: none; }
+.status-brand img { display: block; height: var(--shell-logo-h); width: auto; }
+.status-code { color: var(--signal-deep); font-size: var(--text-sm); font-weight: 600; letter-spacing: 0.12em; font-variant-numeric: tabular-nums; }
+.status-page h1 { font-size: var(--text-2xl); }
+.status-message { color: var(--ink-mute); }
+.status-actions { justify-content: center; margin-top: var(--sp-3); }
+.status-detail { width: 100%; max-width: 64rem; text-align: left; }
+
 /* hairline-divided rows inside a card */
 .list-rows { display: flex; flex-direction: column; }
 .list-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: 0.625rem var(--card-pad); border-bottom: 1px solid var(--hairline); color: var(--ink); text-decoration: none; }

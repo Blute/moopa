@@ -109,6 +109,10 @@ In the project's `Application.cfc`, `onApplicationStart` (it may differ per app,
 
 **System → Theme** (`/sysadmin/theme`) shows a project's design as it renders. **Tokens** lists every token in `moopa.css`'s `:root`, grouped as the file groups them, with Moopa's default beside the project's value and each override marked. **Components** shows each primitive live with the project's theme applied, and the markup to copy. Check a theme change there before shipping it.
 
+### Status pages
+
+`tags/moopa_status.cfm` is the page for a 404, 403 or 500, in Moopa's design with the project's theme and logo: `<cfmodule template="/moopa/tags/moopa_status.cfm" code="404" />`. It sets the status and stands alone (no shell, no database or session reads), so the 500 page still renders when those are what failed. Moopa's error handler uses it for a 500; a project's `route.cfm` uses it for its 404 and 403 (`route` names the page asked for, which a 403 shows).
+
 ### Rules
 
 1. A theme overrides tokens, never rules. If a theme needs a rule changed, the rule should read a token: add the token to Moopa.
