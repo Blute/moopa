@@ -54,6 +54,7 @@
 <cfset navNames = len(attributes.navs) ? listToArray(attributes.navs) : structKeyArray(builtNavs) />
 <cfif NOT len(attributes.navs)><cfset arraySort(navNames, "textnocase") /></cfif>
 <cfset systemItems = system.menu() />
+<cfset avatarUrl = signedIn ? system.avatarUrl(currentProfile.id ?: "") : "" />
 <cfset impersonated = session.auth.profile ?: {} />
 <cfset impersonator = session.auth.impersonator ?: {} />
 
@@ -61,28 +62,6 @@
 <cfloop list="#currentProfile.full_name ?: ''#" item="namePart" delimiters=" ">
     <cfif len(initials) LT 2 AND len(namePart)><cfset initials &= uCase(left(namePart, 1)) /></cfif>
 </cfloop>
-
-<!--- Font Awesome Free has only solid, regular and brands: a project menu's Pro style (thin, light,
-      duotone, sharp) falls back to the solid icon of the same name --->
-<cffunction name="freeIcon" access="private" returntype="string" output="false">
-    <cfargument name="icon" type="string" required="true" />
-    <cfset var classes = [] />
-    <cfset var cls = "" />
-    <cfset var styled = false />
-    <cfloop list="#arguments.icon#" item="cls" delimiters=" ">
-        <cfif listFindNoCase("fat,fal,fad,fas,fass,fasl,fast,fasds,fa-thin,fa-light,fa-duotone,fa-sharp,fa-sharp-duotone,fa-solid", cls)>
-            <cfif NOT styled><cfset arrayAppend(classes, "fa-solid") /><cfset styled = true /></cfif>
-        <cfelseif listFindNoCase("far,fa-regular", cls)>
-            <cfif NOT styled><cfset arrayAppend(classes, "fa-regular") /><cfset styled = true /></cfif>
-        <cfelseif listFindNoCase("fab,fa-brands", cls)>
-            <cfif NOT styled><cfset arrayAppend(classes, "fa-brands") /><cfset styled = true /></cfif>
-        <cfelse>
-            <cfset arrayAppend(classes, cls) />
-        </cfif>
-    </cfloop>
-    <cfif NOT styled><cfset arrayPrepend(classes, "fa-solid") /></cfif>
-    <cfreturn arrayToList(classes, " ") />
-</cffunction>
 
 <!--- Whether the current route is anywhere under a nav item, at any depth --->
 <cffunction name="containsCurrent" access="private" returntype="boolean" output="false">
@@ -107,7 +86,8 @@
     <cfset var isCurrent = (arguments.item.route ?: "") EQ currentRoute />
     <cfset var hasCurrentChild = false />
     <cfset var depthClass = arguments.depth GTE 2 ? " is-depth-2" : (arguments.depth EQ 1 ? " is-depth-1" : "") />
-    <cfset var icon = len(arguments.item.icon ?: "") ? freeIcon(arguments.item.icon) : "" />
+    <!--- The sidebar is dark, so every icon is solid (Font Awesome Free has solid for every free icon) --->
+    <cfset var icon = len(arguments.item.icon ?: "") ? system.solidIcon(arguments.item.icon) : "" />
     <cfset var title = encodeForHTML(arguments.item.title ?: "") />
     <cfset var subId = "" />
 
@@ -212,7 +192,7 @@
 
         <div class="moo-shell-profile-menu" id="moo-shell-profile-menu">
             <button id="moo-shell-profile-btn" type="button" class="moo-shell-profile-button" aria-haspopup="menu" aria-expanded="false" aria-controls="moo-shell-profile-dropdown">
-                <span class="moo-shell-avatar">#encodeForHTML(len(initials) ? initials : '?')#</span>
+                <span class="moo-shell-avatar">#encodeForHTML(len(initials) ? initials : '?')#<cfif len(avatarUrl)><img src="#encodeForHTMLAttribute(avatarUrl)#" alt="" onerror="this.remove()" /></cfif></span>
                 <span class="moo-shell-label">
                     <span class="moo-shell-profile-name">#encodeForHTML(currentProfile.full_name ?: 'Signed in')#</span>
                     <span class="moo-shell-profile-email">#encodeForHTML(currentProfile.email ?: '')#</span>
