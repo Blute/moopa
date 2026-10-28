@@ -111,6 +111,13 @@
 
         <cfargument name="TargetPage" type="string" required="true" />
 
+        <!--- No page at all: RustCFML running inline code from the web root (the image's start-up
+              extension check, `rustcfml -c ...`). There is nothing to serve, and including an empty
+              path would read this folder and log a 500 on every container start. --->
+        <cfif NOT len(arguments.TargetPage)>
+            <cfreturn />
+        </cfif>
+
         <cfset local.targetPage = replace(arguments.TargetPage, "\", "/", "all") />
 
         <!--- DETERMINE IF WE ARE IN THE MOOPA FRAMEWORK. This is the result of the nginx rewrite rule --->
