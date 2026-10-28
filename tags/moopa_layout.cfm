@@ -43,6 +43,8 @@
 <cfset projectTitle = application.project_title ?: "Moopa" />
 <cfset appTitle = structKeyExists(application, "app_titles") AND structKeyExists(application.app_titles, appName) ? application.app_titles[appName] : projectTitle />
 <cfset appHome = structKeyExists(application, "app_homes") AND structKeyExists(application.app_homes, appName) ? application.app_homes[appName] : "/" />
+<!--- The project's logo for the dark panel (application.moopa_theme.logo), else its name --->
+<cfset brandLogo = structKeyExists(application, "moopa_theme") AND isStruct(application.moopa_theme) AND structKeyExists(application.moopa_theme, "logo") ? application.moopa_theme.logo : "" />
 
 <!--- The route to mark current: the route's own path, without a query or trailing slash --->
 <cfset currentRoute = trim(len(attributes.current) ? attributes.current : (url.route ?: "/")) />
@@ -152,14 +154,14 @@
     <div class="moo-shell-backdrop" id="moo-shell-backdrop" aria-hidden="true"></div>
     <div class="moo-shell-mobile-bar">
         <button id="moo-shell-mobile-toggle" type="button" class="moo-shell-icon-button" aria-label="Open sidebar" aria-controls="moo-shell-sidebar" aria-expanded="false"><i class="fa-solid fa-bars"></i></button>
-        <span>#encodeForHTML(appTitle)#</span>
+        <cfif len(brandLogo)><img src="#encodeForHTMLAttribute(brandLogo)#" alt="#encodeForHTMLAttribute(projectTitle)#" class="moo-shell-logo moo-shell-logo-mobile" /><cfelse><span>#encodeForHTML(appTitle)#</span></cfif>
     </div>
 </cfif>
 <div class="moo-shell-root">
 <cfif showShell>
     <aside id="moo-shell-sidebar" class="moo-shell-sidebar" aria-label="Primary navigation">
         <div class="moo-shell-brand-row">
-            <a class="moo-shell-brand-text" href="#encodeForHTMLAttribute(appHome)#">#encodeForHTML(projectTitle)#</a>
+            <a class="moo-shell-brand-text" href="#encodeForHTMLAttribute(appHome)#"><cfif len(brandLogo)><img src="#encodeForHTMLAttribute(brandLogo)#" alt="#encodeForHTMLAttribute(projectTitle)#" class="moo-shell-logo" /><cfelse>#encodeForHTML(projectTitle)#</cfif></a>
             <div class="moo-shell-nav-row-wrap">
                 <button id="moo-shell-sidebar-toggle" type="button" class="moo-shell-icon-button" aria-label="Collapse sidebar" aria-controls="moo-shell-sidebar" aria-expanded="true">
                     <i class="fa-solid fa-angles-left ico-expanded"></i>

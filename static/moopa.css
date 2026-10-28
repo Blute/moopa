@@ -25,6 +25,7 @@
   --signal:             oklch(52% 0.150 258);
   --signal-deep:        oklch(45% 0.150 258);
   --signal-press:       oklch(39% 0.140 258);
+  --signal-hover:       var(--signal-deep);   /* a primary button under the pointer; a light accent sets a deeper tone of itself */
   --signal-soft:        oklch(96.5% 0.018 258);
   --signal-subdued:     oklch(84% 0.060 258);
   --on-signal:          oklch(99% 0.001 80);
@@ -335,7 +336,7 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
 /* every variant sets its own :hover and :active, or .btn's grey ones win */
 .btn-primary { background: var(--signal); border-color: var(--signal); color: var(--on-signal); box-shadow: 0 1px 2px color-mix(in oklab, var(--signal) 25%, transparent); }
-.btn-primary:hover { background: var(--signal-deep); border-color: var(--signal-deep); }
+.btn-primary:hover { background: var(--signal-hover); border-color: var(--signal-hover); }
 .btn-primary:active { background: var(--signal-press); border-color: var(--signal-press); }
 .btn-ghost { border-color: transparent; background: transparent; color: var(--ink-secondary); }
 .btn-ghost:hover { background: var(--canvas-soft); color: var(--ink); }
