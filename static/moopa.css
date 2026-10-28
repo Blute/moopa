@@ -640,6 +640,8 @@ button.list-row { width: 100%; text-align: left; }
 .moo-shell-nav-row:hover .moo-shell-nav-icon { color: var(--ink); }
 .moo-shell-label { display: inline-block; flex: 1 1 auto; min-width: 0; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 160ms var(--ease) 80ms, max-width var(--t) var(--ease); }
 
+/* Moopa's System group sits at the bottom of the sidebar, after the app's menus */
+.moo-shell-nav-system { margin-top: auto; padding-top: var(--sp-2); }
 .moo-shell-sub-nav { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 180ms var(--ease); }
 .moo-shell-sub-nav > .moo-shell-sub-inner { overflow: hidden; min-height: 0; position: relative; }
 .moo-shell-nav-row-wrap[data-open="true"] > .moo-shell-sub-nav { grid-template-rows: 1fr; }

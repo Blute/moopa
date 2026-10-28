@@ -39,7 +39,7 @@ Moopa serves `static/` itself at `/_moopa/static/…`, answered before the sessi
 | `density` | `compact` | `compact` desk density, or `comfortable` |
 | `chrome` | `true` | `false` hides the sidebar, for a page shown in a frame or dialog |
 
-The sidebar shows the app's menus. A sysadmin's profile menu lists the System pages from `sysadmin_nav.json`; they are never in the sidebar. The System pages call the layout as `<cfmodule template="/moopa/tags/moopa_layout.cfm">`, so no project tag of the same name can stand in for it there.
+The sidebar shows the app's menus, then, for a sysadmin, a System group at the bottom with Moopa's pages from `sysadmin_nav.json` (never one of the app's navs). It opens by itself on a System page. A sysadmin's profile menu has Re-initialise. The System pages call the layout as `<cfmodule template="/moopa/tags/moopa_layout.cfm">`, so no project tag of the same name can stand in for it there.
 
 The sidebar's icons are Font Awesome Free. A menu item using a Pro style (`fat`, `fal`, `fad`, sharp) falls back to the Free solid icon of the same name, which shows if Free has that icon.
 

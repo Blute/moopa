@@ -16,8 +16,9 @@
       density   "compact" (default, desk density) or "comfortable"
       chrome    false: no sidebar, for a page shown inside a frame or dialog (default true)
 
-    The sidebar shows the app's menus. A sysadmin's profile menu also lists the System pages
-    (application.lib.system.menu()); they are never in the sidebar.
+    The sidebar shows the app's menus, then, for a sysadmin, Moopa's System pages as a group at the
+    bottom (application.lib.system.menu(), from sysadmin_nav.json; never one of the app's navs).
+    A sysadmin's profile menu has Re-initialise.
 --->
 <cfif thisTag.executionMode NEQ "end">
     <cfparam name="attributes.title" default="" type="string">
@@ -186,6 +187,13 @@
                     <cfloop array="#builtNavs[navName]#" item="navItem">#navRow(navItem, 0)#</cfloop>
                 </cfif>
             </cfloop>
+            <!--- Moopa's System pages, for sysadmins: their own group at the bottom, apart from the app's menus --->
+            <cfif arrayLen(systemItems)>
+                <div class="moo-shell-nav-system">
+                    <div class="moo-shell-menu-divider"></div>
+                    #navRow({ icon: "fa-solid fa-gear", title: "System", items: systemItems }, 0)#
+                </div>
+            </cfif>
         </nav>
 
         <div class="moo-shell-profile-menu" id="moo-shell-profile-menu">
@@ -204,14 +212,7 @@
                     <div class="moo-shell-profile-name">#encodeForHTML(currentProfile.full_name ?: 'Signed in')#</div>
                     <div class="moo-shell-profile-email">#encodeForHTML(currentProfile.email ?: '')#</div>
                 </div>
-                <cfif arrayLen(systemItems)>
-                    <div class="moo-shell-menu-heading">System</div>
-                    <cfloop array="#systemItems#" item="systemItem">
-                        <a href="#encodeForHTMLAttribute(systemItem.route)#" role="menuitem" class="moo-shell-menu-item"<cfif systemItem.route EQ currentRoute> aria-current="page"</cfif>>
-                            <span class="moo-shell-menu-item-icon"><i class="#encodeForHTMLAttribute(systemItem.icon ?: 'fa-solid fa-gear')#"></i></span>
-                            <span>#encodeForHTML(systemItem.title)#</span>
-                        </a>
-                    </cfloop>
+                <cfif isSysAdmin>
                     <button type="button" role="menuitem" class="moo-shell-menu-item" onclick="req({ url_params: { init: '1' }, body: {} }).then(() => window.location.reload())">
                         <span class="moo-shell-menu-item-icon"><i class="fa-solid fa-rotate-right"></i></span>
                         <span>Re-initialise</span>
