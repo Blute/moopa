@@ -85,7 +85,7 @@
         <cfargument name="route_id" type="string" required="true" />
 
         <cfset var qAccessors = "" />
-        <cfset var sysadminEmails = application.lib.auth_local_password.getSysadminEmails() />
+        <cfset var sysadminEmails = application.lib.signin.sysadminEmails() />
 
         <cfif NOT len(sysadminEmails)>
             <cfset sysadminEmails = "__moopa_no_configured_sysadmin_email__" />
