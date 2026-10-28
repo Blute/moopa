@@ -264,15 +264,40 @@
                 </cfoutput>
             </cfsavecontent>
 
-            <cfset result = application.lib.postmark.sendEmail(
-                to="#local.errorEmailTo#",
-                subject="#email_subject#",
-                htmlBody="#email_body#",
-                tag="500 Error"
+            <cfset result = sendFrameworkEmail(
+                to = local.errorEmailTo,
+                subject = email_subject,
+                html = email_body,
+                tag = "500 Error"
             ) />
         </cfif>
 
 
+    </cffunction>
+
+
+    <!---
+        Framework email (500 errors): Moopa's email library (Cloudflare Email Sending) when it is configured,
+        otherwise the project's own Postmark library if it has one. No mail library: nothing is sent.
+    --->
+    <cffunction name="sendFrameworkEmail" access="public" returntype="struct" output="false">
+        <cfargument name="to" type="string" required="true" />
+        <cfargument name="subject" type="string" required="true" />
+        <cfargument name="html" type="string" required="true" />
+        <cfargument name="tag" type="string" default="moopa" />
+
+        <cfif structKeyExists(application.lib, "email") AND application.lib.email.isConfigured()>
+            <cfreturn application.lib.email.send(to = arguments.to, subject = arguments.subject, html = arguments.html) />
+        </cfif>
+        <cfif structKeyExists(application.lib, "postmark")>
+            <cfreturn application.lib.postmark.sendEmail(
+                to = arguments.to,
+                subject = arguments.subject,
+                htmlBody = arguments.html,
+                tag = arguments.tag
+            ) />
+        </cfif>
+        <cfreturn { success: false, status: 0, skipped: "no mail library configured" } />
     </cffunction>
 
 
