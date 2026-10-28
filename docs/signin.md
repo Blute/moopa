@@ -2,7 +2,9 @@
 
 Moopa signs people in without passwords. They enter their email; Moopa emails them a link; opening it on any device (a phone is fine) shows which device asked to sign in, with **Approve** and **Not me**. The page they asked from checks every 2 seconds while it's on screen (not while its tab is hidden, so the database can rest), notices within a couple of seconds and offers **Continue**, which signs that browser in for 30 days.
 
-It lives in `lib/signin.cfc` (`application.lib.signin`) and the table `moo_signin_request`. Its pages render in `tags/moopa_bare.cfm`, in Moopa's design with the project's theme and logo.
+It lives in `lib/signin.cfc` (`application.lib.signin`) and the table `moo_signin_request`. Its pages render in `tags/moopa_bare.cfm`'s split layout: a "Welcome back" panel in the project's shell colours and logo beside the step, which on a phone becomes a header with the step on a sheet below it. The asking browser's pages are numbered (step 1 of 3: the email; 2: waiting; 3: continue).
+
+Each request has a four-character reference. The email's subject ends with it (`Sign in to <project> (request AB5F)`), so every email is its own thread rather than one long one, where mail apps fold away the repeated button. The waiting page and the approve page show it too, so someone can match the email to the browser that asked.
 
 ## A project's routes
 

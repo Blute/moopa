@@ -538,18 +538,61 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .status-message { color: var(--ink-mute); }
 .status-actions { justify-content: center; margin-top: var(--sp-3); }
 .status-detail { width: 100%; max-width: 64rem; text-align: left; }
-.signin { width: 100%; max-width: 25rem; text-align: left; }
-.signin > .card-body { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-6); }
-.signin h1 { font-size: var(--text-xl); }
-.signin-lead { color: var(--ink-mute); }
-.signin-icon { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: 999px; background: var(--signal-soft); color: var(--signal-deep); font-size: 1.125rem; }
-.signin-icon.is-success { background: var(--success-surface); color: var(--success-text); }
-.signin-icon.is-danger { background: var(--danger-surface); color: var(--danger-text); }
-.signin-waiting { display: flex; align-items: center; gap: var(--sp-2); color: var(--ink-mute); font-size: var(--text-sm); }
-.signin-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-2); padding-top: var(--sp-4); border-top: 1px solid var(--hairline); font-size: var(--text-sm); }
-.signin-foot form { display: contents; }
-.signin-foot .btn-link { padding: 0; border: 0; background: none; color: var(--ink-mute); font: inherit; cursor: pointer; }
-.signin-foot .btn-link:hover { color: var(--ink); text-decoration: underline; }
+/* moopa_bare's split layout (welcome=): a brand panel in the project's shell colours beside the page.
+   The sign-in pages (lib/signin.cfc) use it. On a phone the panel is a header, the step's head sits on
+   the same colour and its body is a sheet below. */
+.auth { --auth-brand: linear-gradient(160deg, var(--shell-bg), color-mix(in oklab, var(--shell-bg) 62%, black));
+  min-height: 100vh; display: grid; grid-template-columns: minmax(20rem, 0.8fr) 1fr; background: var(--surface); }
+.auth-brand { position: relative; overflow: hidden; isolation: isolate; display: flex; flex-direction: column; gap: var(--sp-8);
+  padding: var(--sp-8) clamp(var(--sp-6), 4vw, 3.5rem); background: var(--auth-brand); color: var(--shell-ink); }
+.auth-brand::before, .auth-brand::after { content: ""; position: absolute; z-index: -1; border-radius: 50%;
+  border: 1px solid color-mix(in oklab, var(--signal) 22%, transparent); pointer-events: none; }
+.auth-brand::before { width: 36rem; height: 36rem; right: -20rem; top: -11rem; }
+.auth-brand::after { width: 24rem; height: 24rem; right: -14rem; top: -5rem; }
+.auth-logo { align-self: flex-start; color: var(--shell-ink); font-weight: 600; font-size: var(--text-lg); text-decoration: none; }
+.auth-logo img { display: block; height: calc(var(--shell-logo-h) * 1.15); width: auto; }
+.auth-welcome { margin-top: auto; max-width: 24rem; }
+.auth-welcome h2 { color: var(--shell-ink); font-size: clamp(2.25rem, 3.2vw, 2.75rem); font-weight: 600; line-height: 1.05; }
+.auth-welcome p { margin-top: var(--sp-4); color: var(--shell-ink-mute); line-height: 1.55; text-wrap: pretty; }
+.auth-main { display: flex; align-items: center; justify-content: center; padding: var(--sp-8) var(--sp-6); }
+.auth-panel { width: 100%; max-width: 25rem; display: flex; flex-direction: column; gap: var(--sp-6); }
+.auth-head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); }
+.auth-head h1 { font-size: var(--text-2xl); text-wrap: balance; }
+.auth-step { color: var(--signal-deep); font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+.auth-lead { color: var(--ink-mute); line-height: 1.55; text-wrap: pretty; }
+.auth-lead strong { color: var(--ink); font-weight: 500; overflow-wrap: anywhere; }
+.auth-icon { display: grid; place-items: center; width: 3.75rem; height: 3.75rem; margin-bottom: var(--sp-3); border-radius: var(--radius-xl);
+  background: var(--signal); color: var(--on-signal); font-size: 1.625rem; transform: rotate(-6deg); }
+.auth-icon.is-danger { background: var(--danger-surface); color: var(--danger-text); transform: none; }
+.auth-body { display: flex; flex-direction: column; gap: var(--sp-4); }
+.auth-wait { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-4); border: 1px solid var(--hairline); border-radius: var(--radius-lg); color: var(--ink); font-size: var(--text-sm); }
+.auth-wait small { display: block; margin-top: 0.125rem; color: var(--ink-mute); font-size: var(--text-xs); }
+.auth-spinner { flex: none; width: 1.375rem; height: 1.375rem; border-radius: 50%; border: 2.5px solid var(--signal-soft); border-top-color: var(--signal); animation: auth-spin 1s linear infinite; }
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .auth-spinner { animation-duration: 3s; } }
+.auth-facts { margin: 0; padding: var(--sp-4); border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--canvas); }
+.auth-facts dd { margin: 0; }
+.auth-actions { display: flex; flex-direction: column; gap: var(--sp-2); }
+.auth-note { color: var(--ink-mute); font-size: var(--text-sm); }
+.auth-links { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); font-size: var(--text-sm); }
+.auth-links form { display: contents; }
+.auth-links .btn-link { padding: 0; border: 0; background: none; color: var(--ink-mute); font: inherit; cursor: pointer; }
+.auth-links .btn-link:hover { color: var(--ink); text-decoration: underline; }
+.signin-ref { font-family: var(--font-mono); letter-spacing: 0.08em; }
+@media (max-width: 48rem) {
+  .auth { grid-template-columns: 1fr; grid-template-rows: auto 1fr; background: var(--auth-brand); }
+  .auth-brand { padding: var(--sp-6) var(--sp-5) 0; background: none; }
+  .auth-welcome { display: none; }
+  .auth-main { align-items: stretch; padding: 0; }
+  .auth-panel { max-width: none; gap: 0; }
+  .auth-head { padding: var(--sp-6) var(--sp-5) var(--sp-8); }
+  .auth-head h1 { color: var(--shell-ink); }
+  .auth-step { color: var(--signal); }
+  .auth-lead { color: var(--shell-ink-mute); }
+  .auth-lead strong { color: var(--shell-ink); }
+  .auth-body { flex: 1; padding: var(--sp-6) var(--sp-5) var(--sp-8); border-radius: 1.5rem 1.5rem 0 0; background: var(--surface); }
+  .auth-panel > .auth-head:last-child { flex: 1; }
+}
 
 /* hairline-divided rows inside a card */
 .list-rows { display: flex; flex-direction: column; }

@@ -171,7 +171,7 @@
             </cfif>
             <!--- A failed send is logged (sendLink) and otherwise looks like any other request: saying
                   so would tell the asker this email has an account --->
-            <cfset sendLink(address, link, describeDevice(userAgent), place) />
+            <cfset sendLink(address, link, describeDevice(userAgent), place, requestRef(local.qRequest[1].id)) />
         </cfif>
 
         <cfreturn "" />
@@ -303,6 +303,9 @@
     <!--- ===================================================================================== --->
     <!--- Pages                                                                                  --->
     <!--- ===================================================================================== --->
+    <!--- Each is moopa_bare's split layout: a brand panel ("Welcome back"), then the step: a head
+          (step, heading, a line under it) and its body. On a phone the head sits on the brand colour
+          and the body is a sheet below it. --->
 
     <cffunction name="emailPage" access="private" returntype="string" output="false">
         <cfargument name="email" type="string" default="" />
@@ -310,48 +313,38 @@
 
         <cfset var body = "" />
         <cfsavecontent variable="body"><cfoutput>
-            <form class="card signin" method="post" action="#variables.PATH#">
-                <div class="card-body">
-                    <div class="stack-xs">
-                        <h1>Sign in</h1>
-                        <p class="signin-lead">We'll email you a link to sign in with. No password needed.</p>
-                    </div>
-                    <input type="hidden" name="action" value="start">
-                    <div class="field">
-                        <label class="label" for="signin-email">Email</label>
-                        <input id="signin-email" class="input<cfif len(arguments.error)> is-invalid</cfif>" type="email" name="email" value="#encodeForHTMLAttribute(arguments.email)#" autocomplete="email" autofocus required>
-                        <cfif len(arguments.error)><p class="field-error">#encodeForHTML(arguments.error)#</p></cfif>
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-block"><i class="fa-solid fa-envelope"></i> Email me a link</button>
+            <form class="auth-body" method="post" action="#variables.PATH#">
+                <input type="hidden" name="action" value="start">
+                <div class="field">
+                    <label class="label" for="signin-email">Email</label>
+                    <input id="signin-email" class="input<cfif len(arguments.error)> is-invalid</cfif>" type="email" name="email" value="#encodeForHTMLAttribute(arguments.email)#" autocomplete="email" autofocus required>
+                    <cfif len(arguments.error)><p class="field-error">#encodeForHTML(arguments.error)#</p></cfif>
                 </div>
+                <button type="submit" class="btn btn-primary btn-block"><i class="fa-solid fa-envelope"></i> Email me a link</button>
             </form>
         </cfoutput></cfsavecontent>
-        <cfreturn page("Sign in", body) />
+        <cfreturn page("Sign in", head(1, "Sign in to " & encodeForHTML(projectTitle()), "Enter your email and we'll send you a link to sign in with.") & body) />
     </cffunction>
 
 
     <cffunction name="waitingPage" access="private" returntype="string" output="false">
         <cfset var body = "" />
         <cfsavecontent variable="body"><cfoutput>
-            <div class="card signin">
-                <div class="card-body">
-                    <span class="signin-icon"><i class="fa-solid fa-envelope"></i></span>
-                    <div class="stack-xs">
-                        <h1>Check your email</h1>
-                        <p class="signin-lead">If <strong>#encodeForHTML(session.signin.email)#</strong> can sign in, a link is on its way. Open it on any device, your phone is fine, and approve the sign-in. This page carries on by itself.</p>
-                    </div>
-                    <p class="signin-waiting" role="status"><i class="fa-solid fa-circle-notch fa-spin"></i> Waiting for approval…</p>
-                    <cfif len(session.signin.dev_link)>
-                        <div class="alert alert-info"><i class="fa-solid fa-code"></i><div>Development: <a href="#encodeForHTMLAttribute(session.signin.dev_link)#" target="_blank" rel="noopener">open the emailed link</a></div></div>
-                    </cfif>
-                    <div class="signin-foot">
-                        #restartForm("Use a different email")#
-                        <form method="post" action="#variables.PATH#">
-                            <input type="hidden" name="action" value="start">
-                            <input type="hidden" name="email" value="#encodeForHTMLAttribute(session.signin.email)#">
-                            <button type="submit" class="btn-link">Send again</button>
-                        </form>
-                    </div>
+            <div class="auth-body">
+                <div class="auth-wait" role="status">
+                    <span class="auth-spinner" aria-hidden="true"></span>
+                    <div>Waiting for approval<small>This page moves on by itself. The email's subject ends in <strong class="signin-ref">#requestRef(session.signin.id)#</strong>.</small></div>
+                </div>
+                <cfif len(session.signin.dev_link)>
+                    <div class="alert alert-info"><i class="fa-solid fa-code"></i><div>Development: <a href="#encodeForHTMLAttribute(session.signin.dev_link)#" target="_blank" rel="noopener">open the emailed link</a></div></div>
+                </cfif>
+                <div class="auth-links">
+                    #restartForm("Use a different email")#
+                    <form method="post" action="#variables.PATH#">
+                        <input type="hidden" name="action" value="start">
+                        <input type="hidden" name="email" value="#encodeForHTMLAttribute(session.signin.email)#">
+                        <button type="submit" class="btn-link">Send a new link</button>
+                    </form>
                 </div>
             </div>
             <script>
@@ -374,27 +367,22 @@
                 })();
             </script>
         </cfoutput></cfsavecontent>
-        <cfreturn page("Check your email", body) />
+        <cfreturn page("Check your inbox", head(2, "Check your inbox", "If <strong>" & encodeForHTML(session.signin.email) & "</strong> can sign in, we've sent it a link. Open it on any device, your phone is fine, and approve the request.") & body) />
     </cffunction>
 
 
     <cffunction name="approvedPage" access="private" returntype="string" output="false">
         <cfset var body = "" />
         <cfsavecontent variable="body"><cfoutput>
-            <form class="card signin" method="post" action="#variables.PATH#">
-                <div class="card-body">
-                    <span class="signin-icon is-success"><i class="fa-solid fa-check"></i></span>
-                    <div class="stack-xs">
-                        <h1>Sign-in approved</h1>
-                        <p class="signin-lead">You approved this sign-in for <strong>#encodeForHTML(session.signin.email)#</strong>.</p>
-                    </div>
+            <div class="auth-body">
+                <form method="post" action="#variables.PATH#">
                     <input type="hidden" name="action" value="continue">
                     <button type="submit" class="btn btn-primary btn-block" autofocus>Continue to #encodeForHTML(projectTitle())# <i class="fa-solid fa-arrow-right"></i></button>
-                </div>
-            </form>
-            <div class="signin-foot" style="border-top: 0; padding-top: 0">#restartForm("Start again")#</div>
+                </form>
+                <div class="auth-links">#restartForm("Not you? Start again")#</div>
+            </div>
         </cfoutput></cfsavecontent>
-        <cfreturn page("Sign-in approved", body) />
+        <cfreturn page("You're approved", head(3, "You're approved", "The request for <strong>" & encodeForHTML(session.signin.email) & "</strong> was approved from the emailed link.", "fa-check") & body) />
     </cffunction>
 
 
@@ -403,25 +391,16 @@
         <cfargument name="why" type="string" required="true" />
 
         <cfset var denied = arguments.why EQ "denied" />
-        <cfset var heading = denied ? "Sign-in declined" : "Link expired" />
-        <cfset var message = denied ? "The sign-in was turned down from the emailed link." : "Sign-in links last " & variables.TTL_MINUTES & " minutes. Ask for a new one." />
+        <cfset var heading = denied ? "Request declined" : "Link expired" />
+        <cfset var message = denied ? "The request was turned down from the emailed link." : "Links last " & variables.TTL_MINUTES & " minutes. Ask for a new one." />
         <cfset var body = "" />
         <cfsavecontent variable="body"><cfoutput>
-            <div class="card signin">
-                <div class="card-body">
-                    <span class="signin-icon is-danger"><i class="fa-solid #denied ? 'fa-ban' : 'fa-clock'#"></i></span>
-                    <div class="stack-xs">
-                        <h1>#heading#</h1>
-                        <p class="signin-lead">#message#</p>
-                    </div>
-                    <form method="post" action="#variables.PATH#">
-                        <input type="hidden" name="action" value="restart">
-                        <button type="submit" class="btn btn-primary btn-block">Start again</button>
-                    </form>
-                </div>
-            </div>
+            <form class="auth-body" method="post" action="#variables.PATH#">
+                <input type="hidden" name="action" value="restart">
+                <button type="submit" class="btn btn-primary btn-block">Start again</button>
+            </form>
         </cfoutput></cfsavecontent>
-        <cfreturn page(heading, body) />
+        <cfreturn page(heading, head(0, heading, message, denied ? "fa-ban" : "fa-clock", "is-danger") & body) />
     </cffunction>
 
 
@@ -430,8 +409,9 @@
         <cfargument name="token" type="string" required="true" />
 
         <cfquery name="local.qRequest" returntype="array">
-            SELECT email, status, expires_at > now() AS live, request_user_agent, request_place,
-                   floor(extract(epoch FROM now() - created_at))::int AS age_seconds
+            SELECT id::text AS id, email, status, expires_at > now() AS live, request_user_agent, request_place,
+                   floor(extract(epoch FROM now() - created_at))::int AS age_seconds,
+                   ceil(extract(epoch FROM expires_at - now()) / 60)::int AS minutes_left
             FROM moo_signin_request
             WHERE approve_token_hash = <cfqueryparam cfsqltype="varchar" value="#tokenHash(arguments.token)#" />
               AND (profile_id IS NOT NULL
@@ -450,35 +430,32 @@
             <cfreturn decidedPage("denied") />
         </cfif>
         <cfif r.status EQ "used">
-            <cfreturn linkOverPage("This sign-in is done: the link has been used.") />
+            <cfreturn linkOverPage("This request is done: the link has been used.") />
         </cfif>
         <cfif NOT r.live>
             <cfreturn linkOverPage("This link has expired. Links last " & variables.TTL_MINUTES & " minutes; ask for a new one on the device you're signing in on.") />
         </cfif>
 
+        <cfset var remaining = r.minutes_left LTE 1 ? "under a minute" : r.minutes_left & " minutes" />
         <cfset var body = "" />
         <cfsavecontent variable="body"><cfoutput>
-            <form class="card signin" method="post" action="#variables.PATH#">
-                <div class="card-body">
-                    <div class="stack-xs">
-                        <h1>Sign in to #encodeForHTML(projectTitle())#?</h1>
-                        <p class="signin-lead">Someone asked to sign in as you. Approve it only if it was you.</p>
-                    </div>
-                    <div class="kv-grid">
-                        <div class="kv-label">Email</div><div class="kv-value">#encodeForHTML(r.email)#</div>
-                        <div class="kv-label">Device</div><div class="kv-value">#encodeForHTML(describeDevice(r.request_user_agent ?: ""))#</div>
-                        <cfif len(r.request_place ?: "")><div class="kv-label">Near</div><div class="kv-value">#encodeForHTML(r.request_place)#</div></cfif>
-                        <div class="kv-label">Asked</div><div class="kv-value">#ago(r.age_seconds)#</div>
-                    </div>
-                    <input type="hidden" name="t" value="#encodeForHTMLAttribute(arguments.token)#">
-                    <div class="cluster">
-                        <button type="submit" name="action" value="approve" class="btn btn-primary"><i class="fa-solid fa-check"></i> Approve</button>
-                        <button type="submit" name="action" value="deny" class="btn">Not me</button>
-                    </div>
+            <form class="auth-body" method="post" action="#variables.PATH#">
+                <dl class="kv-grid auth-facts">
+                    <dt class="kv-label">Email</dt><dd class="kv-value">#encodeForHTML(r.email)#</dd>
+                    <dt class="kv-label">Device</dt><dd class="kv-value">#encodeForHTML(describeDevice(r.request_user_agent ?: ""))#</dd>
+                    <cfif len(r.request_place ?: "")><dt class="kv-label">Near</dt><dd class="kv-value">#encodeForHTML(r.request_place)#</dd></cfif>
+                    <dt class="kv-label">When</dt><dd class="kv-value">#ago(r.age_seconds)#</dd>
+                    <dt class="kv-label">Request</dt><dd class="kv-value signin-ref">#requestRef(r.id)#</dd>
+                </dl>
+                <input type="hidden" name="t" value="#encodeForHTMLAttribute(arguments.token)#">
+                <div class="auth-actions">
+                    <button type="submit" name="action" value="approve" class="btn btn-primary btn-block"><i class="fa-solid fa-check"></i> Approve</button>
+                    <button type="submit" name="action" value="deny" class="btn btn-block">Not me</button>
                 </div>
+                <p class="auth-note">This link expires in #remaining#.</p>
             </form>
         </cfoutput></cfsavecontent>
-        <cfreturn page("Approve sign-in", body) />
+        <cfreturn page("Approve request", head(0, "Was this you?", "Someone is signing in to " & encodeForHTML(projectTitle()) & " as you. Approve it only if it was you.") & body) />
     </cffunction>
 
 
@@ -487,42 +464,36 @@
         <cfargument name="decision" type="string" required="true" />
 
         <cfset var approved = arguments.decision EQ "approved" />
-        <cfset var heading = approved ? "Sign-in approved" : "Sign-in declined" />
+        <cfset var heading = approved ? "Approved" : "Request declined" />
         <cfset var message = approved
-            ? "Go back to the device you're signing in on: it carries on by itself. You can close this page."
-            : "Nobody was signed in. If you didn't ask to sign in, you can ignore this; your account is unchanged." />
-        <cfset var body = "" />
-        <cfsavecontent variable="body"><cfoutput>
-            <div class="card signin">
-                <div class="card-body">
-                    <span class="signin-icon #approved ? 'is-success' : 'is-danger'#"><i class="fa-solid #approved ? 'fa-check' : 'fa-ban'#"></i></span>
-                    <div class="stack-xs">
-                        <h1>#heading#</h1>
-                        <p class="signin-lead">#message#</p>
-                    </div>
-                </div>
-            </div>
-        </cfoutput></cfsavecontent>
-        <cfreturn page(heading, body) />
+            ? "Your computer is signing in now. Head back to it: you can close this page."
+            : "Nobody was signed in. If you didn't ask to sign in, you can ignore this: your account is unchanged." />
+        <cfreturn page(heading, head(0, heading, message, approved ? "fa-check" : "fa-ban", approved ? "" : "is-danger")) />
     </cffunction>
 
 
     <cffunction name="linkOverPage" access="private" returntype="string" output="false">
         <cfargument name="message" type="string" required="true" />
+        <cfreturn page("Link can't be used", head(0, "Link can't be used", encodeForHTML(arguments.message), "fa-link-slash", "is-danger")) />
+    </cffunction>
 
-        <cfset var body = "" />
-        <cfsavecontent variable="body"><cfoutput>
-            <div class="card signin">
-                <div class="card-body">
-                    <span class="signin-icon is-danger"><i class="fa-solid fa-link-slash"></i></span>
-                    <div class="stack-xs">
-                        <h1>Link can't be used</h1>
-                        <p class="signin-lead">#encodeForHTML(arguments.message)#</p>
-                    </div>
-                </div>
-            </div>
-        </cfoutput></cfsavecontent>
-        <cfreturn page("Link can't be used", body) />
+
+    <cffunction name="head" access="private" returntype="string" output="false"
+        hint="A step's head. heading and lead are HTML: encode what they carry.">
+        <cfargument name="step" type="numeric" required="true" hint="1 to 3 on the asking browser's way through; 0 for none." />
+        <cfargument name="heading" type="string" required="true" />
+        <cfargument name="lead" type="string" required="true" />
+        <cfargument name="icon" type="string" default="" hint="A result's icon, e.g. fa-check." />
+        <cfargument name="tone" type="string" default="" hint="Empty or is-danger." />
+
+        <cfset var html = '<div class="auth-head">' />
+        <cfif len(arguments.icon)>
+            <cfset html &= '<span class="auth-icon #arguments.tone#"><i class="fa-solid #arguments.icon#"></i></span>' />
+        </cfif>
+        <cfif arguments.step>
+            <cfset html &= '<p class="auth-step">Step #arguments.step# of 3</p>' />
+        </cfif>
+        <cfreturn html & '<h1>#arguments.heading#</h1><p class="auth-lead">#arguments.lead#</p></div>' />
     </cffunction>
 
 
@@ -533,13 +504,13 @@
 
 
     <cffunction name="page" access="private" returntype="string" output="false"
-        hint="A sign-in page: moopa_bare with this body. Never cached: each is one person's step.">
+        hint="A sign-in page: moopa_bare's split layout with this step. Never cached: each is one person's step.">
         <cfargument name="title" type="string" required="true" />
         <cfargument name="body" type="string" required="true" />
 
         <cfset var html = "" />
         <cfheader name="Cache-Control" value="no-store" />
-        <cfsavecontent variable="html"><cfmodule template="/moopa/tags/moopa_bare.cfm" title="#arguments.title#"><cfoutput>#arguments.body#</cfoutput></cfmodule></cfsavecontent>
+        <cfsavecontent variable="html"><cfmodule template="/moopa/tags/moopa_bare.cfm" title="#arguments.title#" welcome="Welcome back" welcomeText="No passwords to remember. We email you a link, and you approve it from wherever you read your email."><cfoutput><div class="auth-panel">#arguments.body#</div></cfoutput></cfmodule></cfsavecontent>
         <cfreturn html />
     </cffunction>
 
@@ -554,27 +525,44 @@
         <cfargument name="link" type="string" required="true" />
         <cfargument name="device" type="string" required="true" />
         <cfargument name="place" type="string" required="true" />
+        <cfargument name="ref" type="string" required="true" hint="requestRef(): in the subject, so each email is its own thread." />
 
         <cfset var title = projectTitle() />
-        <cfset var where = arguments.device & (len(arguments.place) ? ", near " & arguments.place : "") />
-        <cfset var html = "" />
-        <cfsavecontent variable="html"><cfoutput>
-<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:##1f1a17;line-height:1.5">
-    <h1 style="font-size:20px;font-weight:600;margin:0 0 12px">Sign in to #encodeForHTML(title)#</h1>
-    <p style="margin:0 0 16px">Someone asked to sign in to #encodeForHTML(title)# as #encodeForHTML(arguments.to)# from #encodeForHTML(where)#. If it was you, open the link and approve it.</p>
-    <p style="margin:0 0 24px"><a href="#encodeForHTMLAttribute(arguments.link)#" style="display:inline-block;padding:10px 18px;border-radius:8px;background:##1f1a17;color:##ffffff;text-decoration:none;font-weight:600">Review sign-in</a></p>
-    <p style="margin:0 0 8px;color:##6b625c;font-size:14px">The link works for #variables.TTL_MINUTES# minutes and can be opened on any device. Opening it doesn't sign anyone in; approving it does.</p>
-    <p style="margin:0;color:##6b625c;font-size:14px">If it wasn't you, ignore this email or choose Not me.</p>
-</div>
+        <cfset var muted = "color:##6b7280;" />
+        <cfset var facts = [ ["Email", arguments.to], ["Device", arguments.device] ] />
+        <cfif len(arguments.place)><cfset arrayAppend(facts, ["Near", arguments.place]) /></cfif>
+        <cfset arrayAppend(facts, ["Request", arguments.ref]) />
+
+        <cfset var content = "" />
+        <cfsavecontent variable="content"><cfoutput>
+<cfif len(brandLogoUrl())><table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 28px;"><tr><td style="padding:10px 16px;border-radius:10px;background:##1f2534;"><img src="#encodeForHTMLAttribute(brandLogoUrl())#" alt="#encodeForHTMLAttribute(title)#" height="32" style="display:block;height:32px;width:auto;border:0;color:##ffffff;font-weight:600;"></td></tr></table></cfif>
+<h1>Sign in to #encodeForHTML(title)#</h1>
+<p style="#muted#">Someone asked to sign in as you. If it was you, review the request and approve it.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;border:1px solid ##e5e7eb;border-radius:8px;background:##f9fafb;">
+    <cfloop array="#facts#" item="local.fact">
+    <tr>
+        <td style="padding:8px 16px;width:90px;#muted#font-size:12px;letter-spacing:0.06em;text-transform:uppercase;vertical-align:baseline;">#local.fact[1]#</td>
+        <td style="padding:8px 16px 8px 0;font-size:15px;vertical-align:baseline;word-break:break-word;">#encodeForHTML(local.fact[2])#</td>
+    </tr>
+    </cfloop>
+</table>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;"><tr><td style="border-radius:8px;background:##1f2534;"><a href="#encodeForHTMLAttribute(arguments.link)#" style="display:inline-block;padding:12px 22px;color:##ffffff;font-weight:600;text-decoration:none;">Review request</a></td></tr></table>
+<p style="#muted#font-size:14px;">The link works for #variables.TTL_MINUTES# minutes, on any device. Opening it doesn't sign anyone in: only Approve does.</p>
+<p style="#muted#font-size:14px;margin:0;">Didn't ask to sign in? Ignore this email, or open it and choose Not me.</p>
         </cfoutput></cfsavecontent>
+        <cfset var html = application.lib.email.layout(content = content) />
+
         <cfset var text = "Sign in to #title#" & chr(10) & chr(10)
-            & "Someone asked to sign in to #title# as #arguments.to# from #where#. If it was you, open this link and approve it:" & chr(10) & chr(10)
-            & arguments.link & chr(10) & chr(10)
-            & "The link works for #variables.TTL_MINUTES# minutes and can be opened on any device. Opening it doesn't sign anyone in; approving it does." & chr(10)
-            & "If it wasn't you, ignore this email or choose Not me." />
+            & "Someone asked to sign in as you. If it was you, open this link and approve it:" & chr(10) & chr(10)
+            & arguments.link & chr(10) & chr(10) />
+        <cfloop array="#facts#" item="local.fact">
+            <cfset text &= local.fact[1] & ": " & local.fact[2] & chr(10) />
+        </cfloop>
+        <cfset text &= chr(10) & "The link works for #variables.TTL_MINUTES# minutes, on any device. Opening it doesn't sign anyone in: only Approve does." & chr(10)
+            & "Didn't ask to sign in? Ignore this email, or open it and choose Not me." />
 
         <cftry>
-            <cfset var result = application.lib.email.send(to = arguments.to, subject = "Sign in to #title#", html = html, text = text) />
+            <cfset var result = application.lib.email.send(to = arguments.to, subject = "Sign in to #title# (request #arguments.ref#)", html = html, text = text) />
             <cfif NOT (result.success ?: false)>
                 <cflog file="signin" type="error" text="Sign-in email to #arguments.to# not sent: #serializeJSON(result.errors ?: [])#" />
             </cfif>
@@ -584,6 +572,24 @@
                 <cfreturn false />
             </cfcatch>
         </cftry>
+    </cffunction>
+
+
+    <cffunction name="brandLogoUrl" access="private" returntype="string" output="false"
+        hint="The project's logo (application.moopa_theme.logo, made for a dark background) as an absolute URL for email, or empty.">
+        <cfset var logo = structKeyExists(application, "moopa_theme") AND isStruct(application.moopa_theme) ? (application.moopa_theme.logo ?: "") : "" />
+        <cfif NOT len(logo) OR reFindNoCase("^https?://", logo)>
+            <cfreturn logo />
+        </cfif>
+        <cfset var base = reReplace(trim(server.system.environment.BASE_URL ?: ""), "/+$", "") />
+        <cfreturn len(base) AND left(logo, 1) EQ "/" ? base & logo : "" />
+    </cffunction>
+
+
+    <cffunction name="requestRef" access="private" returntype="string" output="false"
+        hint="A short reference for a request, shown on the waiting page, in the email's subject and on the approve page, so the three can be matched.">
+        <cfargument name="id" type="string" required="true" />
+        <cfreturn uCase(left(hash(arguments.id, "SHA-256"), 4)) />
     </cffunction>
 
 
