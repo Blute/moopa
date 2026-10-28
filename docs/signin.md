@@ -1,6 +1,6 @@
 # Sign-in
 
-Moopa signs people in without passwords. They enter their email; Moopa emails them a link; opening it on any device (a phone is fine) shows which device asked to sign in, with **Approve** and **Not me**. The page they asked from notices within a couple of seconds and offers **Continue**, which signs that browser in for 30 days.
+Moopa signs people in without passwords. They enter their email; Moopa emails them a link; opening it on any device (a phone is fine) shows which device asked to sign in, with **Approve** and **Not me**. The page they asked from checks every 2 seconds while it's on screen (not while its tab is hidden, so the database can rest), notices within a couple of seconds and offers **Continue**, which signs that browser in for 30 days.
 
 It lives in `lib/signin.cfc` (`application.lib.signin`) and the table `moo_signin_request`. Its pages render in `tags/moopa_bare.cfm`, in Moopa's design with the project's theme and logo.
 

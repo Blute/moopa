@@ -341,8 +341,9 @@
                 </div>
             </div>
             <script>
-                // Ask every couple of seconds (and on coming back to the tab) whether the request has moved on;
-                // when it has, reload so the server shows the next step.
+                // Ask every couple of seconds whether the request has moved on, and when it has, reload so the
+                // server shows the next step. Not while the tab is hidden (the database can rest while the
+                // person is off in their email); straight away when it's shown again.
                 (function () {
                     let busy = false;
                     async function check() {
@@ -354,7 +355,7 @@
                             if (s && s !== 'pending') window.location.replace('#variables.PATH#');
                         } catch (e) {} finally { busy = false; }
                     }
-                    setInterval(check, 2000);
+                    setInterval(() => { if (!document.hidden) check(); }, 2000);
                     document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
                 })();
             </script>
