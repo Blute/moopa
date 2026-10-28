@@ -261,6 +261,18 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('moo-shell-backdrop')?.addEventListener('click', closeMobile);
   sidebar.querySelectorAll('a').forEach(a => a.addEventListener('click', () => { if (mq.matches) closeMobile(); }));
 
+  // Bring the current page's row into view: on a short window it can sit below the fold of the
+  // sidebar (the System group is at the bottom). Only the sidebar scrolls, and only if it must.
+  const nav = sidebar.querySelector('.moo-shell-nav');
+  const currentRow = nav?.querySelector('[aria-current="page"]');
+  if (nav && currentRow) {
+    const navBox = nav.getBoundingClientRect();
+    const rowBox = currentRow.getBoundingClientRect();
+    if (rowBox.top < navBox.top || rowBox.bottom > navBox.bottom) {
+      nav.scrollTop += rowBox.top - navBox.top - (navBox.height - rowBox.height) / 2;
+    }
+  }
+
   // Submenus: a parent row flips [data-open] on its wrap. On the collapsed rail it opens the sidebar first.
   sidebar.querySelectorAll('[data-moo-shell-toggle-submenu]').forEach(btn => {
     btn.addEventListener('click', e => {

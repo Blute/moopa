@@ -625,7 +625,7 @@ button.list-row { width: 100%; text-align: left; }
   overflow-x: hidden;
 }
 @media (min-width: 768px) { .moo-shell-sidebar { z-index: var(--z-popover); } }
-.moo-shell-brand-row { position: relative; display: flex; align-items: center; height: 4rem; padding-left: 1.25rem; padding-right: 55px; }
+.moo-shell-brand-row { position: relative; flex: 0 0 auto; display: flex; align-items: center; height: 4rem; padding-left: 1.25rem; padding-right: 55px; }
 .moo-shell-brand-text { display: inline-block; flex: 1 1 auto; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); font-size: 1rem; font-weight: 500; letter-spacing: -0.02em; transition: opacity 120ms var(--ease), max-width var(--t) var(--ease); }
 .moo-shell-brand-text:hover { text-decoration: none; }
 .moo-shell-brand-row .moo-shell-nav-row-wrap { position: absolute; top: 50%; right: 23px; transform: translateY(-50%); }
@@ -685,7 +685,7 @@ button.list-row { width: 100%; text-align: left; }
 html.moo-shell-collapsed .moo-shell-sub-nav { grid-template-rows: 0fr !important; }
 
 /* profile */
-.moo-shell-profile-menu { position: relative; border-top: 1px solid var(--hairline); padding: 0.5rem; }
+.moo-shell-profile-menu { position: relative; flex: 0 0 auto; border-top: 1px solid var(--hairline); padding: 0.5rem; }
 .moo-shell-profile-button { position: relative; width: 100%; height: 3rem; display: flex; align-items: center; gap: 0.75rem; padding: 0 0.5rem; border-radius: var(--radius-md); color: var(--ink-secondary); text-align: left; white-space: nowrap; overflow: hidden; transition: background-color 150ms ease, color 150ms ease; }
 .moo-shell-profile-button:hover, .moo-shell-profile-button:focus-visible { color: var(--ink); background: var(--canvas-soft); }
 .moo-shell-avatar { width: 2rem; height: 2rem; flex: 0 0 2rem; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; border-radius: var(--radius-pill); background: var(--shell-signal); color: var(--shell-edge); font-size: 0.75rem; font-weight: 600; }
