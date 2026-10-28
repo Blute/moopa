@@ -16,8 +16,8 @@
       density   "compact" (default, desk density) or "comfortable"
       chrome    false: no sidebar, for a page shown inside a frame or dialog (default true)
 
-    The sidebar shows the app's menus, then, for a sysadmin, Moopa's System pages as a group at the
-    bottom (application.lib.system.menu(), from sysadmin_nav.json; never one of the app's navs).
+    The sidebar shows the app's menus, then, for a sysadmin, a dividing line and Moopa's System pages
+    as a group (application.lib.system.menu(), from sysadmin_nav.json; never one of the app's navs).
     A sysadmin's profile menu has Re-initialise.
 --->
 <cfif thisTag.executionMode NEQ "end">
@@ -187,7 +187,7 @@
                     <cfloop array="#builtNavs[navName]#" item="navItem">#navRow(navItem, 0)#</cfloop>
                 </cfif>
             </cfloop>
-            <!--- Moopa's System pages, for sysadmins: their own group at the bottom, apart from the app's menus --->
+            <!--- Moopa's System pages, for sysadmins: their own group after the app's menus, below a line --->
             <cfif arrayLen(systemItems)>
                 <div class="moo-shell-nav-system">
                     <div class="moo-shell-menu-divider"></div>

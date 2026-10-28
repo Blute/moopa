@@ -262,7 +262,7 @@ document.addEventListener('DOMContentLoaded', function () {
   sidebar.querySelectorAll('a').forEach(a => a.addEventListener('click', () => { if (mq.matches) closeMobile(); }));
 
   // Bring the current page's row into view: on a short window it can sit below the fold of the
-  // sidebar (the System group is at the bottom). Only the sidebar scrolls, and only if it must.
+  // sidebar (the System group comes after the app's menus). Only the sidebar scrolls, and only if it must.
   const nav = sidebar.querySelector('.moo-shell-nav');
   const currentRow = nav?.querySelector('[aria-current="page"]');
   if (nav && currentRow) {
