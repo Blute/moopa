@@ -483,11 +483,11 @@
                     </cfoutput>
                 </cfsavecontent>
 
-                <cfset result = application.lib.postmark.sendEmail(
-                    to="#server.system.environment.SYSADMIN_EMAIL#",
-                    subject="#email_subject#",
-                    htmlBody="#email_body#",
-                    tag="500 Error"
+                <cfset result = application.lib.core.sendFrameworkEmail(
+                    to = server.system.environment.SYSADMIN_EMAIL,
+                    subject = email_subject,
+                    html = email_body,
+                    tag = "500 Error"
                 ) />
             </cfif>
 
