@@ -201,10 +201,13 @@
             <cfset request.data.can_login = true />
         </cfif>
 
-        <cfreturn application.lib.db.save(
+        <cfset local.saved = application.lib.db.save(
             table_name = "moo_profile",
             data = request.data
         ) />
+        <!--- The picture may have changed: the sidebar looks it up again rather than keep its cached copy --->
+        <cfset application.lib.system.forgetAvatar() />
+        <cfreturn local.saved />
     </cffunction>
 
     <cffunction name="delete">

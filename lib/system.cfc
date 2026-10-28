@@ -92,4 +92,9 @@
         <cfreturn avatar />
     </cffunction>
 
+
+    <cffunction name="forgetAvatar" access="public" returntype="void" output="false" hint="Drop this session's cached picture URL, so the next page looks it up again. Call it after a profile's picture changes.">
+        <cfset structDelete(session, "moopa_avatar") />
+    </cffunction>
+
 </cfcomponent>
