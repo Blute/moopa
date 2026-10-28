@@ -25,6 +25,61 @@
     </cffunction>
 
 
+    <cffunction name="stylesheets" access="public" returntype="string" output="false" hint="The <link> tags every Moopa page loads, in order: the icon CSS, moopa.css, then the project's theme. A Moopa layout and a project's own layout both put this in their <head>, so the System pages and the project's pages share one design. docs/design.md: Theming.">
+        <cfset var theme = application.moopa_theme ?: {} />
+        <cfset var links = [] />
+        <cfset var icons = theme.icons ?: "" />
+        <cfset var css = [] />
+
+        <!--- Icons: the project's (e.g. a Font Awesome Pro kit) or Moopa's vendored Font Awesome Free --->
+        <cfif len(icons)>
+            <cfset arrayAppend(links, '<link rel="stylesheet" href="' & encodeForHTMLAttribute(icons) & '" crossorigin="anonymous" />') />
+        <cfelse>
+            <cfloop list="fontawesome,solid,regular,brands" index="local.part">
+                <cfset arrayAppend(links, '<link rel="stylesheet" href="' & staticUrl("vendor/fontawesome-free-7.3.1/css/" & local.part & ".min.css") & '" />') />
+            </cfloop>
+        </cfif>
+
+        <cfset arrayAppend(links, '<link rel="stylesheet" href="' & staticUrl("moopa.css") & '" />') />
+
+        <!--- The project's theme: token overrides (and its own extras), after moopa.css so they win.
+              application.moopa_theme.css lists them; unset, Moopa uses /_static/theme.css and
+              /_static/theme-<app>.css when they exist. --->
+        <cfif isArray(theme.css ?: "")>
+            <cfset css = theme.css />
+        <cfelse>
+            <cfset local.conventional = [ "/_static/theme.css", "/_static/theme-" & (application.app_name ?: "app") & ".css" ] />
+            <cfloop array="#local.conventional#" index="local.path">
+                <cfif fileExists(expandPath(local.path))><cfset arrayAppend(css, local.path) /></cfif>
+            </cfloop>
+        </cfif>
+        <cfloop array="#css#" index="local.path">
+            <cfset arrayAppend(links, '<link rel="stylesheet" href="' & encodeForHTMLAttribute(versioned(local.path)) & '" />') />
+        </cfloop>
+
+        <cfreturn arrayToList(links, chr(10) & "    ") />
+    </cffunction>
+
+
+    <!--- A project file's URL with ?v= from its content, so browsers keep it until it changes. Worked out once per
+          start, and on every call in development, like staticUrl(). A URL that is not a local file is returned as is. --->
+    <cffunction name="versioned" access="private" returntype="string" output="false">
+        <cfargument name="path" type="string" required="true" />
+        <cfset var file = "" />
+        <cfif NOT structKeyExists(variables, "fileVersions") OR (server.system.environment.APP_ENVIRONMENT ?: "") EQ "development">
+            <cfset variables.fileVersions = {} />
+        </cfif>
+        <cfif NOT structKeyExists(variables.fileVersions, arguments.path)>
+            <cfset file = left(arguments.path, 1) EQ "/" AND NOT find("//", arguments.path) ? expandPath(arguments.path) : "" />
+            <cfset variables.fileVersions[arguments.path] = len(file) AND fileExists(file) ? left(lCase(hash(fileRead(file), "MD5")), 12) : "" />
+        </cfif>
+        <cfif NOT len(variables.fileVersions[arguments.path])>
+            <cfreturn arguments.path />
+        </cfif>
+        <cfreturn arguments.path & (find("?", arguments.path) ? "&" : "?") & "v=" & variables.fileVersions[arguments.path] />
+    </cffunction>
+
+
     <cffunction name="solidIcon" access="public" returntype="string" output="false" hint="A Font Awesome class list with its style made solid, for icons on the shell's dark sidebar. Any style (fat, fal, far, fad, fa-thin, fa-light, fa-regular, fa-duotone, sharp ...) becomes fa-solid; brand icons keep fa-brands; a list without a style gets fa-solid.">
         <cfargument name="icon" type="string" required="true" hint="e.g. fat fa-house" />
 

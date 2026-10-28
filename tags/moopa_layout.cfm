@@ -12,7 +12,8 @@
       title     the page's title, after the project's in the browser tab
       current   the route to mark current in the menus (default: this request's route)
       navs      nav files to show in the sidebar, in order (default: all of the app's, by name)
-      head      HTML for <head>, after Moopa's stylesheet: a project's token overrides or extra scripts
+      head      HTML for <head>, after the stylesheets: a page's own extras (a project's theme is loaded for every
+                page by system.stylesheets(); see docs/design.md)
       density   "compact" (default, desk density) or "comfortable"
       chrome    false: no sidebar, for a page shown inside a frame or dialog (default true)
 
@@ -131,11 +132,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>#encodeForHTML(projectTitle)#<cfif len(attributes.title)> - #encodeForHTML(attributes.title)#</cfif></title>
     <script>try { if (localStorage.getItem('moo-shell-collapsed') === '1' && !matchMedia('(max-width: 767.98px)').matches) document.documentElement.classList.add('moo-shell-collapsed'); } catch (e) {}</script>
-    <link rel="stylesheet" href="#system.staticUrl('vendor/fontawesome-free-7.3.1/css/fontawesome.min.css')#" />
-    <link rel="stylesheet" href="#system.staticUrl('vendor/fontawesome-free-7.3.1/css/solid.min.css')#" />
-    <link rel="stylesheet" href="#system.staticUrl('vendor/fontawesome-free-7.3.1/css/regular.min.css')#" />
-    <link rel="stylesheet" href="#system.staticUrl('vendor/fontawesome-free-7.3.1/css/brands.min.css')#" />
-    <link rel="stylesheet" href="#system.staticUrl('moopa.css')#" />
+    <!--- Icons, moopa.css and the project's theme (system.stylesheets(), shared with project layouts) --->
+    #system.stylesheets()#
     <script src="#system.staticUrl('moopa.js')#"></script>
     #attributes.head#
     <script defer src="#system.staticUrl('vendor/alpine-3.17.5/focus.min.js')#"></script>
