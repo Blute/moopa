@@ -54,6 +54,8 @@
 <cfset navNames = len(attributes.navs) ? listToArray(attributes.navs) : structKeyArray(builtNavs) />
 <cfif NOT len(attributes.navs)><cfset arraySort(navNames, "textnocase") /></cfif>
 <cfset systemItems = system.menu() />
+<cfset impersonated = session.auth.profile ?: {} />
+<cfset impersonator = session.auth.impersonator ?: {} />
 
 <cfset initials = "" />
 <cfloop list="#currentProfile.full_name ?: ''#" item="namePart" delimiters=" ">
@@ -164,7 +166,7 @@
 <cfif attributes.chrome AND (session.auth.is_impersonating ?: false)>
     <div class="moo-shell-banner" role="status">
         <i class="fa-solid fa-user-secret"></i>
-        <span>Impersonating <strong>#encodeForHTML((session.auth.profile ?: {}).full_name ?: 'Unknown')#</strong>, by #encodeForHTML((session.auth.impersonator ?: {}).full_name ?: 'Unknown')#</span>
+        <span>Impersonating <strong>#encodeForHTML(impersonated.full_name ?: 'Unknown')#</strong>, by #encodeForHTML(impersonator.full_name ?: 'Unknown')#</span>
         <a class="btn btn-xs" href="/logout/"><i class="fa-solid fa-arrow-right-from-bracket"></i> End session</a>
     </div>
 </cfif>
