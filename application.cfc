@@ -255,6 +255,18 @@
     </cffunction>
 
 
+    <cffunction name="_showErrorDetail" access="private" returntype="boolean" output="false" hint="Whether an error's details (message, stack, exception) may be shown: only to a sysadmin signed in to this app, in every environment. False if the session can't be read, since the error may be the session's.">
+        <cftry>
+            <cfreturn application.lib.auth.isLoggedIn()
+                AND (session.auth.profile.app_name ?: "") EQ application.app_name
+                AND application.lib.auth.isSysAdmin() />
+            <cfcatch>
+                <cfreturn false />
+            </cfcatch>
+        </cftry>
+    </cffunction>
+
+
     <cffunction name="_localPath" access="private" returntype="string" output="false" hint="The path when it is a path on this site (one leading slash, no backslashes or control characters), else /. Keeps redirects built from url.route on this site.">
         <cfargument name="path" type="string" required="true" />
 
@@ -501,8 +513,8 @@
             <cfcontent type="application/json" reset="true">
 
 
-            <!--- Only show debug information in development environment or if debug parameter is set to the debug key --->
-            <cfif (server.system.environment.APP_ENVIRONMENT?:'production') EQ 'development' OR (url.debug?:'') EQ (server.system.environment.DEBUG_KEY?:createUUID())>
+            <!--- The error's details only for a sysadmin signed in to this app; anyone else gets the plain message --->
+            <cfif _showErrorDetail()>
                 <cfset error_response = {
                     error: arguments.Exception.message,
                     line: error_line,
@@ -522,11 +534,11 @@
         <cfelse>
 
 
-            <!--- Moopa's status page; in development (or with the debug key) the error's details under it --->
+            <!--- Moopa's status page; for a sysadmin signed in to this app, the error's details under it --->
             <cfset local.errorRoute = url.route ?: "" />
             <cfif len(local.errorRoute) AND left(local.errorRoute, 1) NEQ "/"><cfset local.errorRoute = "/" & local.errorRoute /></cfif>
             <cfmodule template="/moopa/tags/moopa_status.cfm" code="500" route="#local.errorRoute#">
-                <cfif (server.system.environment.APP_ENVIRONMENT?:'production') EQ 'development' OR (url.debug?:'') EQ (server.system.environment.DEBUG_KEY?:createUUID())>
+                <cfif _showErrorDetail()>
                     <div class="card">
                         <div class="card-header"><h2 class="card-title"><cfoutput>#encodeForHTML(arguments.exception.message?:'')#</cfoutput></h2></div>
                         <div class="card-body stack-sm">

@@ -36,9 +36,8 @@
             </cfloop>
 
             <cfcatch type="any">
-                <cfdump var="#cfcatch#" expand="true">
-                <cfdump var="#arguments.tableDef.fields#" expand="true">
-                <cfabort>
+                <!--- The error handler logs it and shows the status page; details only for a sysadmin --->
+                <cfrethrow />
             </cfcatch>
         </cftry>
 
