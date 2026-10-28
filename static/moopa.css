@@ -151,6 +151,8 @@
 
   /* shell */
   --sb-w: 264px;
+  --shell-logo-h: 3.25rem;          /* the brand logo's height in the sidebar (application.moopa_theme.logo) */
+  --shell-logo-h-mobile: 2rem;      /* and in the mobile bar */
   --sb-w-collapsed: 72px;
   --t: 200ms;
   --ease: cubic-bezier(.22,1,.36,1);
@@ -973,8 +975,8 @@ body.moo-shell-mobile-open .moo-shell-backdrop { opacity: 1; pointer-events: aut
 
 /* Shell extras: brand logo and name, quieter nav rows, nav badges, profile dropdown lines, a copy-to-clipboard
    button, and the route-security button with its frame */
-.moo-shell-logo { display: block; width: auto; height: 3.25rem; object-fit: contain; }
-.moo-shell-logo-mobile { height: 2rem; }
+.moo-shell-logo { display: block; width: auto; height: var(--shell-logo-h); max-width: 100%; object-fit: contain; }
+.moo-shell-logo-mobile { height: var(--shell-logo-h-mobile); }
 .moo-shell-brand-name { font-size: 1.0625rem; font-weight: 500; letter-spacing: -0.02em; color: var(--ink); }
 .moo-shell-icon-button-lg { width: 2.5rem; height: 2.5rem; }
 .moo-shell-nav-row-default:hover, .moo-shell-nav-row-muted:hover, .moo-shell-nav-row-parent-current:hover { color: var(--ink); background: var(--canvas-soft); }
