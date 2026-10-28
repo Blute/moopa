@@ -53,6 +53,8 @@ Every colour, radius, size and spacing is a custom property in the `:root` block
 
 `--signal` is the one vivid colour, used for state only: the current menu item, focus, links, selected and primary actions. Focus rings derive from it, so re-branding it re-brands focus too.
 
+The sidebar is a darker panel than the page, for contrast. It has its own tokens (`--shell-bg`, `--shell-bg-raised`, `--shell-line`, `--shell-edge`, `--shell-ink`, `--shell-ink-secondary`, `--shell-ink-mute`, `--shell-signal`, `--shell-danger`); inside the sidebar and the mobile bar the page tokens point at them, so every primitive used there follows. Override the `--shell-*` tokens to re-colour the panel, for example to a light one.
+
 ## Primitives
 
 The class list is the stylesheet's own sections; read them before writing markup, and add a primitive only when a second page needs it (page-specific styles go in a `<style>` block on that page, using tokens).
