@@ -10,7 +10,7 @@
         <cfargument name="route_urls" type="array" required="true" hint="Every route URL this runtime serves." />
 
         <cfset var served = {} />
-        <cfset var links = [:] />
+        <cfset var links = structNew("ordered") />
         <cfset var owners = {} />
         <cfset var problems = [] />
         <cfset var source = {} />
