@@ -4,7 +4,11 @@ Moopa signs people in without passwords. They enter their email; Moopa emails th
 
 It lives in `lib/signin.cfc` (`application.lib.signin`) and the table `moo_signin_request`. Its pages render in `tags/moopa_bare.cfm`'s split layout: a "Welcome back" panel in the project's shell colours and logo beside the step, which on a phone becomes a header with the step on a sheet below it. The asking browser's pages are numbered (step 1 of 3: the email; 2: waiting; 3: continue).
 
-Each request has a four-character reference. The email's subject ends with it (`Sign in to <project> (request AB5F)`), so every email is its own thread rather than one long one, where mail apps fold away the repeated button. The waiting page and the approve page show it too, so someone can match the email to the browser that asked.
+The email's subject ends with the time it was asked for, in the asker's time zone (`Sign in to <project> at 8:35am`; the browser sends its zone, else Cloudflare's `CF-Timezone`, else UTC), so each email is its own thread rather than one long one where mail apps fold away the repeated button. The waiting page names the time too.
+
+A browser can ask again ("Send a new link") without cancelling what it already asked for: its requests share one browser secret, each keeps its own 15-minute expiry, and approving any live one signs that browser in. Turning any down ends the attempt. Once approved elsewhere, the confirmation names the browser to go back to (`Head back to Chrome on macOS near Sydney`).
+
+Every sign-in form shows it's busy once sent (the pressed button says what's happening) and ignores a second press, so a slow send isn't asked for twice.
 
 ## A project's routes
 

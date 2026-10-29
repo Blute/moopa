@@ -277,12 +277,24 @@
               site) never store a nav tree — that is the point: the old generateNavs() ran
               in login() for EVERY app, so every session serialised a nav it may never use.
               Per-user data in the per-user scope is also cleared automatically on logout /
-              session expiry. Refreshes on the next login (login() resets session.auth) and
-              on deploy (application.nav_id changes, so the cached nav_id no longer matches).
+              session expiry. Refreshes on the next login (login() resets session.auth), on
+              deploy (application.nav_id changes, so the cached nav_id no longer matches) and
+              when the person's roles change (below).
               Concurrent first-hits in one session may both build — harmless, identical
               result, so no lock is needed. --->
+        <!--- Also rebuilt when the person's roles change, as route access reads their current roles: a role
+              given or taken away in System > Profiles shows in the menu on the next page, as it does in what
+              they may open. One small query per render. --->
+        <cfquery name="local.qRoles" returntype="array">
+            SELECT COALESCE(string_agg(foreign_id::text, ',' ORDER BY foreign_id), '') AS roles_key
+            FROM moo_profile_roles
+            WHERE primary_id = <cfqueryparam cfsqltype="other" value="#session.auth.profile.id#" />
+        </cfquery>
+        <cfset var rolesKey = local.qRoles[1].roles_key />
+
         <cfif structKeyExists(session.auth, "navs")
-              AND (session.auth.nav_id ?: "") EQ (application.nav_id ?: "")>
+              AND (session.auth.nav_id ?: "") EQ (application.nav_id ?: "")
+              AND (session.auth.nav_roles ?: "") EQ rolesKey>
             <cfreturn session.auth.navs />
         </cfif>
 
@@ -292,6 +304,7 @@
 
         <cfset session.auth.navs = navs />
         <cfset session.auth.nav_id = application.nav_id ?: "" />
+        <cfset session.auth.nav_roles = rolesKey />
 
         <cfreturn navs />
     </cffunction>

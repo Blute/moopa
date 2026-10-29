@@ -537,6 +537,7 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .status-page h1 { font-size: var(--text-2xl); }
 .status-message { color: var(--ink-mute); }
 .status-actions { justify-content: center; margin-top: var(--sp-3); }
+.status-account { margin-top: var(--sp-2); color: var(--ink-mute); font-size: var(--text-sm); }
 .status-detail { width: 100%; max-width: 64rem; text-align: left; }
 /* moopa_bare's split layout (welcome=): a brand panel in the project's shell colours beside the page.
    The sign-in pages (lib/signin.cfc) use it. On a phone the panel is a header, the step's head sits on
@@ -578,7 +579,6 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .auth-links form { display: contents; }
 .auth-links .btn-link { padding: 0; border: 0; background: none; color: var(--ink-mute); font: inherit; cursor: pointer; }
 .auth-links .btn-link:hover { color: var(--ink); text-decoration: underline; }
-.signin-ref { font-family: var(--font-mono); letter-spacing: 0.08em; }
 @media (max-width: 48rem) {
   .auth { grid-template-columns: 1fr; grid-template-rows: auto 1fr; background: var(--auth-brand); }
   .auth-brand { padding: var(--sp-6) var(--sp-5) 0; background: none; }
