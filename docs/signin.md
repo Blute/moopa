@@ -54,3 +54,18 @@ A request someone else started still needs the account owner to approve it: the 
 ## Inviting someone
 
 System → Profiles → a profile that can sign in → **Invite** gives a message to send: the sign-in address and their email. There is nothing else to share.
+
+## Sign-in activity
+
+**Sign-in activity** in the profile menu (`/account/signins`, `routes/account/signins.cfc`) shows the signed-in person:
+
+- **Their signed-in devices:** each 30-day stay, with the device and place it signed in from (`moo_profile_extended_session.user_agent` and `place`). Each can be signed out, or all but this one at once. A device signed out here loses its stay, and its open session ends within a minute: `application.cfc` checks, at most once a minute, that the session's device still exists.
+- **Their sign-ins of the last 90 days:** when, the device and place it was asked from, the result (signed in, approved but not continued, turned down, expired or waiting), and the device that approved it.
+
+A sysadmin can see anyone's with `?profile=<id>`, which System › Profiles links to from each profile. Anyone else asking for another profile sees their own. Sign-in requests older than 90 days, and expired device stays, are deleted when a new request is made, so no scheduler is needed.
+
+The two device columns must exist before this code runs, because each sign-in saves them:
+
+```sql
+ALTER TABLE moo_profile_extended_session ADD COLUMN IF NOT EXISTS user_agent text, ADD COLUMN IF NOT EXISTS place varchar(255);
+```

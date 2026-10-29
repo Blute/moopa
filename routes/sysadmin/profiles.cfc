@@ -434,6 +434,9 @@
                             </div>
                             <p class="muted small" x-show="!current_record.auth_identities?.length">None linked.</p>
 
+                            <div class="cluster" x-show="current_record.id">
+                                <a class="btn btn-sm" :href="'/account/signins?profile=' + current_record.id"><i class="fa-solid fa-clock-rotate-left"></i> Sign-in activity</a>
+                            </div>
                             <div class="stack stack-sm" x-show="current_record.id && current_record.can_login">
                                 <div><button type="button" class="btn btn-sm" @click="generateInvite()" :disabled="generating_invite">
                                     <i class="fa-solid" :class="generating_invite ? 'fa-spinner fa-spin' : 'fa-paper-plane'"></i>

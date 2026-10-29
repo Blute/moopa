@@ -120,6 +120,14 @@
             <cfreturn "Enter your email address." />
         </cfif>
 
+        <!--- Sign-in activity shows 90 days: older requests, and devices whose stay has run out, go --->
+        <cfquery>
+            DELETE FROM moo_signin_request WHERE created_at < now() - interval '90 days'
+        </cfquery>
+        <cfquery>
+            DELETE FROM moo_profile_extended_session WHERE expiration < now()
+        </cfquery>
+
         <cfset var ip = clientIp() />
         <cfquery name="local.qRecent" returntype="array">
             SELECT count(*) FILTER (WHERE email = <cfqueryparam cfsqltype="varchar" value="#address#" />) AS by_email,
@@ -265,7 +273,8 @@
         <cfset application.lib.db.getService("moo_profile").login(
             profile_id = profileId,
             stay_logged_in = true,
-            user_directory = "email_link"
+            user_directory = "email_link",
+            place = clientPlace()
         ) />
 
         <cflocation url="#application.lib.core.getRedirectUrl(clear=true, fallback='/')#" addtoken="false" />
@@ -841,7 +850,7 @@
     </cffunction>
 
 
-    <cffunction name="describeDevice" access="private" returntype="string" output="false"
+    <cffunction name="describeDevice" access="public" returntype="string" output="false"
         hint="A browser and system from a user agent, e.g. 'Chrome on macOS'.">
         <cfargument name="userAgent" type="string" required="true" />
 

@@ -151,6 +151,8 @@
         <cfargument name="user_directory" default="" />
         <cfargument name="authentication_service_user" default="" />
         <cfargument name="is_sysadmin" type="boolean" default=false />
+        <cfargument name="place" type="string" default="" hint="Roughly where the device is (e.g. 'Brisbane, QLD, AU'), for Sign-in activity." />
+        <cfargument name="device_id" type="string" default="" hint="auto_login: the stay-signed-in device this session comes from." />
 
 
         <cfif !len(arguments.profile_id)>
@@ -201,7 +203,9 @@
                 data = {
                     profile_id = "#auth.profile.id#",
                     device_id = "#new_device_id#",
-                    expiration = "#expireTime#"
+                    expiration = "#expireTime#",
+                    user_agent = left(cgi.http_user_agent ?: "", 500),
+                    place = left(arguments.place, 120)
                 },
                 returnFormat="cfml"
             ) />
@@ -210,6 +214,7 @@
 
 
             <cfset auth.stay_logged_in = true />
+            <cfset auth.device_id = new_device_id />
 
         </cfif>
 
@@ -217,6 +222,7 @@
         <cfif (arguments.auto_login)>
             <cfset auth.auto_login = true />
             <cfset auth.stay_logged_in = true />
+            <cfset auth.device_id = arguments.device_id />
         </cfif>
 
 

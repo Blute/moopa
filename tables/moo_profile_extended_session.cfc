@@ -4,7 +4,7 @@
 
         <cfset this.definition =
         {
-            "title": "Profile Extended Login",
+            "title": "Signed-in device",
             "item_label_template": "`${item.name}`",
             "fields": {
                 "profile_id": {
@@ -18,6 +18,15 @@
                 },
                 "expiration": {
                     "type": "timestamptz"
+                },
+                <!--- What and where the device was when it signed in: Sign-in activity lists the devices --->
+                "user_agent": {
+                    "type": "text",
+                    "nullable": true
+                },
+                "place": {
+                    "type": "varchar",
+                    "nullable": true
                 }
 
             }
