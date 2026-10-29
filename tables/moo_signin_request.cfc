@@ -19,6 +19,10 @@
         approve_token_hash is the SHA-256 of the token in the emailed link and
         browser_token_hash of the secret held in the asking browser's session. Neither
         secret is stored.
+
+        method is empty for an emailed link, or "google" for Continue with Google: a
+        row that is used as it is made (the hashes are of throwaway values), kept so
+        Sign-in activity lists it.
     --->
 
     <cffunction name="init">
@@ -145,6 +149,14 @@
                     "html": {
                         "control": "datetime",
                         "label": "Signed In At"
+                    }
+                },
+                "method": {
+                    "type": "varchar",
+                    "nullable": true,
+                    "html": {
+                        "control": "text",
+                        "label": "Method"
                     }
                 }
             ],

@@ -10,6 +10,20 @@ A browser can ask again ("Send a new link") without cancelling what it already a
 
 Every sign-in form shows it's busy once sent (the pressed button says what's happening) and ignores a second press, so a slow send isn't asked for twice.
 
+## Continue with Google
+
+When `MOOPA_AUTH_URL` and `MOOPA_AUTH_KEY` are set, the sign-in page also offers **Continue with Google**. It signs in the profile whose email is the person's verified Google address, under the same rule as an emailed link: a profile in this app that can sign in. A configured `SYSADMIN_EMAIL` gets their hub profile made or enabled, exactly as when they approve a link. Someone signed in to Google whose address has no account is told so. Google has proved they own the address, so saying so tells nobody else anything. They're then offered another Google account or an emailed link.
+
+Google only sends people back to addresses registered on its client by hand, and has no API for that list. So every app shares one address: the Worker `config/init/cloudflare-google-signin-worker.js`, on its own hostname (`MOOPA_AUTH_URL`, e.g. `https://auth.example.com`).
+
+1. The app keeps a one-use state in the session. It sends the browser to `<MOOPA_AUTH_URL>/google/start` with that state and its `BASE_URL` `/login/` address.
+2. The Worker only serves addresses its `ALLOWED_RETURN_HOSTS` lists, plus `localhost`. It signs the person in with Google (authorisation code with PKCE).
+3. It sends them back to `/login/?google=<assertion>`. The assertion carries their verified email, for this app's origin and that state, signed with `MOOPA_AUTH_KEY` (HMAC-SHA256), for two minutes.
+
+The app checks the signature, origin, state and expiry before signing anyone in. It never trusts an email that came any other way. The sign-in is listed in Sign-in activity (`moo_signin_request.method = 'google'`) and stays signed in for 30 days, like an emailed link.
+
+The Worker's settings are at the top of its file. The Google client's authorised redirect URI is the Worker's `/google/callback`.
+
 ## A project's routes
 
 The app's `/login/` route hands its `get` and `post` to Moopa, and `/login/logout/` signs out:
@@ -38,6 +52,7 @@ Everything else (the emailed link, the approve page, the waiting page's polling)
 | `SYSADMIN_EMAIL` | The hub's sysadmins. One without a usable hub profile still gets the link; approving it creates their profile, or enables it, so a new project's first sign-in needs no setup. Nothing changes until the link is approved. |
 | `TRUSTED_PROXY` | `cloudflare` (or `digitalocean`) when every request reaches the app through that proxy, which then sets the client headers itself. Only then does sign-in use its client address (for the per-IP limit) and, for Cloudflare with visitor location headers on, show roughly where a request came from. Unset: the connection's address and no location, as a client can send any header. |
 | Email | Sent with `lib/email.cfc` ([email.md](email.md)). Outside production every message goes to `SYSADMIN_EMAIL`. |
+| `MOOPA_AUTH_URL`, `MOOPA_AUTH_KEY` | The Google sign-in Worker's address and the key it signs with ([Continue with Google](#continue-with-google)). Both set: the sign-in page offers Google. |
 | `APP_ENVIRONMENT=development` | The waiting page also shows the link, so a local stack signs in without email. |
 
 ## How it holds up
@@ -60,12 +75,13 @@ System → Profiles → a profile that can sign in → **Invite** gives a messag
 **Sign-in activity** in the profile menu (`/account/signins`, `routes/account/signins.cfc`) shows the signed-in person:
 
 - **Their signed-in devices:** each 30-day stay, with the device and place it signed in from (`moo_profile_extended_session.user_agent` and `place`). Each can be signed out, or all but this one at once. A device signed out here loses its stay, and its open session ends within a minute: `application.cfc` checks, at most once a minute, that the session's device still exists.
-- **Their sign-ins of the last 90 days:** when, the device and place it was asked from, the result (signed in, approved but not continued, turned down, expired or waiting), and the device that approved it.
+- **Their sign-ins of the last 90 days:** when, the device and place it was asked from, the result (signed in, approved but not continued, turned down, expired or waiting), and the device that approved it, or "Google account" for Continue with Google.
 
 A sysadmin can see anyone's with `?profile=<id>`, which System › Profiles links to from each profile. Anyone else asking for another profile sees their own. Sign-in requests older than 90 days, and expired device stays, are deleted when a new request is made, so no scheduler is needed.
 
-The two device columns must exist before this code runs, because each sign-in saves them:
+These columns must exist before this code runs, because each sign-in saves them:
 
 ```sql
 ALTER TABLE moo_profile_extended_session ADD COLUMN IF NOT EXISTS user_agent text, ADD COLUMN IF NOT EXISTS place varchar(255);
+ALTER TABLE moo_signin_request ADD COLUMN IF NOT EXISTS method varchar;
 ```

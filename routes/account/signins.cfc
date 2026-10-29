@@ -60,7 +60,7 @@
                 </section>
 
                 <section class="card">
-                    <div class="card-header"><h2 class="card-title">Sign-ins</h2><span class="card-sub">The last 90 days, newest first. Each was asked for on one device and approved from the emailed link, perhaps on another.</span></div>
+                    <div class="card-header"><h2 class="card-title">Sign-ins</h2><span class="card-sub">The last 90 days, newest first. An emailed link was asked for on one device and approved from the email, perhaps on another; Google signs in on the device itself.</span></div>
                     <cfif arrayLen(requests)>
                         <div class="table-wrap">
                             <table class="table">
@@ -73,7 +73,7 @@
                                             <td>#encodeForHTML(signin.describeDevice(local.r.request_user_agent ?: ""))#</td>
                                             <td>#encodeForHTML(local.r.request_place ?: "")#</td>
                                             <td><span class="badge #local.result.tone#">#local.result.label#</span></td>
-                                            <td><cfif len(local.r.decide_user_agent ?: "")>#encodeForHTML(signin.describeDevice(local.r.decide_user_agent))#</cfif></td>
+                                            <td><cfif (local.r.method ?: "") EQ "google">Google account<cfelseif len(local.r.decide_user_agent ?: "")>#encodeForHTML(signin.describeDevice(local.r.decide_user_agent))#</cfif></td>
                                         </tr>
                                     </cfloop>
                                 </tbody>
@@ -183,7 +183,7 @@
         hint="The profile's sign-in requests of the last 90 days: its own, and any for its email before it had a profile.">
         <cfargument name="profile" type="struct" required="true" />
         <cfquery name="local.qRequests" returntype="array">
-            SELECT status, expires_at > now() AS live, request_user_agent, request_place, decide_user_agent,
+            SELECT status, COALESCE(method, '') AS method, expires_at > now() AS live, request_user_agent, request_place, decide_user_agent,
                    to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
             FROM moo_signin_request
             WHERE (profile_id = <cfqueryparam cfsqltype="other" value="#arguments.profile.id#" />
