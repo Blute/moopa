@@ -348,11 +348,16 @@
                 </div>
             </div>
             <script>
-                // Ask every couple of seconds whether the request has moved on, and when it has, reload so the
-                // server shows the next step. Not while the tab is hidden (the database can rest while the
-                // person is off in their email); straight away when it's shown again.
+                // Ask whether the request has moved on, and when it has, reload so the server shows the next
+                // step. Every 2 seconds for the first minute (approvals usually come quickly), every 5 to five
+                // minutes, then every 15 until the request ends: a tab left open on an email nobody will approve
+                // (it may have no account, and the page can't say so) asks rarely. Not while the tab is hidden
+                // (the database can rest while the person is off in their email); straight away when it's
+                // shown again.
                 (function () {
+                    const opened = Date.now();
                     let busy = false;
+                    let timer = null;
                     async function check() {
                         if (busy) return;
                         busy = true;
@@ -362,8 +367,23 @@
                             if (s && s !== 'pending') window.location.replace('#variables.PATH#');
                         } catch (e) {} finally { busy = false; }
                     }
-                    setInterval(() => { if (!document.hidden) check(); }, 2000);
-                    document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+                    function schedule() {
+                        const seconds = (Date.now() - opened) / 1000;
+                        clearTimeout(timer);
+                        timer = setTimeout(tick, seconds < 60 ? 2000 : seconds < 300 ? 5000 : 15000);
+                    }
+                    async function tick() {
+                        timer = null;
+                        if (document.hidden) return;
+                        await check();
+                        schedule();
+                    }
+                    schedule();
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.hidden) return;
+                        check();
+                        schedule();
+                    });
                 })();
             </script>
         </cfoutput></cfsavecontent>
