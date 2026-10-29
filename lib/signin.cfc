@@ -37,6 +37,11 @@
             <cflocation url="#application.lib.core.getRedirectUrl(clear=true, fallback='/')#" addtoken="false" />
         </cfif>
 
+        <!--- Back from Continue with Google --->
+        <cfif len(url.google ?: "") OR len(url.google_error ?: "")>
+            <cfreturn googleReturn() />
+        </cfif>
+
         <cfif NOT structKeyExists(session, "signin")>
             <cfreturn emailPage() />
         </cfif>
@@ -51,7 +56,7 @@
 
 
     <cffunction name="post" access="public" returntype="string" output="false"
-        hint="POST /login/: action is start (email), status (JSON, polled by the waiting page), continue, restart, approve or deny (token).">
+        hint="POST /login/: action is start (email), status (JSON, polled by the waiting page), continue, restart, approve or deny (token), or google (Continue with Google).">
 
         <cfset var action = request.data.action ?: "" />
 
@@ -79,6 +84,10 @@
             <cfcase value="restart">
                 <cfset structDelete(session, "signin") />
                 <cflocation url="#variables.PATH#" addtoken="false" />
+            </cfcase>
+
+            <cfcase value="google">
+                <cfset googleStart() />
             </cfcase>
 
             <cfcase value="approve,deny">
@@ -110,6 +119,17 @@
     <!--- The flow                                                                               --->
     <!--- ===================================================================================== --->
 
+    <cffunction name="prune" access="private" returntype="void" output="false"
+        hint="Sign-in activity shows 90 days: older requests, and devices whose stay has run out, go. Run on each new request, emailed or Google, so no scheduler is needed.">
+        <cfquery>
+            DELETE FROM moo_signin_request WHERE created_at < now() - interval '90 days'
+        </cfquery>
+        <cfquery>
+            DELETE FROM moo_profile_extended_session WHERE expiration < now()
+        </cfquery>
+    </cffunction>
+
+
     <cffunction name="start" access="private" returntype="string" output="false"
         hint="Record a request for this email and, when someone can sign in with it, email them the link. Returns a problem to show, or empty.">
         <cfargument name="email" type="string" required="true" />
@@ -120,13 +140,7 @@
             <cfreturn "Enter your email address." />
         </cfif>
 
-        <!--- Sign-in activity shows 90 days: older requests, and devices whose stay has run out, go --->
-        <cfquery>
-            DELETE FROM moo_signin_request WHERE created_at < now() - interval '90 days'
-        </cfquery>
-        <cfquery>
-            DELETE FROM moo_profile_extended_session WHERE expiration < now()
-        </cfquery>
+        <cfset prune() />
 
         <cfset var ip = clientIp() />
         <cfquery name="local.qRecent" returntype="array">
@@ -365,10 +379,19 @@
     <cffunction name="emailPage" access="private" returntype="string" output="false">
         <cfargument name="email" type="string" default="" />
         <cfargument name="error" type="string" default="" />
+        <cfargument name="notice" type="string" default="" hint="Why Continue with Google didn't sign them in." />
 
         <cfset var body = "" />
         <cfsavecontent variable="body"><cfoutput>
-            <form class="auth-body" method="post" action="#variables.PATH#">
+            <div class="auth-body">
+            <cfif len(arguments.notice)>
+                <div class="alert alert-warning"><i class="fa-solid fa-triangle-exclamation"></i><div>#encodeForHTML(arguments.notice)#</div></div>
+            </cfif>
+            <cfif googleEnabled()>
+                #googleButton("Continue with Google")#
+                <p class="auth-or">or</p>
+            </cfif>
+            <form class="auth-form" method="post" action="#variables.PATH#">
                 <input type="hidden" name="action" value="start">
                 <input type="hidden" name="tz" value="">
                 <div class="field">
@@ -378,8 +401,9 @@
                 </div>
                 <button type="submit" class="btn btn-primary btn-block" data-busy="Sending…"><i class="fa-solid fa-envelope"></i> Email me a link</button>
             </form>
+            </div>
         </cfoutput></cfsavecontent>
-        <cfreturn page("Sign in", head(1, "Sign in to " & encodeForHTML(projectTitle()), "Enter your email and we'll send you a link to sign in with.") & body) />
+        <cfreturn page("Sign in", head(1, "Sign in to " & encodeForHTML(projectTitle()), googleEnabled() ? "Continue with your Google account, or enter your email and we'll send you a link to sign in with." : "Enter your email and we'll send you a link to sign in with.") & body) />
     </cffunction>
 
 
@@ -621,6 +645,190 @@
 
 
     <!--- ===================================================================================== --->
+    <!--- Continue with Google                                                                   --->
+    <!--- ===================================================================================== --->
+
+    <!---
+        Google sends people back only to addresses registered on its client by hand, so every app shares one: a
+        Worker at MOOPA_AUTH_URL (config/init/cloudflare-google-signin-worker.js). The app sends the browser there
+        with its /login/ address and a one-use state kept in the session; the Worker signs the person in with Google
+        and sends them back with an assertion: their verified email, for this app's origin and that state, signed
+        with MOOPA_AUTH_KEY, for two minutes. The email must belong to a profile that can sign in, as for a link.
+    --->
+
+    <cffunction name="googleEnabled" access="private" returntype="boolean" output="false"
+        hint="Whether Continue with Google is set up: MOOPA_AUTH_URL and MOOPA_AUTH_KEY.">
+        <cfreturn len(trim(server.system.environment.MOOPA_AUTH_URL ?: "")) AND len(trim(server.system.environment.MOOPA_AUTH_KEY ?: "")) />
+    </cffunction>
+
+
+    <cffunction name="googleButton" access="private" returntype="string" output="false"
+        hint="The Continue with Google button, in Google's style (a white button with its G).">
+        <cfargument name="label" type="string" required="true" />
+        <cfreturn '<form method="post" action="#variables.PATH#"><input type="hidden" name="action" value="google">'
+            & '<button type="submit" class="btn btn-block btn-google" data-busy="Opening Google…">'
+            & '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="##EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="##4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="##FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="##34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>'
+            & ' #encodeForHTML(arguments.label)#</button></form>' />
+    </cffunction>
+
+
+    <cffunction name="googleStart" access="private" returntype="void" output="false"
+        hint="Send the browser to the Google sign-in Worker, with this app's /login/ address and a one-use state kept in the session.">
+        <cfif NOT googleEnabled()>
+            <cflocation url="#variables.PATH#" addtoken="false" />
+        </cfif>
+        <cfset var state = application.lib.core.generateSecureToken(32) />
+        <cfset session.google_signin = { state = state, started = now() } />
+        <cfset var authUrl = trim(server.system.environment.MOOPA_AUTH_URL) />
+        <cfif right(authUrl, 1) EQ "/"><cfset authUrl = left(authUrl, len(authUrl) - 1) /></cfif>
+        <cflocation url="#authUrl#/google/start?return_to=#encodeForURL(baseUrl() & variables.PATH)#&state=#encodeForURL(state)#" addtoken="false" />
+    </cffunction>
+
+
+    <cffunction name="googleReturn" access="private" returntype="string" output="false"
+        hint="Back from the Google sign-in Worker: check its assertion and sign in the profile with that email, or say why not.">
+        <!--- One use: whatever comes back, this browser's state is spent --->
+        <cfset var held = session.google_signin ?: {} />
+        <cfset structDelete(session, "google_signin") />
+        <cfset var fresh = len(held.state ?: "") AND dateDiff("n", held.started, now()) LT 15 />
+
+        <cfif len(url.google_error ?: "")>
+            <cfif fresh AND (url.state ?: "") EQ held.state>
+                <cfswitch expression="#url.google_error#">
+                    <cfcase value="cancelled"><cfreturn emailPage(notice = "Google sign-in was cancelled. Try again, or have us email you a link.") /></cfcase>
+                    <cfcase value="unverified"><cfreturn emailPage(notice = "Google hasn't verified that account's email address, so it can't be used to sign in.") /></cfcase>
+                </cfswitch>
+                <cfreturn emailPage(notice = "Google sign-in didn't work this time. Try again, or have us email you a link.") />
+            </cfif>
+            <cflocation url="#variables.PATH#" addtoken="false" />
+        </cfif>
+
+        <cfset var claims = googleAssertion(url.google, held.state ?: "") />
+        <cfif NOT fresh OR structIsEmpty(claims)>
+            <cfreturn emailPage(notice = "That Google sign-in has expired. Try again.") />
+        </cfif>
+
+        <cfset var address = claims.email />
+        <cfset var profileId = profileFor(address) />
+        <!--- A configured hub sysadmin's profile is made or enabled, as when they approve a link: Google has
+              verified the address --->
+        <cfif NOT len(profileId) AND isConfiguredSysadmin(address)>
+            <cfset profileId = sysadminProfile(address) />
+        </cfif>
+        <cfif NOT len(profileId)>
+            <cfreturn googleNoAccountPage(address) />
+        </cfif>
+
+        <!--- Listed in Sign-in activity like a link that was approved and used at once --->
+        <cfset prune() />
+        <cfquery>
+            INSERT INTO moo_signin_request
+                (app_name, email, profile_id, status, method, approve_token_hash, browser_token_hash, expires_at,
+                 request_ip, request_user_agent, request_place, decided_at, used_at)
+            VALUES (
+                <cfqueryparam cfsqltype="varchar" value="#appName()#" />,
+                <cfqueryparam cfsqltype="varchar" value="#address#" />,
+                <cfqueryparam cfsqltype="other" value="#profileId#" />,
+                'used',
+                'google',
+                <cfqueryparam cfsqltype="varchar" value="#tokenHash(application.lib.core.generateSecureToken(32))#" />,
+                <cfqueryparam cfsqltype="varchar" value="#tokenHash(application.lib.core.generateSecureToken(32))#" />,
+                now(),
+                <cfqueryparam cfsqltype="varchar" value="#clientIp()#" />,
+                <cfqueryparam cfsqltype="varchar" value="#left(cgi.http_user_agent ?: '', 500)#" />,
+                <cfqueryparam cfsqltype="varchar" value="#clientPlace()#" />,
+                now(),
+                now()
+            )
+        </cfquery>
+        <!--- A profile still named by its email (a sysadmin's first sign-in) takes the Google account's name --->
+        <cfquery>
+            UPDATE moo_profile
+            SET last_login_at = now(),
+                full_name = CASE WHEN COALESCE(full_name, '') IN ('', email) AND <cfqueryparam cfsqltype="varchar" value="#claims.name#" /> <> ''
+                                 THEN <cfqueryparam cfsqltype="varchar" value="#left(claims.name, 255)#" /> ELSE full_name END
+            WHERE id = <cfqueryparam cfsqltype="other" value="#profileId#" />
+        </cfquery>
+
+        <cfset structDelete(session, "signin") />
+        <cfset application.lib.db.getService("moo_profile").login(
+            profile_id = profileId,
+            stay_logged_in = true,
+            user_directory = "google",
+            place = clientPlace()
+        ) />
+        <cflocation url="#application.lib.core.getRedirectUrl(clear=true, fallback='/')#" addtoken="false" />
+    </cffunction>
+
+
+    <cffunction name="googleAssertion" access="private" returntype="struct" output="false"
+        hint="The assertion's claims if it is genuine (signed with MOOPA_AUTH_KEY), for this app's origin and this browser's state, and current; else an empty struct (the reason is logged).">
+        <cfargument name="assertion" type="string" required="true" />
+        <cfargument name="state" type="string" required="true" />
+
+        <cfset var body = listFirst(arguments.assertion, ".") />
+        <cfset var signature = listLen(arguments.assertion, ".") EQ 2 ? lCase(listLast(arguments.assertion, ".")) : "" />
+        <cfset var expected = lCase(hmac("moopa-google-assertion." & body, trim(server.system.environment.MOOPA_AUTH_KEY ?: ""), "HmacSHA256", "utf-8")) />
+        <cfif NOT len(signature) OR NOT sameText(expected, signature)>
+            <cflog file="signin" type="warning" text="Google sign-in: assertion signature didn't match." />
+            <cfreturn {} />
+        </cfif>
+
+        <cftry>
+            <cfset var base64 = replace(replace(body, "-", "+", "all"), "_", "/", "all") />
+            <cfset base64 &= repeatString("=", (4 - len(base64) MOD 4) MOD 4) />
+            <cfset var claims = deserializeJSON(toString(binaryDecode(base64, "base64"), "utf-8")) />
+            <cfcatch type="any">
+                <cflog file="signin" type="warning" text="Google sign-in: assertion unreadable." />
+                <cfreturn {} />
+            </cfcatch>
+        </cftry>
+
+        <!--- As the Worker writes it (a URL's origin): lower case, without the scheme's default port --->
+        <cfset var origin = reReplace(lCase(reReplace(baseUrl(), "^(https?://[^/]+).*$", "\1")), "^(https://[^/]+):443$|^(http://[^/]+):80$", "\1\2") />
+        <cfquery name="local.qNow">SELECT extract(epoch FROM now())::bigint AS seconds</cfquery>
+        <cfset var nowSeconds = local.qNow.seconds />
+        <cfif (claims.v ?: 0) NEQ 1
+              OR lCase(claims.aud ?: "") NEQ origin
+              OR NOT len(arguments.state) OR (claims.state ?: "") NEQ arguments.state
+              OR NOT isNumeric(claims.exp ?: "") OR claims.exp LT nowSeconds
+              OR NOT isValid("email", claims.email ?: "")>
+            <cflog file="signin" type="warning" text="Google sign-in: assertion not for this browser, app or time (aud #claims.aud ?: ''#)." />
+            <cfreturn {} />
+        </cfif>
+        <cfreturn { email = lCase(claims.email), name = trim(claims.name ?: "") } />
+    </cffunction>
+
+
+    <cffunction name="sameText" access="private" returntype="boolean" output="false"
+        hint="Whether two strings are equal, comparing every character so the time taken doesn't say how much matched.">
+        <cfargument name="a" type="string" required="true" />
+        <cfargument name="b" type="string" required="true" />
+        <cfif len(arguments.a) NEQ len(arguments.b)><cfreturn false /></cfif>
+        <cfset var diff = 0 />
+        <cfloop from="1" to="#len(arguments.a)#" index="local.i">
+            <cfset diff = bitOr(diff, bitXor(asc(mid(arguments.a, local.i, 1)), asc(mid(arguments.b, local.i, 1)))) />
+        </cfloop>
+        <cfreturn diff EQ 0 />
+    </cffunction>
+
+
+    <cffunction name="googleNoAccountPage" access="private" returntype="string" output="false"
+        hint="Signed in to Google, but no profile here can sign in with that email. Google has proved they own it, so saying so tells nobody else anything.">
+        <cfargument name="email" type="string" required="true" />
+        <cfset var body = "" />
+        <cfsavecontent variable="body"><cfoutput>
+            <div class="auth-body">
+                #googleButton("Use another Google account")#
+                <p class="auth-or">or</p>
+                <div class="auth-links">#restartForm("Sign in with your email instead")#</div>
+            </div>
+        </cfoutput></cfsavecontent>
+        <cfreturn page("Can't sign in", head(0, "No account for " & encodeForHTML(arguments.email), "#encodeForHTML(arguments.email)# can't sign in to #encodeForHTML(projectTitle())#. If it should, ask an administrator to add it.", "fa-user-xmark", "is-danger") & body) />
+    </cffunction>
+
+
+    <!--- ===================================================================================== --->
     <!--- Email                                                                                  --->
     <!--- ===================================================================================== --->
 
@@ -799,12 +1007,18 @@
         hint="The emailed link: on BASE_URL, never the request's Host header, which the asker controls.">
         <cfargument name="token" type="string" required="true" />
 
+        <cfreturn baseUrl() & variables.PATH & "?t=" & encodeForURL(arguments.token) />
+    </cffunction>
+
+
+    <cffunction name="baseUrl" access="private" returntype="string" output="false"
+        hint="BASE_URL without a trailing slash: links and return addresses are built on it, never on the request's Host header, which the asker controls.">
         <cfset var base = trim(server.system.environment.BASE_URL ?: "") />
         <cfif NOT len(base)>
             <cfthrow type="moopa.signin.config" message="BASE_URL must be set for sign-in links." />
         </cfif>
         <cfif right(base, 1) EQ "/"><cfset base = left(base, len(base) - 1) /></cfif>
-        <cfreturn base & variables.PATH & "?t=" & encodeForURL(arguments.token) />
+        <cfreturn base />
     </cffunction>
 
 
