@@ -334,6 +334,22 @@
         </cfif>
 
 
+        <!--- A session signed in before sessions knew their device: take the stay-signed-in cookie's device as its
+              own, once, when that device is this person's --->
+        <cfif application.lib.auth.isLoggedIn() AND NOT len(session.auth.device_id ?: "") AND len(cookie.deviceid ?: "")
+              AND NOT (session.auth.device_adopted ?: false)>
+            <cfset session.auth.device_adopted = true />
+            <cfquery name="local.qOwnDevice" returntype="array">
+                SELECT 1 AS present
+                FROM moo_profile_extended_session
+                WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#cookie.deviceid#" />
+                  AND profile_id = <cfqueryparam cfsqltype="other" value="#session.auth.profile.id#" />
+            </cfquery>
+            <cfif arrayLen(local.qOwnDevice)>
+                <cfset session.auth.device_id = cookie.deviceid />
+            </cfif>
+        </cfif>
+
         <!--- A device signed out from Sign-in activity (/account/signins) ends its session too: a signed-in
               session from a stay-signed-in device checks, at most once a minute, that the device is still there --->
         <cfif application.lib.auth.isLoggedIn() AND len(session.auth.device_id ?: "")

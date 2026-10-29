@@ -130,7 +130,8 @@
 
     <cffunction name="sign_out_others" hint="Remove every signed-in device of the profile but this one (all of them, for someone else's).">
         <cfset var who = target(request.data.profile ?: "") />
-        <cfset var keep = who.id EQ session.auth.profile.id ? (session.auth.device_id ?: "") : "" />
+        <!--- This device: the session's own, else (a session older than that) its stay-signed-in cookie's --->
+        <cfset var keep = who.id EQ session.auth.profile.id ? (len(session.auth.device_id ?: "") ? session.auth.device_id : (cookie.deviceid ?: "")) : "" />
         <cfquery>
             DELETE FROM moo_profile_extended_session
             WHERE profile_id = <cfqueryparam cfsqltype="other" value="#who.id#" />
