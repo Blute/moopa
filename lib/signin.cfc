@@ -195,8 +195,8 @@
             <cfreturn "none" />
         </cfif>
 
-        <!--- Every request this browser made for the email. Approving any live one signs it in; turning any
-              down ends the attempt; otherwise it waits while one is live. --->
+        <!--- Every request this browser made for the email. Turning any down ends the attempt; otherwise approving
+              any live one signs it in; otherwise it waits while one is live. --->
         <cfquery name="local.qStatus" returntype="array">
             SELECT status, expires_at > now() AS live
             FROM moo_signin_request
@@ -204,21 +204,22 @@
               AND email = <cfqueryparam cfsqltype="varchar" value="#session.signin.email#" />
         </cfquery>
 
+        <!--- A turn-down wins (decide turns down all of a browser's requests at once), then an approval --->
+        <cfset var approved = false />
         <cfset var waiting = false />
-        <cfset var turnedDown = false />
         <cfloop array="#local.qStatus#" item="local.r">
-            <cfif local.r.status EQ "approved" AND local.r.live>
-                <cfreturn "approved" />
-            </cfif>
             <cfif local.r.status EQ "denied">
-                <cfset turnedDown = true />
+                <cfreturn "denied" />
+            </cfif>
+            <cfif local.r.status EQ "approved" AND local.r.live>
+                <cfset approved = true />
             </cfif>
             <cfif local.r.status EQ "pending" AND local.r.live>
                 <cfset waiting = true />
             </cfif>
         </cfloop>
-        <cfif turnedDown>
-            <cfreturn "denied" />
+        <cfif approved>
+            <cfreturn "approved" />
         </cfif>
         <cfreturn waiting ? "pending" : "expired" />
     </cffunction>
@@ -320,6 +321,20 @@
         </cfif>
 
         <!--- Approved in the browser that asked: straight on to Continue --->
+        <!--- "Not me" ends the whole attempt: the asking browser's other links can't be approved after it, and one
+              already approved can't be continued (status puts a turn-down first, so the asking page says so) --->
+        <cfif NOT arguments.approve>
+            <cfquery>
+                UPDATE moo_signin_request
+                SET status = 'denied',
+                    decided_at = now(),
+                    decide_ip = <cfqueryparam cfsqltype="varchar" value="#clientIp()#" />,
+                    decide_user_agent = <cfqueryparam cfsqltype="varchar" value="#left(cgi.http_user_agent ?: '', 500)#" />
+                WHERE browser_token_hash = <cfqueryparam cfsqltype="varchar" value="#local.qDecide[1].browser_token_hash#" />
+                  AND status IN ('pending', 'approved')
+            </cfquery>
+        </cfif>
+
         <cfif arguments.approve AND structKeyExists(session, "signin") AND tokenHash(session.signin.secret) EQ local.qDecide[1].browser_token_hash>
             <cflocation url="#variables.PATH#" addtoken="false" />
         </cfif>
