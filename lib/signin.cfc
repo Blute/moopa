@@ -119,6 +119,17 @@
     <!--- The flow                                                                               --->
     <!--- ===================================================================================== --->
 
+    <cffunction name="prune" access="private" returntype="void" output="false"
+        hint="Sign-in activity shows 90 days: older requests, and devices whose stay has run out, go. Run on each new request, emailed or Google, so no scheduler is needed.">
+        <cfquery>
+            DELETE FROM moo_signin_request WHERE created_at < now() - interval '90 days'
+        </cfquery>
+        <cfquery>
+            DELETE FROM moo_profile_extended_session WHERE expiration < now()
+        </cfquery>
+    </cffunction>
+
+
     <cffunction name="start" access="private" returntype="string" output="false"
         hint="Record a request for this email and, when someone can sign in with it, email them the link. Returns a problem to show, or empty.">
         <cfargument name="email" type="string" required="true" />
@@ -129,13 +140,7 @@
             <cfreturn "Enter your email address." />
         </cfif>
 
-        <!--- Sign-in activity shows 90 days: older requests, and devices whose stay has run out, go --->
-        <cfquery>
-            DELETE FROM moo_signin_request WHERE created_at < now() - interval '90 days'
-        </cfquery>
-        <cfquery>
-            DELETE FROM moo_profile_extended_session WHERE expiration < now()
-        </cfquery>
+        <cfset prune() />
 
         <cfset var ip = clientIp() />
         <cfquery name="local.qRecent" returntype="array">
@@ -715,6 +720,7 @@
         </cfif>
 
         <!--- Listed in Sign-in activity like a link that was approved and used at once --->
+        <cfset prune() />
         <cfquery>
             INSERT INTO moo_signin_request
                 (app_name, email, profile_id, status, method, approve_token_hash, browser_token_hash, expires_at,
@@ -778,11 +784,12 @@
             </cfcatch>
         </cftry>
 
-        <cfset var origin = reReplace(baseUrl(), "^(https?://[^/]+).*$", "\1") />
+        <!--- As the Worker writes it (a URL's origin): lower case, without the scheme's default port --->
+        <cfset var origin = reReplace(lCase(reReplace(baseUrl(), "^(https?://[^/]+).*$", "\1")), "^(https://[^/]+):443$|^(http://[^/]+):80$", "\1\2") />
         <cfquery name="local.qNow">SELECT extract(epoch FROM now())::bigint AS seconds</cfquery>
         <cfset var nowSeconds = local.qNow.seconds />
         <cfif (claims.v ?: 0) NEQ 1
-              OR NOT sameText(claims.aud ?: "", origin)
+              OR lCase(claims.aud ?: "") NEQ origin
               OR NOT len(arguments.state) OR (claims.state ?: "") NEQ arguments.state
               OR NOT isNumeric(claims.exp ?: "") OR claims.exp LT nowSeconds
               OR NOT isValid("email", claims.email ?: "")>
