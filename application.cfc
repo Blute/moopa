@@ -67,6 +67,9 @@
 
         <cfset application.service.moo_route.initializeRoutesIntoApplicationScope() />
 
+        <!--- Signed-asset settings from the hosting's environment, when the database has none yet --->
+        <cfset application.lib.cloudflare.seedSettingsFromEnvironment() />
+
         <cfset _setupNavs() />
         <!--- The System menu: Moopa's own pages, shown to sysadmins after the app's navs, below a dividing line --->
         <cfset application.system_menu = application.system_routes ? deserializeJSON(fileRead(expandPath("/moopa/sysadmin_nav.json"))) : [] />

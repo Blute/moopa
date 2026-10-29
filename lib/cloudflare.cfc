@@ -28,7 +28,12 @@
     (delete a kid from the keyring and its URLs die immediately) — important
     because 'NEVER' URLs are persisted to the database and shared externally.
 
-    SETUP — signing config lives in the database + Worker. No app env vars.
+    SETUP — signing config lives in the database + Worker. Hosting that knows the
+    values (moopa-infrastructure) passes them as CLOUDFLARE_ASSETS_BASE_URL,
+    CLOUDFLARE_ASSETS_SIGNING_KEY_B64 and CLOUDFLARE_ASSETS_SIGNING_KID, and
+    seedSettingsFromEnvironment() fills the database from them at application
+    start whenever a setting is missing (it never overwrites). Otherwise seed by
+    hand as in step 2.
 
     1. Generate a signing key:
          openssl rand -base64 32
@@ -97,6 +102,61 @@
 
     <cffunction name="init" access="public" returntype="any" output="false">
         <cfreturn this />
+    </cffunction>
+
+
+    <cffunction name="seedSettingsFromEnvironment" access="public" returntype="void" output="false"
+        hint="Fills app_private_setting from CLOUDFLARE_ASSETS_BASE_URL, CLOUDFLARE_ASSETS_SIGNING_KEY_B64 and CLOUDFLARE_ASSETS_SIGNING_KID when the database has no value yet, so a new or restored database needs no hand seeding. Never overwrites: a different value already there is logged and kept (rotate keys in the database). Does nothing without the variables or before config/init/cloudflare.sql has made the table. Runs at application start.">
+        <cfset var env = server.system.environment />
+        <cfset var wanted = {
+            "cloudflare_assets_base_url": trim(env.CLOUDFLARE_ASSETS_BASE_URL ?: ""),
+            "cloudflare_assets_signing_key_b64": trim(env.CLOUDFLARE_ASSETS_SIGNING_KEY_B64 ?: ""),
+            "cloudflare_assets_signing_kid": trim(env.CLOUDFLARE_ASSETS_SIGNING_KID ?: "")
+        } />
+        <cfset var settingKey = "" />
+
+        <cfif NOT len(wanted.cloudflare_assets_base_url) AND NOT len(wanted.cloudflare_assets_signing_key_b64)>
+            <cfreturn />
+        </cfif>
+
+        <cftry>
+            <cfquery name="local.qTable">
+                SELECT CASE WHEN to_regclass('app_private_setting') IS NULL THEN 0 ELSE 1 END AS present
+            </cfquery>
+            <cfif NOT local.qTable.present>
+                <cfreturn />
+            </cfif>
+
+            <cfloop collection="#wanted#" item="settingKey">
+                <cfif len(wanted[settingKey])>
+                    <cfquery name="local.qSeed">
+                        WITH added AS (
+                            INSERT INTO app_private_setting (key, value)
+                            VALUES (
+                                <cfqueryparam cfsqltype="varchar" value="#settingKey#" />,
+                                <cfqueryparam cfsqltype="varchar" value="#wanted[settingKey]#" />
+                            )
+                            ON CONFLICT (key) DO NOTHING
+                            RETURNING 1
+                        )
+                        SELECT (SELECT count(*) FROM added)::int AS added,
+                               (SELECT count(*) FROM app_private_setting
+                                WHERE key = <cfqueryparam cfsqltype="varchar" value="#settingKey#" />
+                                  AND value <> <cfqueryparam cfsqltype="varchar" value="#wanted[settingKey]#" />)::int AS differs
+                    </cfquery>
+                    <cfif local.qSeed.added>
+                        <cflog file="cloudflare" type="information" text="Signed assets: #settingKey# set from the environment." />
+                    <cfelseif local.qSeed.differs>
+                        <!--- The value itself may be a key: name the setting only --->
+                        <cflog file="cloudflare" type="warning" text="Signed assets: #settingKey# in the database differs from the environment; keeping the database's." />
+                    </cfif>
+                </cfif>
+            </cfloop>
+            <cfcatch type="any">
+                <!--- Never stop the app starting over this: signed URLs fail visibly until it's fixed --->
+                <cflog file="cloudflare" type="error" text="Signed assets: settings not seeded from the environment: #cfcatch.message#" />
+            </cfcatch>
+        </cftry>
     </cffunction>
 
 
