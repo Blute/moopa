@@ -138,9 +138,10 @@
             <cfreturn refuse("Enter a name.", 422) />
         </cfif>
 
-        <!--- A picture must be a file the person saving uploaded; empty removes it --->
+        <!--- A new picture must be a file the person saving uploaded; the current one stays whoever uploaded
+              it (a sysadmin, or System › Profiles); empty removes it --->
         <cfset var pictureId = trim(request.data.profile_picture_id ?: "") />
-        <cfif len(pictureId)>
+        <cfif len(pictureId) AND pictureId NEQ (who.profile.picture.id ?: "")>
             <cfquery name="local.qFile" returntype="array">
                 SELECT 1 AS present
                 FROM moo_file
