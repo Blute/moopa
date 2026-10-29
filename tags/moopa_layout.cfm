@@ -213,6 +213,13 @@
                     </button>
                     <div class="moo-shell-menu-divider"></div>
                 </cfif>
+                <!--- Moopa's own pages (Sign-in activity among them) are served by Hub only --->
+                <cfif application.system_routes ?: false>
+                    <a href="/account/signins" role="menuitem" class="moo-shell-menu-item">
+                        <span class="moo-shell-menu-item-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
+                        <span>Sign-in activity</span>
+                    </a>
+                </cfif>
                 <a href="/logout/" role="menuitem" class="moo-shell-menu-item moo-shell-menu-item-danger">
                     <span class="moo-shell-menu-item-icon"><i class="fa-solid fa-right-from-bracket"></i></span>
                     <span>Sign out</span>

@@ -320,7 +320,7 @@
 
                 <cfif dateDiff('d', now(), qCheckDevice.expiration) GTE 0>
                     <!--- AUTO LOGIN --->
-                    <cfset application.lib.db.getService("moo_profile").login(profile_id="#qCheckDevice.profile_id#", auto_login=true) />
+                    <cfset application.lib.db.getService("moo_profile").login(profile_id="#qCheckDevice.profile_id#", auto_login=true, device_id=qCheckDevice.device_id) />
 
                 <cfelse>
                     <cfquery name="qCleanupExtendedSession">
@@ -330,6 +330,41 @@
                     <cfcookie name="deviceid" value="" expires="0" httponly="true" secure="true" samesite="Lax">
 
                 </cfif>
+            </cfif>
+        </cfif>
+
+
+        <!--- A session signed in before sessions knew their device: take the stay-signed-in cookie's device as its
+              own, once, when that device is this person's --->
+        <cfif application.lib.auth.isLoggedIn() AND NOT len(session.auth.device_id ?: "") AND len(cookie.deviceid ?: "")
+              AND NOT (session.auth.device_adopted ?: false)>
+            <cfset session.auth.device_adopted = true />
+            <cfquery name="local.qOwnDevice" returntype="array">
+                SELECT 1 AS present
+                FROM moo_profile_extended_session
+                WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#cookie.deviceid#" />
+                  AND profile_id = <cfqueryparam cfsqltype="other" value="#session.auth.profile.id#" />
+            </cfquery>
+            <cfif arrayLen(local.qOwnDevice)>
+                <cfset session.auth.device_id = cookie.deviceid />
+            </cfif>
+        </cfif>
+
+        <!--- A device signed out from Sign-in activity (/account/signins) ends its session too: a signed-in
+              session from a stay-signed-in device checks, at most once a minute, that the device is still there --->
+        <cfif application.lib.auth.isLoggedIn() AND len(session.auth.device_id ?: "")
+              AND dateDiff("s", session.auth.device_checked_at ?: createDateTime(2000, 1, 1, 0, 0, 0), now()) GTE 60>
+            <cfquery name="local.qDevice" returntype="array">
+                SELECT 1 AS present
+                FROM moo_profile_extended_session
+                WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#session.auth.device_id#" />
+                  AND expiration > now()
+            </cfquery>
+            <cfif arrayLen(local.qDevice)>
+                <cfset session.auth.device_checked_at = now() />
+            <cfelse>
+                <cfset structDelete(session, "auth") />
+                <cfcookie name="deviceid" value="" path="/" expires="0" httponly="true" secure="true" samesite="Lax">
             </cfif>
         </cfif>
 

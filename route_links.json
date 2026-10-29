@@ -1,8 +1,11 @@
 {
+  "/account/signins": [],
   "/sysadmin/app_summary": [],
   "/sysadmin/error_log": [],
   "/sysadmin/impersonation": [],
-  "/sysadmin/profiles": [],
+  "/sysadmin/profiles": [
+    "/account/signins"
+  ],
   "/sysadmin/roles": [],
   "/sysadmin/route_access": [
     "/sysadmin/profiles",
