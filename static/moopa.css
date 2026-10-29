@@ -578,7 +578,6 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .auth-links form { display: contents; }
 .auth-links .btn-link { padding: 0; border: 0; background: none; color: var(--ink-mute); font: inherit; cursor: pointer; }
 .auth-links .btn-link:hover { color: var(--ink); text-decoration: underline; }
-.signin-ref { font-family: var(--font-mono); letter-spacing: 0.08em; }
 @media (max-width: 48rem) {
   .auth { grid-template-columns: 1fr; grid-template-rows: auto 1fr; background: var(--auth-brand); }
   .auth-brand { padding: var(--sp-6) var(--sp-5) 0; background: none; }

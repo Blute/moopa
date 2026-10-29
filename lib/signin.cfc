@@ -57,7 +57,7 @@
 
         <cfswitch expression="#action#">
             <cfcase value="start">
-                <cfset var problem = start(request.data.email ?: "") />
+                <cfset var problem = start(email = request.data.email ?: "", timeZone = request.data.tz ?: "") />
                 <cfif len(problem)>
                     <cfreturn emailPage(email = request.data.email ?: "", error = problem) />
                 </cfif>
@@ -113,6 +113,7 @@
     <cffunction name="start" access="private" returntype="string" output="false"
         hint="Record a request for this email and, when someone can sign in with it, email them the link. Returns a problem to show, or empty.">
         <cfargument name="email" type="string" required="true" />
+        <cfargument name="timeZone" type="string" default="" hint="The asking browser's IANA time zone, for the time in the email." />
 
         <cfset var address = lCase(trim(arguments.email)) />
         <cfif NOT isValid("email", address)>
@@ -135,7 +136,11 @@
               made or enabled only when the link is approved, which proves they own the mailbox --->
         <cfset var canSignIn = len(profileId) OR isConfiguredSysadmin(address) />
         <cfset var approveToken = application.lib.core.generateSecureToken(32) />
-        <cfset var browserSecret = application.lib.core.generateSecureToken(32) />
+        <!--- Asking again for the same email ("Send a new link") keeps this browser's secret, so it can be signed
+              in by approving any of its live requests: each keeps its own expiry, and none cancels another --->
+        <cfset var again = structKeyExists(session, "signin") AND (session.signin.email ?: "") EQ address />
+        <cfset var browserSecret = again ? session.signin.secret : application.lib.core.generateSecureToken(32) />
+        <cfset var zone = timeZoneFor([arguments.timeZone, again ? (session.signin.tz ?: "") : "", cloudflareTimeZone()]) />
         <cfset var userAgent = left(cgi.http_user_agent ?: "", 500) />
         <cfset var place = clientPlace() />
 
@@ -154,13 +159,18 @@
                 <cfqueryparam cfsqltype="varchar" value="#userAgent#" />,
                 <cfqueryparam cfsqltype="varchar" value="#place#" />
             )
-            RETURNING id::text AS id
+            RETURNING id::text AS id,
+                      lower(to_char(created_at AT TIME ZONE <cfqueryparam cfsqltype="varchar" value="#zone#" />, 'FMHH12:MIam')) AS asked_at
         </cfquery>
 
+        <!--- The time asked, in the asker's zone: the email's subject carries it (so each email is its own
+              thread) and the waiting page names it --->
+        <cfset var askedAt = local.qRequest[1].asked_at & (zone EQ "UTC" ? " UTC" : "") />
         <cfset session.signin = {
-            id = local.qRequest[1].id,
             secret = browserSecret,
             email = address,
+            tz = zone,
+            asked_at = askedAt,
             dev_link = ""
         } />
 
@@ -171,7 +181,7 @@
             </cfif>
             <!--- A failed send is logged (sendLink) and otherwise looks like any other request: saying
                   so would tell the asker this email has an account --->
-            <cfset sendLink(address, link, describeDevice(userAgent), place, requestRef(local.qRequest[1].id)) />
+            <cfset sendLink(address, link, describeDevice(userAgent), place, askedAt) />
         </cfif>
 
         <cfreturn "" />
@@ -185,20 +195,32 @@
             <cfreturn "none" />
         </cfif>
 
+        <!--- Every request this browser made for the email. Approving any live one signs it in; turning any
+              down ends the attempt; otherwise it waits while one is live. --->
         <cfquery name="local.qStatus" returntype="array">
             SELECT status, expires_at > now() AS live
             FROM moo_signin_request
-            WHERE id = <cfqueryparam cfsqltype="other" value="#session.signin.id#" />
-              AND browser_token_hash = <cfqueryparam cfsqltype="varchar" value="#tokenHash(session.signin.secret)#" />
+            WHERE browser_token_hash = <cfqueryparam cfsqltype="varchar" value="#tokenHash(session.signin.secret)#" />
+              AND email = <cfqueryparam cfsqltype="varchar" value="#session.signin.email#" />
         </cfquery>
 
-        <cfif NOT arrayLen(local.qStatus)>
-            <cfreturn "expired" />
+        <cfset var waiting = false />
+        <cfset var turnedDown = false />
+        <cfloop array="#local.qStatus#" item="local.r">
+            <cfif local.r.status EQ "approved" AND local.r.live>
+                <cfreturn "approved" />
+            </cfif>
+            <cfif local.r.status EQ "denied">
+                <cfset turnedDown = true />
+            </cfif>
+            <cfif local.r.status EQ "pending" AND local.r.live>
+                <cfset waiting = true />
+            </cfif>
+        </cfloop>
+        <cfif turnedDown>
+            <cfreturn "denied" />
         </cfif>
-        <cfif NOT local.qStatus[1].live AND listFind("pending,approved", local.qStatus[1].status)>
-            <cfreturn "expired" />
-        </cfif>
-        <cfreturn local.qStatus[1].status />
+        <cfreturn waiting ? "pending" : "expired" />
     </cffunction>
 
 
@@ -212,11 +234,17 @@
         <cfquery name="local.qUse" returntype="array">
             UPDATE moo_signin_request
             SET status = 'used', used_at = now()
-            WHERE id = <cfqueryparam cfsqltype="other" value="#session.signin.id#" />
-              AND browser_token_hash = <cfqueryparam cfsqltype="varchar" value="#tokenHash(session.signin.secret)#" />
+            WHERE id = (
+                    SELECT id FROM moo_signin_request
+                    WHERE browser_token_hash = <cfqueryparam cfsqltype="varchar" value="#tokenHash(session.signin.secret)#" />
+                      AND email = <cfqueryparam cfsqltype="varchar" value="#session.signin.email#" />
+                      AND status = 'approved'
+                      AND expires_at > now()
+                      AND profile_id IS NOT NULL
+                    ORDER BY decided_at DESC
+                    LIMIT 1
+                  )
               AND status = 'approved'
-              AND expires_at > now()
-              AND profile_id IS NOT NULL
             RETURNING profile_id::text AS profile_id
         </cfquery>
 
@@ -283,7 +311,7 @@
                    OR (app_name = 'hub' AND email IN (<cfqueryparam cfsqltype="varchar" value="#sysadminList()#" list="true" />)))
               <!--- Approving needs a profile, now or from just above; turning down doesn't --->
               <cfif arguments.approve>AND COALESCE(profile_id, NULLIF(<cfqueryparam cfsqltype="varchar" value="#bootstrapProfileId#" />, '')::uuid) IS NOT NULL</cfif>
-            RETURNING id::text AS id
+            RETURNING id::text AS id, browser_token_hash, request_user_agent, request_place
         </cfquery>
 
         <cfif NOT arrayLen(local.qDecide)>
@@ -292,11 +320,14 @@
         </cfif>
 
         <!--- Approved in the browser that asked: straight on to Continue --->
-        <cfif arguments.approve AND structKeyExists(session, "signin") AND session.signin.id EQ local.qDecide[1].id>
+        <cfif arguments.approve AND structKeyExists(session, "signin") AND tokenHash(session.signin.secret) EQ local.qDecide[1].browser_token_hash>
             <cflocation url="#variables.PATH#" addtoken="false" />
         </cfif>
 
-        <cfreturn arguments.approve ? decidedPage("approved") : decidedPage("denied") />
+        <cfif arguments.approve>
+            <cfreturn decidedPage("approved", describeDevice(local.qDecide[1].request_user_agent ?: ""), local.qDecide[1].request_place ?: "") />
+        </cfif>
+        <cfreturn decidedPage("denied") />
     </cffunction>
 
 
@@ -315,12 +346,13 @@
         <cfsavecontent variable="body"><cfoutput>
             <form class="auth-body" method="post" action="#variables.PATH#">
                 <input type="hidden" name="action" value="start">
+                <input type="hidden" name="tz" value="">
                 <div class="field">
                     <label class="label" for="signin-email">Email</label>
                     <input id="signin-email" class="input<cfif len(arguments.error)> is-invalid</cfif>" type="email" name="email" value="#encodeForHTMLAttribute(arguments.email)#" autocomplete="email" autofocus required>
                     <cfif len(arguments.error)><p class="field-error">#encodeForHTML(arguments.error)#</p></cfif>
                 </div>
-                <button type="submit" class="btn btn-primary btn-block"><i class="fa-solid fa-envelope"></i> Email me a link</button>
+                <button type="submit" class="btn btn-primary btn-block" data-busy="Sending…"><i class="fa-solid fa-envelope"></i> Email me a link</button>
             </form>
         </cfoutput></cfsavecontent>
         <cfreturn page("Sign in", head(1, "Sign in to " & encodeForHTML(projectTitle()), "Enter your email and we'll send you a link to sign in with.") & body) />
@@ -333,7 +365,7 @@
             <div class="auth-body">
                 <div class="auth-wait" role="status">
                     <span class="auth-spinner" aria-hidden="true"></span>
-                    <div>Waiting for approval<small>This page moves on by itself. The email's subject ends in <strong class="signin-ref">#requestRef(session.signin.id)#</strong>.</small></div>
+                    <div>Waiting for approval<small>This page moves on by itself. <cfif len(session.signin.asked_at ?: "")>Look for the email sent at <strong>#encodeForHTML(session.signin.asked_at)#</strong>; any</cfif><cfif NOT len(session.signin.asked_at ?: "")>Any</cfif> link we've sent you in the last #variables.TTL_MINUTES# minutes works.</small></div>
                 </div>
                 <cfif len(session.signin.dev_link)>
                     <div class="alert alert-info"><i class="fa-solid fa-code"></i><div>Development: <a href="#encodeForHTMLAttribute(session.signin.dev_link)#" target="_blank" rel="noopener">open the emailed link</a></div></div>
@@ -343,7 +375,8 @@
                     <form method="post" action="#variables.PATH#">
                         <input type="hidden" name="action" value="start">
                         <input type="hidden" name="email" value="#encodeForHTMLAttribute(session.signin.email)#">
-                        <button type="submit" class="btn-link">Send a new link</button>
+                        <input type="hidden" name="tz" value="">
+                        <button type="submit" class="btn-link" data-busy="Sending…">Send a new link</button>
                     </form>
                 </div>
             </div>
@@ -397,7 +430,7 @@
             <div class="auth-body">
                 <form method="post" action="#variables.PATH#">
                     <input type="hidden" name="action" value="continue">
-                    <button type="submit" class="btn btn-primary btn-block" autofocus>Continue to #encodeForHTML(projectTitle())# <i class="fa-solid fa-arrow-right"></i></button>
+                    <button type="submit" class="btn btn-primary btn-block" data-busy="Signing in…" autofocus>Continue to #encodeForHTML(projectTitle())# <i class="fa-solid fa-arrow-right"></i></button>
                 </form>
                 <div class="auth-links">#restartForm("Not you? Start again")#</div>
             </div>
@@ -444,7 +477,7 @@
 
         <cfset var r = local.qRequest[1] />
         <cfif r.status EQ "approved">
-            <cfreturn decidedPage("approved") />
+            <cfreturn decidedPage("approved", describeDevice(r.request_user_agent ?: ""), r.request_place ?: "") />
         </cfif>
         <cfif r.status EQ "denied">
             <cfreturn decidedPage("denied") />
@@ -465,12 +498,11 @@
                     <dt class="kv-label">Device</dt><dd class="kv-value">#encodeForHTML(describeDevice(r.request_user_agent ?: ""))#</dd>
                     <cfif len(r.request_place ?: "")><dt class="kv-label">Near</dt><dd class="kv-value">#encodeForHTML(r.request_place)#</dd></cfif>
                     <dt class="kv-label">When</dt><dd class="kv-value">#ago(r.age_seconds)#</dd>
-                    <dt class="kv-label">Request</dt><dd class="kv-value signin-ref">#requestRef(r.id)#</dd>
                 </dl>
                 <input type="hidden" name="t" value="#encodeForHTMLAttribute(arguments.token)#">
                 <div class="auth-actions">
-                    <button type="submit" name="action" value="approve" class="btn btn-primary btn-block"><i class="fa-solid fa-check"></i> Approve</button>
-                    <button type="submit" name="action" value="deny" class="btn btn-block">Not me</button>
+                    <button type="submit" name="action" value="approve" class="btn btn-primary btn-block" data-busy="Approving…"><i class="fa-solid fa-check"></i> Approve</button>
+                    <button type="submit" name="action" value="deny" class="btn btn-block" data-busy="Turning it down…">Not me</button>
                 </div>
                 <p class="auth-note">This link expires in #remaining#.</p>
             </form>
@@ -482,12 +514,17 @@
     <cffunction name="decidedPage" access="private" returntype="string" output="false"
         hint="Shown where the link was opened, once the request is approved or turned down.">
         <cfargument name="decision" type="string" required="true" />
+        <cfargument name="device" type="string" default="" hint="The asking browser, e.g. 'Chrome on macOS', so the approver knows which screen to go back to." />
+        <cfargument name="place" type="string" default="" />
 
         <cfset var approved = arguments.decision EQ "approved" />
         <cfset var heading = approved ? "Approved" : "Request declined" />
-        <cfset var message = approved
-            ? "Your computer is signing in now. Head back to it: you can close this page."
-            : "Nobody was signed in. If you didn't ask to sign in, you can ignore this: your account is unchanged." />
+        <cfset var message = "Nobody was signed in. If you didn't ask to sign in, you can ignore this: your account is unchanged." />
+        <cfif approved>
+            <cfset message = len(arguments.device)
+                ? "Head back to <strong>" & encodeForHTML(arguments.device) & "</strong>" & (len(arguments.place) ? " near " & encodeForHTML(arguments.place) : "") & ": it's signing in now. You can close this page."
+                : "The browser that asked is signing in now. Head back to it: you can close this page." />
+        </cfif>
         <cfreturn page(heading, head(0, heading, message, approved ? "fa-check" : "fa-ban", approved ? "" : "is-danger")) />
     </cffunction>
 
@@ -529,8 +566,32 @@
         <cfargument name="body" type="string" required="true" />
 
         <cfset var html = "" />
+        <cfset var script = "" />
+        <!--- Every form: once sent, its buttons look busy and a second press does nothing, so a slow send can't
+              be asked twice; the pressed button says what's happening (data-busy). The buttons aren't disabled:
+              a disabled submitter would drop its action from the post. And the browser's time zone, for the time
+              in the email. --->
+        <cfsavecontent variable="script"><script>
+            (function () {
+                var zone = '';
+                try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+                document.querySelectorAll('input[name="tz"]').forEach(function (input) { input.value = zone; });
+                document.addEventListener('submit', function (event) {
+                    var form = event.target;
+                    if (form.dataset.sent) { event.preventDefault(); return; }
+                    form.dataset.sent = '1';
+                    form.querySelectorAll('button').forEach(function (button) { button.setAttribute('aria-disabled', 'true'); });
+                    var pressed = event.submitter;
+                    if (pressed && pressed.dataset.busy) {
+                        pressed.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> ' + pressed.dataset.busy;
+                    }
+                });
+                // Back to a page the browser kept: show it fresh, not mid-send
+                window.addEventListener('pageshow', function (event) { if (event.persisted) window.location.reload(); });
+            })();
+        </script></cfsavecontent>
         <cfheader name="Cache-Control" value="no-store" />
-        <cfsavecontent variable="html"><cfmodule template="/moopa/tags/moopa_bare.cfm" title="#arguments.title#" welcome="Welcome back" welcomeText="No passwords to remember. We email you a link, and you approve it from wherever you read your email."><cfoutput><div class="auth-panel">#arguments.body#</div></cfoutput></cfmodule></cfsavecontent>
+        <cfsavecontent variable="html"><cfmodule template="/moopa/tags/moopa_bare.cfm" title="#arguments.title#" welcome="Welcome back" welcomeText="No passwords to remember. We email you a link, and you approve it from wherever you read your email."><cfoutput><div class="auth-panel">#arguments.body#</div>#script#</cfoutput></cfmodule></cfsavecontent>
         <cfreturn html />
     </cffunction>
 
@@ -545,13 +606,13 @@
         <cfargument name="link" type="string" required="true" />
         <cfargument name="device" type="string" required="true" />
         <cfargument name="place" type="string" required="true" />
-        <cfargument name="ref" type="string" required="true" hint="requestRef(): in the subject, so each email is its own thread." />
+        <cfargument name="askedAt" type="string" required="true" hint="When it was asked, in the asker's time (e.g. 8:35am): in the subject, so each email is its own thread." />
 
         <cfset var title = projectTitle() />
         <cfset var muted = "color:##6b7280;" />
         <cfset var facts = [ ["Email", arguments.to], ["Device", arguments.device] ] />
         <cfif len(arguments.place)><cfset arrayAppend(facts, ["Near", arguments.place]) /></cfif>
-        <cfset arrayAppend(facts, ["Request", arguments.ref]) />
+        <cfset arrayAppend(facts, ["When", arguments.askedAt]) />
 
         <cfset var content = "" />
         <cfsavecontent variable="content"><cfoutput>
@@ -582,7 +643,7 @@
             & "Didn't ask to sign in? Ignore this email, or open it and choose Not me." />
 
         <cftry>
-            <cfset var result = application.lib.email.send(to = arguments.to, subject = "Sign in to #title# (request #arguments.ref#)", html = html, text = text) />
+            <cfset var result = application.lib.email.send(to = arguments.to, subject = "Sign in to #title# at #arguments.askedAt#", html = html, text = text) />
             <cfif NOT (result.success ?: false)>
                 <cflog file="signin" type="error" text="Sign-in email to #arguments.to# not sent: #serializeJSON(result.errors ?: [])#" />
             </cfif>
@@ -606,10 +667,30 @@
     </cffunction>
 
 
-    <cffunction name="requestRef" access="private" returntype="string" output="false"
-        hint="A short reference for a request, shown on the waiting page, in the email's subject and on the approve page, so the three can be matched.">
-        <cfargument name="id" type="string" required="true" />
-        <cfreturn uCase(left(hash(arguments.id, "SHA-256"), 4)) />
+    <cffunction name="timeZoneFor" access="private" returntype="string" output="false"
+        hint="The first of these IANA time zone names PostgreSQL knows (the browser's, then earlier, then Cloudflare's), else UTC.">
+        <cfargument name="candidates" type="array" required="true" />
+
+        <cfloop array="#arguments.candidates#" item="local.zone">
+            <cfif len(local.zone) LTE 64 AND reFind("^[A-Za-z]+(/[A-Za-z0-9_+-]+){0,2}$", local.zone)>
+                <cfquery name="local.qZone" returntype="array">
+                    SELECT EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = <cfqueryparam cfsqltype="varchar" value="#local.zone#" />) AS known
+                </cfquery>
+                <cfif local.qZone[1].known>
+                    <cfreturn local.zone />
+                </cfif>
+            </cfif>
+        </cfloop>
+        <cfreturn "UTC" />
+    </cffunction>
+
+
+    <cffunction name="cloudflareTimeZone" access="private" returntype="string" output="false"
+        hint="The asker's time zone from Cloudflare's visitor location headers (CF-Timezone), only when TRUSTED_PROXY=cloudflare; else empty.">
+        <cfif trustedProxy() NEQ "cloudflare">
+            <cfreturn "" />
+        </cfif>
+        <cfreturn trim(getHttpRequestData().headers["CF-Timezone"] ?: "") />
     </cffunction>
 
 
