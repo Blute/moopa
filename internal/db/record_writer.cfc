@@ -38,8 +38,11 @@
         <cfargument name="returnFormat" type="string" required="false" default="json" />
         <cfargument name="index_record" type="boolean" default="true" />
 
+        <!--- is_new_record is false in the result: a caller that merges it into its copy of a new record
+              (getNewObject sets the flag) then updates on its next save instead of inserting again. --->
         <cfset var result = {
             id : (arguments.data.id ?: ""),
+            is_new_record : false,
             sql_statements : []
         } />
         <cfset var stDataFields = variables.writeMapper.getWritableFields(arguments.stModel, arguments.data) />

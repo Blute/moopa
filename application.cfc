@@ -526,7 +526,7 @@
             <cfelse>
                 <cfoutput>
                 {
-                    "error": "An error occurred. Administrators have been notififed"
+                    "error": "An error occurred. It has been logged for the administrators."
                 }
                 </cfoutput>
             </cfif>
