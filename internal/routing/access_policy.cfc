@@ -94,9 +94,13 @@
             )
             AND (
                 moo_route_permission.profile_id = <cfqueryparam cfsqltype="other" value="#session.auth.profile.id#" />
-                <cfif arrayLen(session.auth.role_id_array)>
-                    OR moo_route_permission.role_id IN (<cfqueryparam cfsqltype="other" list=true value="#session.auth.role_id_array#" />)
-                </cfif>
+                <!--- The profile's roles now, not the copy taken at sign-in: a role added or removed in
+                      System > Profiles applies on the person's next request, without signing in again --->
+                OR moo_route_permission.role_id IN (
+                    SELECT foreign_id
+                    FROM moo_profile_roles
+                    WHERE primary_id = <cfqueryparam cfsqltype="other" value="#session.auth.profile.id#" />
+                )
             )
             AND (
                 moo_route_permission.role_id IN (

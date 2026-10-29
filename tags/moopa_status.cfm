@@ -24,7 +24,7 @@
 <cfset thisTag.generatedContent = "" />
 
 <cfset statuses = {
-    "403": { text: "Forbidden", title: "You don't have access", message: "Your account can't open this page. Ask an administrator for access, quoting its address." },
+    "403": { text: "Forbidden", title: "You don't have access", message: "Your account can't open this page. Ask an administrator for access, quoting its address, then reload this page." },
     "404": { text: "Not Found", title: "Page not found", message: "The address may be mistyped, or the page has moved or no longer exists." },
     "500": { text: "Server Error", title: "Something went wrong", message: "The error has been logged and an administrator told. Try again, or come back in a little while." }
 } />
@@ -38,6 +38,15 @@
         OR find("\", retryRoute)
         OR reFind("[\x00-\x1F\x7F]", retryRoute)>
     <cfset retryRoute = "/" />
+</cfif>
+<!--- A 403 is for someone signed in, perhaps as the wrong person: name the account and offer to sign out. Read
+      carefully: this page must render even when the session can't be read. --->
+<cfset signedInAs = "" />
+<cfif attributes.code EQ 403>
+    <cftry>
+        <cfset signedInAs = session.auth.profile.email ?: "" />
+        <cfcatch><cfset signedInAs = "" /></cfcatch>
+    </cftry>
 </cfif>
 <cfheader statuscode="#attributes.code#" statustext="#status.text#" />
 <cfmodule template="/moopa/tags/moopa_bare.cfm" title="#heading#">
@@ -56,6 +65,7 @@
                 <button type="button" class="btn" onclick="history.back()"><i class="fa-solid fa-arrow-left"></i> Go back</button>
             </cfif>
         </div>
+        <cfif len(signedInAs)><p class="status-account">Signed in as #encodeForHTML(signedInAs)#. <a href="/logout/">Sign out</a></p></cfif>
     </div>
     <cfif len(trim(statusBody))><div class="status-detail">#statusBody#</div></cfif>
 </cfoutput>
