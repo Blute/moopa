@@ -215,6 +215,10 @@
                 </cfif>
                 <!--- Moopa's own pages (Sign-in activity among them) are served by Hub only --->
                 <cfif application.system_routes ?: false>
+                    <a href="/account/profile" role="menuitem" class="moo-shell-menu-item">
+                        <span class="moo-shell-menu-item-icon"><i class="fa-solid fa-user-pen"></i></span>
+                        <span>Edit profile</span>
+                    </a>
                     <a href="/account/signins" role="menuitem" class="moo-shell-menu-item">
                         <span class="moo-shell-menu-item-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
                         <span>Sign-in activity</span>

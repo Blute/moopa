@@ -1,4 +1,7 @@
 {
+  "/account/profile": [
+    "/account/signins"
+  ],
   "/account/signins": [],
   "/sysadmin/app_summary": [],
   "/sysadmin/error_log": [],
