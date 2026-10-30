@@ -328,7 +328,8 @@
             <cfset name = trim(listFirst(inner, ",")) />
             <cfset fallback = listLen(inner, ",") GT 1 ? trim(listRest(inner, ",")) : "" />
             <cfset resolved = resolve(structKeyExists(arguments.tokens, name) ? arguments.tokens[name] : fallback, arguments.tokens, arguments.depth + 1) />
-            <cfset out = left(out, pos - 1) & resolved & mid(out, i + 1, len(out)) />
+            <!--- Lucee refuses left(s, 0): a value that starts with var() has nothing before it --->
+            <cfset out = (pos GT 1 ? left(out, pos - 1) : "") & resolved & mid(out, i + 1, len(out)) />
             <!--- search on after the substitution: a circular token comes back still holding var() at the depth cap --->
             <cfset pos = find("var(", out, pos + len(resolved)) />
         </cfloop>
