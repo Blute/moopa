@@ -12,7 +12,7 @@
     <cffunction name="get">
         <cfset var who = target(url.profile ?: "") />
         <cfif NOT who.allowed>
-            <cfmodule template="/moopa/tags/moopa_status.cfm" code="403" route="/account/profile" />
+            <cf_moopa_status code="403" route="/account/profile" />
             <cfabort>
         </cfif>
         <cfset var own = who.id EQ session.auth.profile.id />

@@ -1,9 +1,10 @@
 <!---
     moopa_status — the page for a status code (404, 403, 500), in Moopa's design with the project's theme.
 
-    <cfmodule template="/moopa/tags/moopa_status.cfm" code="404" />
+    <cf_moopa_status code="404" />
 
-    It renders in moopa_bare, a page of its own outside moopa_layout: the 500 page may be showing because the
+    Called by name, as Moopa calls it, a project's own tags/moopa_status.cfm (same attributes, same body) replaces
+    this one; see docs/errors.md. It renders in moopa_bare, a page of its own outside moopa_layout: the 500 page may be showing because the
     database or the session failed, and moopa_bare reads neither. It sets the response status.
 
     Attributes
@@ -11,7 +12,7 @@
       title     the heading (default: the code's own)
       message   the line under it (default: the code's own)
       route     the page that was asked for: 403 shows it, and 500's "Try again" goes back to it
-    The tag's body, if any, shows under the buttons (the 500 page's debug details in development).
+    The tag's body, if any, shows under the buttons (the 500 page's error details, where this.moopa_error_details allows).
 --->
 <cfif thisTag.executionMode EQ "start" AND thisTag.hasEndTag><cfexit method="exitTemplate"></cfif>
 
