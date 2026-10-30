@@ -10,4 +10,5 @@ Agents: read [AGENTS.md](AGENTS.md) first.
 - [Email](docs/email.md): transactional email through Cloudflare Email Sending (`application.lib.email`), and how framework email falls back to a project's Postmark library.
 - [Sign-in](docs/signin.md): passwordless sign-in by emailed link, Continue with Google, invitations and sign-in activity.
 - [Account pages](docs/account.md): the profile pages Moopa serves, and replacing one in a project.
+- [Errors](docs/errors.md): what Moopa does with an uncaught error, who sees its details (`this.moopa_error_details`), and replacing the error page.
 - [Design](docs/design.md): Moopa's own vanilla-CSS design for the System pages, the `moopa_layout` tag a project page can opt in to, and theming by tokens.

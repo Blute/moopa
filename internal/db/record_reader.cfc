@@ -30,7 +30,7 @@
                 ) AS data
             </cfquery>
             <cfcatch type="any">
-                <!--- The error handler logs it and shows the status page; details only for a sysadmin --->
+                <!--- The error handler logs it and shows the status page (docs/errors.md) --->
                 <cfrethrow />
             </cfcatch>
         </cftry>

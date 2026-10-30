@@ -49,6 +49,8 @@
         <cfif NOT len(application.app_name)>
             <cfthrow message="APP_NAME is required. Set APP_NAME to the app directory name under code/apps/ (or set this.moopa_app_name in Application.cfc for host-resolved multi-app runtimes)." />
         </cfif>
+        <!--- Refuse to start with a malformed this.moopa_error_details (docs/errors.md) --->
+        <cfset _errorDetailsAudience() />
         <!--- Hub always serves Moopa's own System routes and menu (/sysadmin) from the framework; no other app does, and no project may define them. --->
         <cfset application.system_routes = (application.app_name EQ "hub") />
         <cfset application.moopa_packages = _getMoopaPackages() />
@@ -258,8 +260,35 @@
     </cffunction>
 
 
-    <cffunction name="_showErrorDetail" access="private" returntype="boolean" output="false" hint="Whether an error's details (message, stack, exception) may be shown: only to a sysadmin signed in to this app, in every environment. False if the session can't be read, since the error may be the session's.">
+    <cffunction name="_errorDetailsAudience" access="private" returntype="string" output="false" hint="Who may see an error's details in this environment (APP_ENVIRONMENT, production when unset): everyone, sysadmin or nobody, from this.moopa_error_details. An environment it doesn't name, or no setting, is sysadmin. Throws moopa.config.invalidErrorDetails when the setting isn't a struct of those values; onApplicationStart calls it so a bad setting stops the app starting.">
+        <cfset var setting = this.moopa_error_details ?: {} />
+        <cfset var environment = "" />
+
+        <cfif NOT isStruct(setting)>
+            <cfthrow type="moopa.config.invalidErrorDetails"
+                message="this.moopa_error_details must be a struct of APP_ENVIRONMENT names to everyone, sysadmin or nobody." />
+        </cfif>
+        <cfloop collection="#setting#" item="environment">
+            <cfif NOT isSimpleValue(setting[environment]) OR NOT listFind("everyone,sysadmin,nobody", setting[environment])>
+                <cfthrow type="moopa.config.invalidErrorDetails"
+                    message="this.moopa_error_details.#environment# must be everyone, sysadmin or nobody." />
+            </cfif>
+        </cfloop>
+
+        <cfset environment = server.system.environment.APP_ENVIRONMENT ?: "production" />
+        <cfreturn structKeyExists(setting, environment) ? setting[environment] : "sysadmin" />
+    </cffunction>
+
+
+    <cffunction name="_showErrorDetail" access="private" returntype="boolean" output="false" hint="Whether an error's details (message, stack, exception) may be shown, as this.moopa_error_details allows in this environment: to everyone, to nobody, or (the default) to a sysadmin signed in to this app. False when the setting is malformed, or the session can't be read for a sysadmin, since the error may be the session's.">
         <cftry>
+            <cfset local.audience = _errorDetailsAudience() />
+            <cfif local.audience EQ "everyone">
+                <cfreturn true />
+            </cfif>
+            <cfif local.audience EQ "nobody">
+                <cfreturn false />
+            </cfif>
             <cfreturn application.lib.auth.isLoggedIn()
                 AND (session.auth.profile.app_name ?: "") EQ application.app_name
                 AND application.lib.auth.isSysAdmin() />
@@ -551,7 +580,7 @@
             <cfcontent type="application/json" reset="true">
 
 
-            <!--- The error's details only for a sysadmin signed in to this app; anyone else gets the plain message --->
+            <!--- The error's details only where this.moopa_error_details allows; anyone else gets the plain message --->
             <cfif _showErrorDetail()>
                 <cfset error_response = {
                     error: arguments.Exception.message,
@@ -572,10 +601,11 @@
         <cfelse>
 
 
-            <!--- Moopa's status page; for a sysadmin signed in to this app, the error's details under it --->
+            <!--- The status page, by tag name so a project's own moopa_status replaces Moopa's (docs/errors.md);
+                  the error's details under it where this.moopa_error_details allows --->
             <cfset local.errorRoute = url.route ?: "" />
             <cfif len(local.errorRoute) AND left(local.errorRoute, 1) NEQ "/"><cfset local.errorRoute = "/" & local.errorRoute /></cfif>
-            <cfmodule template="/moopa/tags/moopa_status.cfm" code="500" route="#local.errorRoute#">
+            <cf_moopa_status code="500" route="#local.errorRoute#">
                 <cfif _showErrorDetail()>
                     <div class="card">
                         <div class="card-header"><h2 class="card-title"><cfoutput>#encodeForHTML(arguments.exception.message?:'')#</cfoutput></h2></div>
@@ -587,7 +617,7 @@
                         </div>
                     </div>
                 </cfif>
-            </cfmodule>
+            </cf_moopa_status>
         </cfif>
     </cffunction>
 
