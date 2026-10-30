@@ -1,9 +1,11 @@
 ---
 name: moopa-controls
-description: Design, refactor, or debug Moopa form controls. Use when working with cf_control, cf_table_controls, control CFM templates, controls.js Alpine components, table-definition UI metadata, control package overrides, or form rendering conventions.
+description: Maintain or debug the legacy cf_control form controls in older Moopa projects. New pages write their forms inline with the moopa-components skill instead. Use when working with cf_control, cf_table_controls, control CFM templates, controls.js Alpine components, table-definition UI metadata, control package overrides, or form rendering conventions.
 ---
 
-# Moopa Controls
+# Moopa Controls (legacy)
+
+**New pages do not use this.** They write their forms inline with the components in Moopa's `moopa.js` (the `moopa-components` skill, live on System → Components). `cf_control` and `cf_table_controls` stay for older projects that already use them: maintain them, but do not start a new form with them.
 
 This skill documents the Moopa controls architecture used by Moopa Starter and future bare-bones Moopa projects.
 
@@ -281,7 +283,7 @@ Moopa's controls predate its own design system and still carry two dependencies 
 - **Alpine components.** `combobox`, `file`, `address`, `currency` and `dob` use `moopaCombobox`, `moopaFileUploadField`, `moopaAddressSearch`, `control_currency` and `dobPicker`, which Moopa does not ship. Older projects define them in their own `code/www/_static/js/controls.js`. A project made from the current starter has no such file, so those controls fail there.
 - **Markup.** Most control templates still use Tailwind/daisyUI class names (`input`, `w-full`, `card-dash`, `bg-base-200`…), most of which `moopa.css` does not style.
 
-The fix belongs in Moopa: ship the components with Moopa and move the templates onto Moopa's classes. Do not paper over either gap in a project (copying a `controls.js` in, or adding a CSS build). If a task needs one of these controls, say it is blocked on this, or make the Moopa change properly.
+These controls stay as they are for the older projects that ship their own `controls.js` and CSS. A new page that needs a combobox, upload, address, currency or date field uses the matching component in `moopa.js` (`comboSingle`, `fileUpload`, `addressSearch`, `currencyInput`, `dateQuick`) with inline markup (`moopa-components`), not this path. Do not paper over either gap in a project (copying a `controls.js` in, or adding a CSS build).
 
 The rules below for `controls.js` describe how control components are written, wherever they live.
 

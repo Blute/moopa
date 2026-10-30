@@ -4,6 +4,9 @@
   ],
   "/account/signins": [],
   "/sysadmin/app_summary": [],
+  "/sysadmin/components": [
+    "/sysadmin/theme"
+  ],
   "/sysadmin/error_log": [],
   "/sysadmin/impersonation": [],
   "/sysadmin/profiles": [
@@ -20,5 +23,7 @@
   ],
   "/sysadmin/routes/[route_id]": [],
   "/sysadmin/schema": [],
-  "/sysadmin/theme": []
+  "/sysadmin/theme": [
+    "/sysadmin/components"
+  ]
 }

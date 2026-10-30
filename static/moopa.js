@@ -5,9 +5,12 @@
     loadFilters / saveFilters / clearFilters, getInitials, prettyDate, prettyDateTitle
     window.toast({})  a notification: { type: 'success'|'error'|'warning'|'info', title?, message|description, duration? }
     the shell         sidebar collapse (Ctrl+.), mobile drawer, profile menu, tooltips on the collapsed rail
+    components        Alpine.data() behaviour for inline form markup: numberInput, comboSingle, fileUpload…
+                      (the moopa-components skill; live on System > Components)
 
-  No dependencies. A project page on the Moopa layout may load its own scripts after this one;
-  a later `function req()` of its own replaces this one.
+  No dependencies. The components register on Alpine's alpine:init, so this file loads before
+  Alpine. A project page on the Moopa layout may load its own scripts after this one; a later
+  `function req()` of its own replaces this one.
 */
 
 // ---------------------------------------------------------------------------------------------
@@ -213,6 +216,465 @@ function prettyDateTitle(date) {
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
+
+// A textarea as tall as its text: <textarea class="textarea textarea-auto" @input="autosize($el)">
+function autosize(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+
+// ---------------------------------------------------------------------------------------------
+// Components: behaviour only. Each Alpine.data() component owns state and logic (search,
+// formatting, selection, upload); the page writes the markup with moopa.css's classes and binds
+// to it. Bind a component's value to the page's model with x-modelable + x-model. The markup
+// contract for each one is in the moopa-components skill and live on System > Components.
+//
+// Server contracts (an `endpoint` is an endpoint name on the current route, or the object
+// application.lib.auth.signedEndpoint() returns, for another route):
+//   search        req({ endpoint, q, limit, exclude_ids })  ->  [{ id, label, disabled?, ...extra }]
+//   address       req({ endpoint, q })                      ->  { suggestions: [{ formatted_address, ... }] }
+//   file upload   presign, PUT, finalise (moo_file's uploadFileToServerWithProgress), see fileUpload
+// ---------------------------------------------------------------------------------------------
+document.addEventListener('alpine:init', () => {
+  const LOCALE = 'en-AU';   // number and date formatting
+  const target = endpoint => (typeof endpoint === 'string' ? { endpoint } : { ...endpoint });
+  const number = raw => parseFloat(String(raw).replace(/[^0-9.\-]/g, ''));
+  const reqMessage = (error, fallback) => { try { return JSON.parse(error.message).message || fallback; } catch { return error?.message || fallback; } };
+
+  // --- numbers: show formatted, store a number, commit on change --------------------------------
+  Alpine.data('numberInput', ({ min = null, max = null, places = 0 } = {}) => ({
+    value: null,
+    display() { return this.value === null || this.value === '' ? '' : Number(this.value).toLocaleString(LOCALE, { minimumFractionDigits: 0, maximumFractionDigits: places }); },
+    commit(raw) {
+      let n = number(raw);
+      if (Number.isNaN(n)) { this.value = null; return; }
+      if (min !== null) n = Math.max(min, n);
+      if (max !== null) n = Math.min(max, n);
+      this.value = Number(n.toFixed(places));
+    },
+  }));
+
+  Alpine.data('currencyInput', ({ places = 2 } = {}) => ({
+    value: null,
+    display() { return this.value === null || this.value === '' ? '' : Number(this.value).toLocaleString(LOCALE, { minimumFractionDigits: places, maximumFractionDigits: places }); },
+    commit(raw) { const n = number(raw); this.value = Number.isNaN(n) ? null : Number(n.toFixed(places)); },
+  }));
+
+  // Shows 22.5, stores the fraction 0.225
+  Alpine.data('percentInput', ({ places = 2 } = {}) => ({
+    value: null,
+    display() { return this.value === null || this.value === '' ? '' : (Number(this.value) * 100).toLocaleString(LOCALE, { maximumFractionDigits: places }); },
+    commit(raw) { const n = number(raw); this.value = Number.isNaN(n) ? null : Number((n / 100).toFixed(places + 2)); },
+  }));
+
+  // --- checkbox group: options [[value, text], ...]; the model is a comma-joined string ---------
+  Alpine.data('checkboxList', (options = []) => ({
+    options, value: '',
+    list() { return this.value ? String(this.value).split(',') : []; },
+    has(v) { return this.list().includes(v); },
+    toggle(v) { const l = this.list(); const i = l.indexOf(v); if (i >= 0) l.splice(i, 1); else l.push(v); this.value = l.join(','); },
+  }));
+
+  // --- dates ------------------------------------------------------------------------------------
+  // dateQuick: a date input with quick picks; the model is a local calendar date, yyyy-mm-dd
+  Alpine.data('dateQuick', () => ({
+    value: '',
+    set(n, unit = 'day') {
+      const d = new Date();
+      if (unit === 'month') d.setMonth(d.getMonth() + n); else d.setDate(d.getDate() + n);
+      const p = x => String(x).padStart(2, '0');
+      this.value = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    },
+  }));
+  // datetimeUtc: shows local time in a datetime-local input, stores an ISO UTC string
+  Alpine.data('datetimeUtc', () => ({
+    value: '',
+    toLocal() {
+      if (!this.value) return '';
+      const d = new Date(this.value);
+      const p = n => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+    },
+    fromLocal(v) { this.value = v ? new Date(v).toISOString() : ''; },
+  }));
+
+  // --- comboboxes: server search, keyboard navigation -----------------------------------------
+  // `request: () => ({ ... })` adds parameters to every search, read when the search runs.
+  // Stale replies never replace newer results; close() and destroy() cancel a pending search.
+  const comboBase = ({ endpoint, placeholder = 'Select…', limit = 20, request = () => ({}) }) => ({
+    placeholder, limit,
+    open: false, loading: false, query: '', options: [], active: 0, _t: null, _version: 0,
+    async openList() { if (this.open) return; this.open = true; await this.fetch(); },
+    close() { this.open = false; this.query = ''; this.loading = false; clearTimeout(this._t); this._version++; },
+    destroy() { clearTimeout(this._t); this._version++; },
+    move(d) { if (!this.options.length) return; this.active = (this.active + d + this.options.length) % this.options.length; },
+    extra() { return {}; },
+    async fetch() {
+      const version = ++this._version;
+      this.loading = true;
+      try {
+        const options = await req({ ...target(endpoint), q: this.query, limit: this.limit, ...this.extra(), ...request() });
+        if (version === this._version) { this.options = options || []; this.active = 0; }
+      } finally { if (version === this._version) this.loading = false; }
+    },
+    // loading turns on at once, so the debounce never reads as "No matches"
+    search() { clearTimeout(this._t); this._version++; this.open = true; this.loading = true; this._t = setTimeout(() => this.fetch(), 250); },
+  });
+
+  // One record: the model is the chosen option ({ id, label, ... }) or null. groupBy ('industry.name')
+  // heads runs of options; choosing dispatches model-change with detail.selected_option.
+  Alpine.data('comboSingle', ({ groupBy = null, ...opts }) => ({
+    ...comboBase(opts), selected: null,
+    choose(item) { if (!item || item.disabled) return; this.selected = item; this.close(); this.$dispatch('model-change', { selected_option: item }); },
+    clear() { this.selected = null; this.$refs.input.focus(); },
+    grouped() {
+      const get = (o, path) => path.split('.').reduce((a, k) => a?.[k], o);
+      let last;
+      return this.options.map((item, index) => {
+        const g = groupBy ? (get(item, groupBy) ?? '') : undefined;
+        const row = { key: item.id, item, index, group: g !== undefined && g !== last ? g : undefined };
+        last = g;
+        return row;
+      });
+    },
+  }));
+
+  // Many records as chips: the model is an array of options; the search excludes those chosen
+  Alpine.data('comboMany', (opts) => ({
+    ...comboBase(opts), selected: [],
+    extra() { return { exclude_ids: this.selected.map(s => s.id) }; },
+    choose(item) { if (!item || item.disabled || this.selected.some(s => s.id === item.id)) return; this.selected.push(item); this.query = ''; this.search(); },
+    remove(item) { this.selected = this.selected.filter(s => s.id !== item.id); if (this.open) this.search(); },
+  }));
+
+  // --- ordered many: drag to reorder (native drag and drop), search to add ---------------------
+  Alpine.data('sortList', ({ endpoint, limit = 10 }) => ({
+    items: [], dragging: null, open: false, loading: false, query: '', options: [], _t: null, _version: 0,
+    dropOn(i) { if (this.dragging === null || this.dragging === i) return; const [m] = this.items.splice(this.dragging, 1); this.items.splice(i, 0, m); this.dragging = null; },
+    add(o) { if (o.disabled || this.items.some(x => x.id === o.id)) return; this.items.push({ id: o.id, label: o.label }); this.query = ''; this.open = false; },
+    remove(i) { this.items.splice(i, 1); },
+    search() {
+      clearTimeout(this._t);
+      this._t = setTimeout(async () => {
+        const version = ++this._version;
+        this.loading = true;
+        try {
+          const options = await req({ ...target(endpoint), q: this.query, limit, exclude_ids: this.items.map(x => x.id) });
+          if (version === this._version) { this.options = options || []; this.open = true; }
+        } finally { if (version === this._version) this.loading = false; }
+      }, 250);
+    },
+    destroy() { clearTimeout(this._t); this._version++; },
+  }));
+
+  // --- address, from the project's own lookup endpoint -----------------------------------------
+  // The model is the picked suggestion ({ formatted_address, ... }) or null
+  Alpine.data('addressSearch', ({ endpoint }) => ({
+    value: null, query: '', options: [], open: false, loading: false, _t: null, _req: 0,
+    search() { this.cancel(); if (!this.query) { this.options = []; return; } this.loading = true; this._t = setTimeout(() => this.fetch(), 300); },
+    async fetch() {
+      const id = ++this._req;
+      try { const r = await req({ ...target(endpoint), q: this.query }); if (id === this._req) this.options = r?.suggestions || []; }
+      finally { if (id === this._req) this.loading = false; }
+    },
+    pick(s) { this.value = s; this.close(); this.$dispatch('model-change', { selected_option: s }); },
+    clear() { this.value = null; this.options = []; this.$refs.input.focus(); },
+    close() { this.cancel(); this.open = false; this.query = ''; this.options = []; },
+    // a pending or in-flight lookup may no longer touch the list
+    cancel() { clearTimeout(this._t); this._req++; this.loading = false; },
+    destroy() { this.cancel(); },
+  }));
+
+  // --- address, from Google Places in the browser ----------------------------------------------
+  // With the project's Maps key, so the key's referrer restrictions apply. The model:
+  // { place_id, name, formatted_address, geometry: { location: { lat, lng } }, state, postcode, suburb }.
+  // country limits results (ISO code); bias = { lat, lng, radius } ranks results near it first.
+  // Google's bootstrap loader: defines google.maps.importLibrary and fetches the API on first use.
+  function loadGoogleMaps(key) {
+    if (window.google?.maps?.importLibrary) return;
+    if (!key) throw new Error('addressGoogle needs the project\'s Google Maps key');
+    (g => { var h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__", m = document, b = window; b = b[c] || (b[c] = {}); var d = b.maps || (b.maps = {}), r = new Set, e = new URLSearchParams, u = () => h || (h = new Promise(async (f, n) => { await (a = m.createElement("script")); e.set("libraries", [...r] + ""); for (k in g) e.set(k.replace(/[A-Z]/g, t => "_" + t[0].toLowerCase()), g[k]); e.set("callback", c + ".maps." + q); a.src = `https://maps.${c}apis.com/maps/api/js?` + e; d[q] = f; a.onerror = () => h = n(Error(p + " could not load.")); a.nonce = m.querySelector("script[nonce]")?.nonce || ""; m.head.append(a) })); d[l] ? console.warn(p + " only loads once. Ignoring:", g) : d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)) })({ key, v: "weekly" });
+  }
+  Alpine.data('addressGoogle', ({ key, country = 'au', language = LOCALE, bias = null } = {}) => ({
+    value: null, query: '', options: [], open: false, loading: false, _t: null, _session: null, _req: 0,
+    async places() { loadGoogleMaps(key); return await google.maps.importLibrary('places'); },
+    search() { this.cancel(); if (!this.query) { this.options = []; return; } this.loading = true; this._t = setTimeout(() => this.fetch(), 250); },
+    async fetch() {
+      const q = this.query;
+      const id = ++this._req;
+      try {
+        const lib = await this.places();
+        this._session ||= new lib.AutocompleteSessionToken();
+        const request = { input: q, sessionToken: this._session, includedRegionCodes: [country], language };
+        if (bias?.lat != null) request.locationBias = { center: { lat: bias.lat, lng: bias.lng }, radius: Math.min(bias.radius || 50000, 50000) };   // Google caps the circle at 50 km
+        const { suggestions } = await lib.AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
+        if (id !== this._req) return;
+        this.options = suggestions.filter(s => s.placePrediction).map(s => ({ place_id: s.placePrediction.placeId, formatted_address: s.placePrediction.text.text, _prediction: s.placePrediction }));
+      } catch (error) {
+        console.error('Address search failed:', error);
+        if (id === this._req) { this.options = []; window.toast({ type: 'error', message: 'Address search is not available' }); }
+      } finally { if (id === this._req) this.loading = false; }
+    },
+    async pick(s) {
+      this.loading = true;
+      try {
+        const place = s._prediction.toPlace();
+        await place.fetchFields({ fields: ['displayName', 'formattedAddress', 'location', 'addressComponents'] });
+        const part = type => place.addressComponents?.find(c => c.types.includes(type));
+        this.value = {
+          place_id: place.id,
+          name: place.displayName || '',
+          formatted_address: place.formattedAddress || s.formatted_address,
+          geometry: { location: { lat: place.location?.lat() ?? null, lng: place.location?.lng() ?? null } },
+          state: part('administrative_area_level_1')?.shortText || '',
+          postcode: part('postal_code')?.longText || '',
+          suburb: part('locality')?.longText || '',
+        };
+      } catch (error) {
+        console.error('Place details failed:', error);
+        this.value = { place_id: s.place_id, formatted_address: s.formatted_address };
+      } finally {
+        this._session = null;   // a pick ends the billing session
+        this.loading = false;
+        this.close();
+        this.$dispatch('model-change', { selected_option: this.value });
+      }
+    },
+    clear() { this.value = null; this.options = []; this.$refs.input.focus(); },
+    close() { this.cancel(); this.open = false; this.query = ''; this.options = []; },
+    // a pending or in-flight lookup may no longer touch the list
+    cancel() { clearTimeout(this._t); this._req++; this.loading = false; },
+    destroy() { this.cancel(); },
+  }));
+
+  // --- rich text: Trix, loaded by the page. Refs: input (hidden), editor (trix-editor) ----------
+  // Loading a value never emits model-change, so an autosave sees only the user's edits.
+  Alpine.data('richText', () => ({
+    value: '', syncing: false,
+    init() {
+      if (!window.customElements?.get('trix-editor')) throw new Error('richText needs Trix loaded on the page');
+      this.$watch('value', () => this.sync());
+      this.$nextTick(() => this.sync());
+    },
+    sync() {
+      const editor = this.$refs.editor;
+      if (!editor?.editor || editor.value === (this.value || '')) return;
+      this.syncing = true;
+      try { editor.editor.loadHTML(this.value || ''); } finally { this.syncing = false; }
+    },
+    change() {
+      if (this.syncing || !this.$refs.editor?.editor) return;
+      const value = this.$refs.editor.value;
+      if (value === this.value) return;
+      this.value = value;
+      this.$dispatch('model-change', { value });
+    },
+  }));
+
+  // --- email addresses as chips: the model is a comma-joined string -----------------------------
+  Alpine.data('emailRecipients', () => ({
+    value: '', query: '',
+    addresses() { return (this.value || '').split(',').map(v => v.trim()).filter(Boolean); },
+    valid(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); },
+    // Takes pasted lists split by commas, semicolons or spaces; invalid entries stay in the input
+    add(raw = this.query) {
+      const list = this.addresses();
+      const invalid = [];
+      String(raw).split(/[,;\s]+/).filter(Boolean).forEach(email => {
+        if (!this.valid(email)) invalid.push(email);
+        else if (!list.includes(email)) list.push(email);
+      });
+      this.value = list.join(',');
+      this.query = invalid.join(', ');
+    },
+    remove(email) { this.value = this.addresses().filter(v => v !== email).join(','); },
+  }));
+
+  // --- sortable rows: SortableJS, loaded by the page --------------------------------------------
+  // On the rows' parent; each row has data-id. With `endpoint`, a drop posts { ids: 'a,b,c' } and
+  // leaves the DOM as dragged. With `onMove(oldIndex, newIndex)` instead, the DOM is put back and the
+  // page moves the item in its own array, so an x-for list stays the one source of the order.
+  Alpine.data('sortableRows', ({ endpoint = null, handle, row, enabled = () => true, onMove = null }) => ({
+    sortable: null,
+    init() {
+      if (typeof Sortable !== 'function') throw new Error('sortableRows needs SortableJS loaded on the page');
+      if (!endpoint && !onMove) throw new Error('sortableRows needs an endpoint or onMove');
+      let startOrder = null;
+      this.sortable = new Sortable(this.$el, {
+        animation: 150, handle, draggable: row, dataIdAttr: 'data-id',
+        disabled: !enabled(),
+        onStart: () => { startOrder = this.sortable.toArray(); },
+        onEnd: async (evt) => {
+          if (onMove) {
+            if (evt.oldIndex === evt.newIndex) return;
+            this.sortable.sort(startOrder, true);
+            onMove(evt.oldIndex, evt.newIndex);
+            return;
+          }
+          await req({ ...target(endpoint), body: { ids: this.sortable.toArray().join(',') } });
+        },
+      });
+      this.$watch(() => enabled(), value => this.sortable.option('disabled', !value));
+    },
+    destroy() { this.sortable?.destroy(); },
+  }));
+
+  // --- admin list: filtered records, an edit dialog and a delete dialog --------------------------
+  // The page supplies the table, the form and two <dialog>s, x-ref="editDialog" and x-ref="deleteDialog".
+  //   load    req({ endpoint, body: { filters } })  ->  [records]
+  //   new     req({ endpoint })                     ->  a blank record (or `blank: () => ({...})` builds it here)
+  //   read    req({ endpoint, id })                 ->  the full record (optional: endpoints.read)
+  //   save    req({ endpoint, body: record })
+  //   delete  req({ endpoint, id })
+  // `persist: 'key'` keeps the filters in sessionStorage. A page with more behaviour spreads it:
+  // Alpine.data('people', () => ({ ...adminList({ ... }), extra() {} })).
+  const adminList = ({ endpoints = {}, filters: defaultFilters = () => ({ term: '' }), blank = null, persist = null } = {}) => {
+    const ep = { load: 'load', new: 'new', read: null, save: 'save', delete: 'delete', ...endpoints };
+    const storageKey = persist ? 'moopa:admin:' + persist : null;
+    const saved = () => { try { return JSON.parse(sessionStorage.getItem(storageKey) || 'null'); } catch { return null; } };
+    return {
+      records: [], current_record: {}, action_status: '', error: '', _load: 0,
+      filters: { ...defaultFilters(), ...(storageKey ? saved() || {} : {}) },
+      init() {
+        this.load();
+        this.$watch('filters', value => {
+          if (storageKey) { try { sessionStorage.setItem(storageKey, JSON.stringify(value)); } catch {} }
+          this.load();
+        });
+      },
+      resetFilters() { this.filters = defaultFilters(); },
+      // Only the latest load may set the records: a slower reply for older filters is dropped
+      async load() {
+        const version = ++this._load;
+        this.action_status = 'Loading…';
+        try {
+          const records = await req({ endpoint: ep.load, body: { filters: this.filters } });
+          if (version === this._load) this.records = records || [];
+        } finally { if (version === this._load && this.action_status === 'Loading…') this.action_status = ''; }
+      },
+      async openNew() {
+        this.error = '';
+        this.current_record = blank ? blank() : await req({ endpoint: ep.new });
+        this.$refs.editDialog.showModal();
+      },
+      async openEdit(record) {
+        this.error = '';
+        this.current_record = ep.read ? await req({ endpoint: ep.read, id: record.id }) : JSON.parse(JSON.stringify(record));
+        this.$refs.editDialog.showModal();
+      },
+      closeEdit() { this.$refs.editDialog.close(); },
+      async save() {
+        this.action_status = 'Saving…'; this.error = '';
+        try {
+          await req({ endpoint: ep.save, body: this.current_record });
+          this.$refs.editDialog.close();
+          await this.load();
+        } catch (error) { this.error = reqMessage(error, 'Save failed'); }
+        finally { this.action_status = ''; }
+      },
+      openDelete(record) { this.error = ''; this.current_record = record; this.$refs.deleteDialog.showModal(); },
+      async confirmDelete() {
+        this.action_status = 'Deleting…'; this.error = '';
+        try {
+          await req({ endpoint: ep.delete, id: this.current_record.id });
+          this.$refs.deleteDialog.close();
+          this.current_record = {};
+          await this.load();
+        } catch (error) { this.error = reqMessage(error, 'Delete failed'); }
+        finally { this.action_status = ''; }
+      },
+    };
+  };
+  Alpine.data('adminList', adminList);
+  window.adminList = adminList;
+
+  // --- file upload: drop zone, progress per file -------------------------------------------------
+  // 1) presign: req({ endpoint, body: { file_name, file_size, parent_table_name, parent_field, parent_id } }) -> { presignedURL, file }
+  // 2) PUT the bytes to presignedURL (XHR, for progress)
+  // 3) finalise: req({ endpoint, body: { file_id } }) -> the file record
+  // moo_file's uploadFileToServerWithProgress(request.data) does 1 and 3. The model (`files`) holds
+  // completed uploads only; uploads in progress (`pending`) and removed files (`removed`) stay here.
+  const FILE_ICONS = [
+    [/^pdf$/, 'fa-file-pdf'],
+    [/^(jpe?g|png|gif|webp|svg|heic|heif|bmp|tiff?)$/, 'fa-file-image'],
+    [/^(xlsx?|xlsm|csv)$/, 'fa-file-excel'],
+    [/^docx?$/, 'fa-file-word'],
+    [/^pptx?$/, 'fa-file-powerpoint'],
+    [/^(zip|rar|7z|gz|tar)$/, 'fa-file-zipper'],
+    [/^(mp4|mov|avi|mkv|webm)$/, 'fa-file-video'],
+    [/^(dxf|dwg|dwf|stp|step|igs|iges|stl)$/, 'fa-compass-drafting'],
+    [/^(eml|msg)$/, 'fa-envelope'],
+    [/^(txt|md|rtf)$/, 'fa-file-lines'],
+  ];
+  const fileName = f => f?.name || f?.file_name || '';
+  const fileIcon = f => { const ext = fileName(f).split('.').pop().toLowerCase(); return (FILE_ICONS.find(([re]) => re.test(ext)) || [null, 'fa-file'])[1]; };
+  const fileSize = bytes => {
+    const n = parseInt(bytes, 10);
+    if (!n || n < 0) return '';
+    if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+    if (n >= 1024) return Math.round(n / 1024) + ' KB';
+    return n + ' B';
+  };
+  const fileDate = value => {
+    const t = value ? Date.parse(value) : NaN;
+    return Number.isNaN(t) ? '' : new Date(t).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+  Alpine.data('fileUpload', ({ endpoint, table, field, parentId }) => {
+    const sources = new Map();   // pending row id -> File, outside reactive state so retry re-sends the real Blob
+    return {
+      files: [], pending: [], removed: [], over: false, uploading: false, depth: 0, batch: { done: 0, total: 0 },
+      rows() { return [...(this.files || []), ...this.pending, ...this.removed]; },
+      label: fileName,
+      icon: fileIcon,
+      meta(f) { return [fileSize(f.size ?? f.file_size), fileDate(f.doc_date || f.created_at)].filter(Boolean).join(' · '); },
+      canPreview(f) { return f.status !== 'uploading' && f.status !== 'error'; },
+      busyText() { return this.uploading ? `Uploading ${Math.min(this.batch.done + 1, this.batch.total)} of ${this.batch.total}…` : ''; },
+      // A depth count, so moving over the zone's children never flickers the highlight
+      dragEnter() { this.depth++; this.over = true; },
+      dragLeave() { this.depth = Math.max(0, this.depth - 1); if (!this.depth) this.over = false; },
+      drop(event) { this.depth = 0; this.over = false; this.add(event.dataTransfer.files); },
+      remove(file) { this.files = this.files.filter(f => f.id !== file.id); this.removed.push({ ...file, removed: true }); },
+      restore(file) { this.removed = this.removed.filter(f => f.id !== file.id); const { removed, ...restored } = file; this.files = [...(this.files || []), restored]; },
+      dismiss(row) { this.pending = this.pending.filter(p => p.id !== row.id); sources.delete(row.id); },
+      retry(row) { const source = sources.get(row.id); this.dismiss(row); return source ? this.add([source]) : Promise.resolve(); },
+      async add(list) {
+        if (this.uploading) return;
+        const items = Array.from(list || []);
+        if (!items.length) return;
+        this.uploading = true;
+        this.batch = { done: 0, total: items.length };
+        this.$dispatch('files-uploading');
+        const failed = [];
+        for (const f of items) {
+          try { await this.upload(f); } catch { failed.push(f.name); }
+          this.batch.done++;
+        }
+        this.uploading = false;
+        if (failed.length) window.toast({ type: 'error', message: failed.length === 1 ? `${failed[0]} could not be uploaded` : `${failed.length} files could not be uploaded` });
+        this.$dispatch('files-uploaded');
+      },
+      async upload(f) {
+        const pre = await req({ ...target(endpoint), body: { file_name: f.name, file_size: f.size, parent_table_name: table, parent_field: field, parent_id: parentId } });
+        this.pending.push({ ...pre.file, status: 'uploading', progress: 0 });
+        const row = this.pending[this.pending.length - 1];
+        sources.set(row.id, f);
+        try {
+          if (!pre.presignedURL) throw new Error('The server gave no upload URL');
+          await new Promise((resolve, reject) => {
+            const x = new XMLHttpRequest();
+            x.open('PUT', pre.presignedURL);
+            x.upload.onprogress = e => { if (e.lengthComputable) row.progress = Math.round(e.loaded / e.total * 100); };
+            x.onload = () => (x.status < 300 ? resolve() : reject(new Error('Upload failed: ' + x.status)));
+            x.onerror = () => reject(new Error('Upload failed'));
+            x.send(f);
+          });
+          const done = await req({ ...target(endpoint), body: { file_id: row.id } });
+          this.files = [...(this.files || []), { ...pre.file, ...done, status: 'uploaded' }];
+          this.pending = this.pending.filter(p => p.id !== row.id);
+          sources.delete(row.id);
+          this.$dispatch('file-uploaded', { file: done });
+        } catch (error) { row.status = 'error'; throw error; }
+      },
+    };
+  });
+});
 
 // ---------------------------------------------------------------------------------------------
 // The shell: sidebar collapse (desktop) / drawer (mobile), profile menu, collapsed-rail tooltips
