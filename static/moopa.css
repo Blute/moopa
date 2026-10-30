@@ -138,7 +138,7 @@
 
   /* shell panel — the sidebar is a darker panel than the page, for contrast. Its own tokens, so a
      project can re-colour the panel without touching the page. */
-  --shell-bg:            #293042;   /* Titan's sidebar panel, so a project's shell and Moopa's match */
+  --shell-bg:            #293042;   /* the dark sidebar panel */
   --shell-bg-raised:     #333b50;
   --shell-line:          #3a4257;
   --shell-edge:          #1f2534;

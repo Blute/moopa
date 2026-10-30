@@ -44,23 +44,12 @@ Core control templates:
 
 - `/code/moopa/controls/*.cfm`
 
-Shared control behaviour:
+Page behaviour and styles, served by Moopa and loaded by `moopa_layout`:
 
-- `/code/www/_static/js/controls.js`
-- `/code/www/_static/js/sonner-alpine.js`
+- `/code/moopa/static/moopa.js` — `req()`, `window.toast`, filter helpers
+- `/code/moopa/static/moopa.css` — tokens, primitives and components; a project only overrides tokens in `code/www/_static/theme.css`. There is no CSS build.
 
-Shared UI styles:
-
-- `/code/shared/src/sonner.css`
-
-Generated app CSS:
-
-- `/code/apps/hub/src/app.css`
-- `/code/www/_static/css/hub.css`
-
-App script include:
-
-- `/code/apps/hub/tags/app_scripts.cfm`
+Control Alpine components: see **Known gaps** below.
 
 Table definitions:
 
@@ -85,7 +74,7 @@ package-resolved /controls/{control}.cfm template
         ↓
 HTML markup with x-data="registeredControl(...)" if needed
         ↓
-/_static/js/controls.js Alpine component
+the control's Alpine component (Known gaps)
 ```
 
 ---
@@ -281,42 +270,20 @@ Package resolution rules:
 
 ---
 
-## Tailwind/daisyUI Source Scanning
+## Styling
 
-Moopa Starter uses Tailwind v4 with daisyUI. Tailwind only emits classes it can discover from configured sources.
+Controls use Moopa's classes and tokens (`docs/design.md`), like every page. There is no Tailwind, daisyUI or CSS build. Use `window.toast` (from `moopa.js`) for transient success and error feedback, not inline alerts that stay on the page.
 
-Because core Moopa routes and controls live outside the app package, app CSS must source-scan core/shared CFML as well as app CFML. Otherwise daisyUI classes like `btn`, `card`, `input`, `select`, `table`, `checkbox`, and `badge` can disappear from generated CSS, making forms look unstyled.
+## Known gaps
 
-For the Hub app, `/code/apps/hub/src/app.css` should source-scan:
+Moopa's controls predate its own design system and still carry two dependencies on older projects:
 
-```css
-@source "../routes/**/*.cfc";
-@source "../tags/**/*.cfm";
-@source "../controls/**/*.cfm";
-@source "../../../moopa/**/*.cfc";
-@source "../../../moopa/**/*.cfm";
-@source "../../../shared/**/*.cfc";
-@source "../../../shared/**/*.cfm";
+- **Alpine components.** `combobox`, `file`, `address`, `currency` and `dob` use `moopaCombobox`, `moopaFileUploadField`, `moopaAddressSearch`, `control_currency` and `dobPicker`, which Moopa does not ship. Older projects define them in their own `code/www/_static/js/controls.js`. A project made from the current starter has no such file, so those controls fail there.
+- **Markup.** Most control templates still use Tailwind/daisyUI class names (`input`, `w-full`, `card-dash`, `bg-base-200`…), most of which `moopa.css` does not style.
 
-```
+The fix belongs in Moopa: ship the components with Moopa and move the templates onto Moopa's classes. Do not paper over either gap in a project (copying a `controls.js` in, or adding a CSS build). If a task needs one of these controls, say it is blocked on this, or make the Moopa change properly.
 
-The frontend asset watcher container must mount every directory referenced by these `@source` rules. If `/code/moopa` is not mounted into the watcher, classes used only by Moopa core routes/controls will not be emitted.
-
-Hub CSS should also import shared Sonner toast styles:
-
-```css
-@import "../../../shared/src/sonner.css";
-```
-
-Use Sonner toasts for transient success/error feedback instead of inline alerts that permanently take up layout space.
-
-After changing sources or control markup, rebuild CSS:
-
-```bash
-npm run build:hub
-```
-
-Then verify generated CSS contains the expected daisyUI components before debugging markup.
+The rules below for `controls.js` describe how control components are written, wherever they live.
 
 ## Control CFM Templates
 
