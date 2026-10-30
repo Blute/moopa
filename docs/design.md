@@ -5,7 +5,7 @@ Every Moopa page, the System pages and a project's own, shares one design: one h
 | File | What it is |
 |---|---|
 | `static/moopa.css` | Tokens, then primitives and components, then the shell (sidebar, profile menu, mobile drawer) |
-| `static/moopa.js` | `req()`, `window.toast()`, `loadFilters`/`saveFilters`/`clearFilters`, `getInitials`, `prettyDate`, and the shell's behaviour |
+| `static/moopa.js` | `req()`, `window.toast()`, `loadFilters`/`saveFilters`/`clearFilters`, `getInitials`, `prettyDate`, the shell's behaviour, and the components: Alpine behaviour for inline form markup (the `moopa-components` skill) |
 | `static/vendor/alpine-3.17.5/` | Alpine and its focus plugin |
 | `static/vendor/fontawesome-free-7.3.1/` | Font Awesome Free: solid, regular and brands |
 | `tags/moopa_layout.cfm` | The page shell that loads all of the above |
@@ -126,7 +126,8 @@ From a copied stylesheet (a project with its own `basic.css` and `shell.css`):
 1. Put the project's real differences in `theme.css`: compare its `:root` with Moopa's; usually only the accent and the font differ.
 2. Put what only that project has in its own CSS (`app.css`); drop every rule Moopa already has.
 3. Its layout loads `system.stylesheets()` then `app.css`, uses `system.solidIcon()` and `system.avatarUrl()`, and keeps the shell markup Moopa's layout uses (`moo-shell-*`). Moopa's `moopa.js` drives the shell.
-4. Compare screenshots of every page before and after.
+4. A project with its own copy of the components (a `components.js` registering `comboSingle`, `fileUpload`…) loads `system.staticUrl('moopa.js')` before Alpine instead, and deletes its copy. Moopa's `fileUpload` dispatches `files-uploading`, `file-uploaded` and `files-uploaded`; `adminList` keeps its filters itself, without Alpine's persist plugin. Components only that project uses stay in its own script.
+5. Compare screenshots of every page before and after.
 
 From Tailwind and daisyUI: theme first, then page by page. Map daisyUI's theme colours to tokens in `theme.css` (`primary` to `--signal`, `base-100`/`base-200` to `--surface`/`--canvas`, `base-content` to `--ink`), move the shell to `moopa_layout` or a layout loading `system.stylesheets()`, then rewrite each page's utility classes as Moopa primitives (`card`, `btn`, `field`, `table`, `stack`, `cluster`, `row`…). A page can keep Tailwind's stylesheet loaded after Moopa's until it is rewritten; remove the Tailwind build when the last page is done. A project with several apps (hub, www, agent) gives each its own `theme-<app>.css` where they look different, and shares `theme.css` where they don't.
 
@@ -142,7 +143,7 @@ The class list is the stylesheet's own sections; read them before writing markup
 - **Components:** `combo` (a combobox: `combo-shell`, `combo-chip`, `combo-tools`, `combo-list`, `combo-option`, `combo-group`, `combo-empty`), `dropzone` and `file-list` (`file-item`, `file-icon`, `file-body`, `file-name`, `file-meta`, `file-status`, `file-actions`, `progress`), `sort-list` (`sort-item`, `grip`), `section` (`section-header`, `section-body`), `metrics` (`metric`, `metric-label`, `metric-value`), `stepper`, `signature`, `editable`, `row-list`/`row-item`, `row-card`, `note-list`, `callout`, `swatch`, `terms`, `chart-wrap`, `range-presets`
 - **Helpers:** `num`, `money`, `prose`, `kbd`, `field-w-xs`…`field-w-lg`, `input-narrow`, `textarea-auto`, `btn-ink`, `btn-touch`, `card-flat`, `chip-wide`, `chips-alpha`, `table-airy`, `split-wide`, `mt-1`/`mt-3`/`mt-4`
 
-The components' behaviour (open a combobox, drop a file, drag to sort) is the project's Alpine code; Moopa provides the look.
+Their behaviour (search a combobox, upload a file, drag to sort) is in `moopa.js` too: `comboSingle`, `comboMany`, `fileUpload`, `sortList` and the rest, which a page binds to its own inline markup. **System → Components** (`/sysadmin/components`) shows each one live with the markup to copy; the `moopa-components` skill is the same contract for agents. Behaviour a second project could use belongs there, not in a project's script.
 
 A dialog driven by an Alpine flag follows it with `x-effect="open ? ($el.open || $el.showModal()) : ($el.open && $el.close())" @close="open = false"`, so Esc and the backdrop keep the flag in step.
 

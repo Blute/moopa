@@ -601,7 +601,7 @@
     <div class="combo-tools"><button type="button" aria-label="Open"><i class="fa-solid fa-chevron-down"></i></button></div>
 </div>
         </cfsavecontent>
-        <cfset arrayAppend(out, { id: "combobox", title: "Combobox", block: false, html: html, description: "Chips in an input-looking <code class='code-inline'>combo-shell</code>, with a <code class='code-inline'>combo-list</code> of <code class='code-inline'>combo-option</code>s under it. The project's Alpine component supplies search and selection." }) />
+        <cfset arrayAppend(out, { id: "combobox", title: "Combobox", block: false, html: html, description: "Chips in an input-looking <code class='code-inline'>combo-shell</code>, with a <code class='code-inline'>combo-list</code> of <code class='code-inline'>combo-option</code>s under it. Search and selection come from <a href='/sysadmin/components##cx-combo-single'>comboSingle and comboMany</a>." }) />
 
         <cfsavecontent variable="html">
 <div class="stack" style="width: 100%; max-width: 30rem">
@@ -621,7 +621,7 @@
     </ul>
 </div>
         </cfsavecontent>
-        <cfset arrayAppend(out, { id: "files", title: "Dropzone and file list", block: false, html: html, description: "A <code class='code-inline'>dropzone</code> label around a hidden file input, and a <code class='code-inline'>file-list</code> with <code class='code-inline'>progress</code> while uploading." }) />
+        <cfset arrayAppend(out, { id: "files", title: "Dropzone and file list", block: false, html: html, description: "A <code class='code-inline'>dropzone</code> label around a hidden file input, and a <code class='code-inline'>file-list</code> with <code class='code-inline'>progress</code> while uploading. The upload itself is <a href='/sysadmin/components##cx-files'>fileUpload</a>." }) />
 
         <cfsavecontent variable="html">
 <ol class="stepper" style="width: 100%">
