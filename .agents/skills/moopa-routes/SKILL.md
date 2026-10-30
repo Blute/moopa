@@ -266,7 +266,7 @@ Only when the filters are a control panel: more than three controls, grouped sec
 
 ## Frontend API Calls with req()
 
-The `req()` function in `app.js` calls backend endpoints.
+The `req()` function in Moopa's `moopa.js` (loaded by `moopa_layout`) calls backend endpoints.
 
 ### Basic Usage
 

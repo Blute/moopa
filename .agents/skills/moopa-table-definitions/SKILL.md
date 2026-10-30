@@ -132,7 +132,7 @@ The `html` block configures how fields render in forms:
 | `datetime` | Date + time | |
 | `dob` | Date of birth | Specialized date picker |
 | `checkbox` | Boolean toggle | |
-| `switch` | Boolean toggle | DaisyUI toggle style |
+| `switch` | Boolean toggle | Toggle switch |
 | `list` | Static dropdown | Uses `list_items` |
 | `combobox` | Searchable dropdown | For FK or static `options` |
 | `file` | File upload | Works with moo_file |
@@ -269,7 +269,7 @@ Rules:
 - Use `html.hidden=true` for fields that should never render through generated table controls.
 - Put reusable default field UI in `html` metadata.
 - Put page-specific workflow and layout in the route/template, not in table definitions.
-- Control CFM templates render markup only; Alpine component definitions live in `/code/www/_static/js/controls.js`. See the `moopa-controls` skill before modifying controls.
+- Control CFM templates render markup only; Alpine component definitions do not (see `moopa-controls`, Known gaps). See the `moopa-controls` skill before modifying controls.
 
 ### Layout Options
 

@@ -29,7 +29,7 @@
     because 'NEVER' URLs are persisted to the database and shared externally.
 
     SETUP — signing config lives in the database + Worker. Hosting that knows the
-    values (moopa-infrastructure) passes them as CLOUDFLARE_ASSETS_BASE_URL,
+    values (the infrastructure that made the Worker) passes them as CLOUDFLARE_ASSETS_BASE_URL,
     CLOUDFLARE_ASSETS_SIGNING_KEY_B64 and CLOUDFLARE_ASSETS_SIGNING_KID, and
     seedSettingsFromEnvironment() fills the database from them at application
     start whenever a setting is missing (it never overwrites). Otherwise seed by
