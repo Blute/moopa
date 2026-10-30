@@ -368,7 +368,7 @@ document.addEventListener('alpine:init', () => {
   // The model is the picked suggestion ({ formatted_address, ... }) or null
   Alpine.data('addressSearch', ({ endpoint }) => ({
     value: null, query: '', options: [], open: false, loading: false, _t: null, _req: 0,
-    search() { clearTimeout(this._t); if (!this.query) { this.options = []; this.loading = false; return; } this.loading = true; this._t = setTimeout(() => this.fetch(), 300); },
+    search() { this.cancel(); if (!this.query) { this.options = []; return; } this.loading = true; this._t = setTimeout(() => this.fetch(), 300); },
     async fetch() {
       const id = ++this._req;
       try { const r = await req({ ...target(endpoint), q: this.query }); if (id === this._req) this.options = r?.suggestions || []; }
@@ -376,8 +376,10 @@ document.addEventListener('alpine:init', () => {
     },
     pick(s) { this.value = s; this.close(); this.$dispatch('model-change', { selected_option: s }); },
     clear() { this.value = null; this.options = []; this.$refs.input.focus(); },
-    close() { this.open = false; this.query = ''; this.options = []; },
-    destroy() { clearTimeout(this._t); this._req++; },
+    close() { this.cancel(); this.open = false; this.query = ''; this.options = []; },
+    // a pending or in-flight lookup may no longer touch the list
+    cancel() { clearTimeout(this._t); this._req++; this.loading = false; },
+    destroy() { this.cancel(); },
   }));
 
   // --- address, from Google Places in the browser ----------------------------------------------
@@ -393,7 +395,7 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('addressGoogle', ({ key, country = 'au', language = LOCALE, bias = null } = {}) => ({
     value: null, query: '', options: [], open: false, loading: false, _t: null, _session: null, _req: 0,
     async places() { loadGoogleMaps(key); return await google.maps.importLibrary('places'); },
-    search() { clearTimeout(this._t); if (!this.query) { this.options = []; this.loading = false; return; } this.loading = true; this._t = setTimeout(() => this.fetch(), 250); },
+    search() { this.cancel(); if (!this.query) { this.options = []; return; } this.loading = true; this._t = setTimeout(() => this.fetch(), 250); },
     async fetch() {
       const q = this.query;
       const id = ++this._req;
@@ -436,8 +438,10 @@ document.addEventListener('alpine:init', () => {
       }
     },
     clear() { this.value = null; this.options = []; this.$refs.input.focus(); },
-    close() { this.open = false; this.query = ''; this.options = []; },
-    destroy() { clearTimeout(this._t); this._req++; },
+    close() { this.cancel(); this.open = false; this.query = ''; this.options = []; },
+    // a pending or in-flight lookup may no longer touch the list
+    cancel() { clearTimeout(this._t); this._req++; this.loading = false; },
+    destroy() { this.cancel(); },
   }));
 
   // --- rich text: Trix, loaded by the page. Refs: input (hidden), editor (trix-editor) ----------
@@ -526,7 +530,7 @@ document.addEventListener('alpine:init', () => {
     const storageKey = persist ? 'moopa:admin:' + persist : null;
     const saved = () => { try { return JSON.parse(sessionStorage.getItem(storageKey) || 'null'); } catch { return null; } };
     return {
-      records: [], current_record: {}, action_status: '', error: '',
+      records: [], current_record: {}, action_status: '', error: '', _load: 0,
       filters: { ...defaultFilters(), ...(storageKey ? saved() || {} : {}) },
       init() {
         this.load();
@@ -536,10 +540,14 @@ document.addEventListener('alpine:init', () => {
         });
       },
       resetFilters() { this.filters = defaultFilters(); },
+      // Only the latest load may set the records: a slower reply for older filters is dropped
       async load() {
+        const version = ++this._load;
         this.action_status = 'Loading…';
-        try { this.records = (await req({ endpoint: ep.load, body: { filters: this.filters } })) || []; }
-        finally { this.action_status = ''; }
+        try {
+          const records = await req({ endpoint: ep.load, body: { filters: this.filters } });
+          if (version === this._load) this.records = records || [];
+        } finally { if (version === this._load && this.action_status === 'Loading…') this.action_status = ''; }
       },
       async openNew() {
         this.error = '';
