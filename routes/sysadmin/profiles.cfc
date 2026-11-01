@@ -444,7 +444,7 @@
                                 </button></div>
                                 <template x-if="invite">
                                     <div class="alert alert-info" style="display: block">
-                                        <p class="strong">Send this to them. They sign in with their email; there's no password.</p>
+                                        <p class="strong">Send this to them.</p>
                                         <pre class="code-block mt-2" x-text="inviteText()"></pre>
                                         <button type="button" class="btn btn-primary btn-sm mt-2" @click="copyInvite()"><i class="fa-solid fa-copy"></i> Copy invite</button>
                                     </div>
@@ -640,7 +640,7 @@
                                 `Sign in: ${window.location.origin}/login/`,
                                 `Email: ${this.invite.email}`,
                                 '',
-                                'Sign in with this email address. There is no password.'
+                                'Sign in with this email address.'
                             ].join('\n');
                         },
 
