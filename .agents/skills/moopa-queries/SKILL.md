@@ -74,12 +74,14 @@ Generates SQL field lists from table schema. Handles foreign keys, computed colu
 <!--- Returns all fields except specified --->
 ```
 
-**Modes** (`sql_type`):
+**Modes** (`sql_type`, the same on `db.select()`, `db.read()` and `db.search()`):
 - `condensed` (default): linked records as `{id, label}`, or `id` plus the linked table's `condensed: true` fields; a linked table's `expand_fields` lets only `id`, `label` and listed fields through
 - `expanded`: linked records with every non-sensitive field, narrowed to the linked table's `expand_fields` (plus `id`, always) and condensed for a link with `expand: "condensed"`
-- `simple`: Basic column references, links as plain uuids
+- `simple`: Basic column references, links as plain uuids (many-to-many and relation fields are left out)
 
 Direct fields of the table itself are the same in every mode; only links differ. `sensitive` fields are left out unless listed in `field_list` or `include_sensitive=true` is passed. See "What a link carries" in the `moopa-table-definitions` skill.
+
+`db.search()` takes `sql_type` too, so a list that shows linked records' detail asks for `sql_type="expanded"` rather than reading each record. Its text-search ordering (score, then primary key; the table's `order_by` does not apply) is in `code/moopa/docs/search.md`.
 
 ## Dynamic WHERE Clauses
 
@@ -241,7 +243,7 @@ Pass native CFML structs or arrays straight to JSONB fields — **`db.save()` se
 
 **Round-trip:** `db.read(returnFormat="cfml")` deserializes the whole record — including JSONB fields — into native CFML values. Pass them back to `db.save()` as-is; the mapper re-serializes exactly once.
 
-**db.read() FK expansion gotcha:** `db.read(returnFormat="cfml")` in default `condensed` mode expands FK fields (e.g. `sell_tender_id`) into structs `{id, label}` instead of plain UUID strings. If you then use that value in a `cfqueryparam`, you get "Can't cast Complex Object Type Struct to String". Use `sql_type="simple"` when you need plain ID values:
+**db.read() FK expansion gotcha:** `db.read(returnFormat="cfml")` in default `condensed` mode expands FK fields (e.g. `sell_tender_id`) into structs `{id, label}` instead of plain UUID strings. If you then use that value in a `cfqueryparam`, you get "Can't cast Complex Object Type Struct to String". Use `sql_type="simple"` when you need plain ID values (`db.search()` takes the same argument):
 
 ```cfml
 <!--- GOOD: Plain FK values --->

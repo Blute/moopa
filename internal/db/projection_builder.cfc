@@ -56,6 +56,27 @@
         <cfreturn "ORDER BY #order_by#" />
     </cffunction>
 
+    <cffunction name="searchTieBreak" access="public" returntype="string" output="false" hint="Return the ORDER BY terms that follow word_similarity() in a text search: the table's primary key column(s), qualified with the table name.">
+        <cfargument name="tableDef" type="struct" required="true" />
+
+        <!--- Every whole-word match scores 1.00, so equal scores are common. Without these terms
+              Postgres returns tied rows in whatever order the plan produces, which can change
+              between calls and makes paging skip or repeat rows. The primary key is unique, so
+              the order is total. The table's order_by is deliberately not used: it may name a
+              select_append alias or a position that the ids-only query in idsInSearchTerm()
+              does not have, and a bare column name sorts a projected output alias (a condensed
+              foreign key's JSON) in search() but the raw column in idsInSearchTerm(). Qualifying
+              with the table name means an output alias can never shadow the key. --->
+        <cfset var terms = "" />
+        <cfset var keyName = "" />
+
+        <cfloop array="#arguments.tableDef.primary_keys ?: []#" item="keyName">
+            <cfset terms = listAppend(terms, "#arguments.tableDef.table_name#.#keyName#") />
+        </cfloop>
+
+        <cfreturn terms />
+    </cffunction>
+
     <cffunction name="getFieldsToProject" access="private" returntype="string" output="false" hint="Resolve include/exclude/sensitive field lists for select().">
         <cfargument name="tableDef" type="struct" required="true" />
         <cfargument name="field_list" type="string" default="" />

@@ -199,6 +199,7 @@ Delete - delete
         <cfargument name="limit" type="string" required="false" default=250 />
         <cfargument name="select_append" type="string" required="false" default="" hint="Additional SELECT expressions to append (e.g. subqueries, computed fields)" />
         <cfargument name="returnFormat" type="string" required="false" default="json" />
+        <cfargument name="sql_type" type="string" required="false" default="condensed" hint="simple,expanded,condensed: how linked (foreign key) fields are projected, as in read() and select()" />
 
         <cfset var searchArgs = {} />
 
@@ -206,11 +207,16 @@ Delete - delete
             <cfthrow message="Invalid Table Name" />
         </cfif>
 
+        <cfif !listFindNoCase("simple,expanded,condensed", arguments.sql_type)>
+            <cfthrow message="Invalid sql_type ""#arguments.sql_type#"": use simple, expanded or condensed" />
+        </cfif>
+
         <cfset searchArgs = {
             tableDef = this.codeSchema[arguments.table_name],
             searchableTables = this.searchable_tables,
-            selectFields = select(table_name=arguments.table_name, field_list=arguments.field_list),
+            selectFields = select(table_name=arguments.table_name, field_list=arguments.field_list, sql_type=arguments.sql_type),
             orderBy = orderby(table_name=arguments.table_name),
+            searchTieBreak = variables.projectionBuilder.searchTieBreak(this.codeSchema[arguments.table_name]),
             field_list = arguments.field_list,
             q = arguments.q,
             where = arguments.where,
@@ -237,7 +243,8 @@ Delete - delete
             table_name = arguments.table_name,
             term = arguments.term,
             limit = arguments.limit,
-            searchableTables = this.searchable_tables
+            searchableTables = this.searchable_tables,
+            searchTieBreak = structKeyExists(this.codeSchema, arguments.table_name) ? variables.projectionBuilder.searchTieBreak(this.codeSchema[arguments.table_name]) : ""
         ) />
     </cffunction>
 
