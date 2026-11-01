@@ -51,6 +51,8 @@
         </cfif>
         <!--- Refuse to start with a malformed this.moopa_error_details (docs/errors.md) --->
         <cfset _errorDetailsAudience() />
+        <!--- Whether a validated session without a login may open open_to="validated" routes; refuses to start on a non-boolean (docs/route-access.md) --->
+        <cfset application.moopa_validated_without_login = _validatedWithoutLogin() />
         <!--- Hub always serves Moopa's own System routes and menu (/sysadmin) from the framework; no other app does, and no project may define them. --->
         <cfset application.system_routes = (application.app_name EQ "hub") />
         <cfset application.moopa_packages = _getMoopaPackages() />
@@ -277,6 +279,17 @@
 
         <cfset environment = server.system.environment.APP_ENVIRONMENT ?: "production" />
         <cfreturn structKeyExists(setting, environment) ? setting[environment] : "sysadmin" />
+    </cffunction>
+
+
+    <cffunction name="_validatedWithoutLogin" access="private" returntype="boolean" output="false" hint="Whether open_to=validated routes are open to a session that is validated (application.lib.auth.isValidated()) with a profile in this app but isn't logged in, from this.moopa_validated_without_login. No setting is false. Throws moopa.config.invalidValidatedWithoutLogin when the setting isn't true or false; onApplicationStart calls it so a bad setting stops the app starting.">
+        <cfset var setting = this.moopa_validated_without_login ?: false />
+
+        <cfif NOT isSimpleValue(setting) OR NOT listFindNoCase("true,false", setting)>
+            <cfthrow type="moopa.config.invalidValidatedWithoutLogin"
+                message="this.moopa_validated_without_login must be true or false." />
+        </cfif>
+        <cfreturn setting EQ true />
     </cffunction>
 
 
