@@ -39,6 +39,7 @@
             <cfset normalizeFields(table, codeSchemaOutput) />
             <cfset addSearchMetadata(table, arguments.searchableTables) />
             <cfset buildFieldLists(table) />
+            <cfset buildExpandFields(table) />
             <cfset normalizeIndexes(table) />
 
             <cfset codeSchemaOutput[table_key] = table />
@@ -190,7 +191,24 @@
                 <cfset addFieldIndexMetadata(table, field) />
                 <cfset addFieldPrimaryKeyMetadata(table, field) />
                 <cfset addFieldForeignKeyMetadata(table, field) />
+                <cfset validateFieldExpand(table, field, field_name) />
             </cfloop>
+    </cffunction>
+
+    <cffunction name="validateFieldExpand" access="private" returntype="void" output="false" hint="Check a field's expand option: only a uuid foreign-key field may declare it, and only as condensed.">
+        <cfargument name="table" type="struct" required="true">
+        <cfargument name="field" type="struct" required="true">
+        <cfargument name="field_name" type="string" required="true">
+
+        <cfif !structKeyExists(arguments.field, "expand")>
+            <cfreturn />
+        </cfif>
+        <cfif arguments.field.type NEQ "uuid" OR !len(arguments.field.foreign_key_table ?: "")>
+            <cfthrow message="Table #arguments.table.table_name# field #arguments.field_name# declares expand, which only a uuid field with a foreign_key_table supports" />
+        </cfif>
+        <cfif !isSimpleValue(arguments.field.expand) OR arguments.field.expand NEQ "condensed">
+            <cfthrow message="Table #arguments.table.table_name# field #arguments.field_name# expand must be ""condensed""" />
+        </cfif>
     </cffunction>
 
     <cffunction name="normalizeFieldDefaults" access="private" returntype="void" output="false" hint="Apply base defaults shared by all field types.">
@@ -665,6 +683,75 @@
             </cfif>
     </cffunction>
 
+    <cffunction name="buildExpandFields" access="private" returntype="void" output="false" hint="Validate the table's expand_fields and cache it as _expand_fields: the only fields a link from another table may carry (condensed links also always pass id and label). Empty when the table does not declare expand_fields.">
+        <cfargument name="table" type="struct" required="true">
+
+        <cfset var expand_field_name = "" />
+
+        <cfset arguments.table._expand_fields = "" />
+        <cfif !structKeyExists(arguments.table, "expand_fields")>
+            <cfreturn />
+        </cfif>
+        <cfif !isSimpleValue(arguments.table.expand_fields)>
+            <cfthrow message="Table #arguments.table.table_name# expand_fields must be a comma-separated list of field names" />
+        </cfif>
+
+        <cfloop list="#arguments.table.expand_fields#" item="expand_field_name">
+            <cfset expand_field_name = trim(expand_field_name) />
+            <cfif len(expand_field_name)>
+                <cfif NOT structKeyExists(arguments.table.fields, expand_field_name)>
+                    <cfthrow message="Table #arguments.table.table_name# expand_fields references unknown field: #expand_field_name#" />
+                </cfif>
+                <cfif NOT listFindNoCase(arguments.table._expand_fields, expand_field_name)>
+                    <cfset arguments.table._expand_fields = listAppend(arguments.table._expand_fields, expand_field_name) />
+                </cfif>
+            </cfif>
+        </cfloop>
+
+        <cfif !len(arguments.table._expand_fields)>
+            <cfthrow message="Table #arguments.table.table_name# expand_fields is empty. List the fields a link may carry, or remove expand_fields." />
+        </cfif>
+        <!--- A link always carries id, as a condensed link does --->
+        <cfif !listFindNoCase(arguments.table._expand_fields, "id")>
+            <cfset arguments.table._expand_fields = listPrepend(arguments.table._expand_fields, "id") />
+        </cfif>
+    </cffunction>
+
+    <cffunction name="linkCarriesField" access="private" returntype="boolean" output="false" hint="Whether an expanded link from another table may carry this field of the linked table: never a sensitive field, and only a field in its expand_fields when it declares them.">
+        <cfargument name="linkedTable" type="struct" required="true">
+        <cfargument name="field_name" type="string" required="true">
+
+        <cfif listFindNoCase(arguments.linkedTable._sensitive_fields ?: "", arguments.field_name)>
+            <cfreturn false />
+        </cfif>
+        <cfif len(arguments.linkedTable._expand_fields ?: "") AND !listFindNoCase(arguments.linkedTable._expand_fields, arguments.field_name)>
+            <cfreturn false />
+        </cfif>
+        <cfreturn true />
+    </cffunction>
+
+    <cffunction name="linkCondensedFields" access="private" returntype="string" output="false" hint="The fields a condensed link carries from the linked table: its condensed: true fields with id, or id,label when it marks none. When it declares expand_fields, only id, label and fields in that list.">
+        <cfargument name="linkedTable" type="struct" required="true">
+
+        <cfset var condensed_fields = arguments.linkedTable._condensed_fields ?: "" />
+        <cfset var allowed_fields = "" />
+        <cfset var condensed_field = "" />
+
+        <cfif !len(condensed_fields)>
+            <cfset condensed_fields = "id,label" />
+        </cfif>
+        <cfif !len(arguments.linkedTable._expand_fields ?: "")>
+            <cfreturn condensed_fields />
+        </cfif>
+
+        <cfloop list="#condensed_fields#" item="condensed_field">
+            <cfif listFindNoCase("id,label", condensed_field) OR listFindNoCase(arguments.linkedTable._expand_fields, condensed_field)>
+                <cfset allowed_fields = listAppend(allowed_fields, condensed_field) />
+            </cfif>
+        </cfloop>
+        <cfreturn allowed_fields />
+    </cffunction>
+
     <cffunction name="normalizeIndexes" access="private" returntype="void" output="false" hint="Apply index defaults after field-derived indexes are generated.">
         <cfargument name="table" type="struct" required="true">
 
@@ -715,8 +802,8 @@
                     <cfset json_build_object_field_list = "" />
                     <cfloop collection="#arguments.codeSchemaInput[field.foreign_key_table].fields#" item="foreign_table_field" index="foreign_table_field_name">
                         <cfif len(foreign_table_field['sql_select_simple'])>
-                            <!--- Skip sensitive fields from expanded view --->
-                            <cfif listFindNoCase(arguments.codeSchemaInput[field.foreign_key_table]._sensitive_fields ?: "", foreign_table_field_name)>
+                            <!--- Skip sensitive fields, and fields outside the linked table's expand_fields --->
+                            <cfif !linkCarriesField(arguments.codeSchemaInput[field.foreign_key_table], foreign_table_field_name)>
                                 <cfcontinue />
                             </cfif>
                             <cfset json_build_object_field_sql_select_simple = rereplace(foreign_table_field['sql_select_simple'], "(?i)\bas\b.*", "", "ALL") /> <!--- Strip the "as fieldname" from the end of the sql_select_simple --->
@@ -737,16 +824,11 @@
                         ),'[]')::jsonb AS #field_name#
                     </cfoutput>
                     </cfsavecontent>
-                    <!--- Build condensed pairs from _condensed_fields, fall back to id,label --->
-                    <cfset condensed_fields = arguments.codeSchemaInput[field.foreign_key_table]._condensed_fields ?: "" />
-                    <cfif !len(condensed_fields)>
-                        <cfset condensed_pairs = "'id',id,'label',label" />
-                    <cfelse>
-                        <cfset condensed_pairs = "" />
-                        <cfloop list="#condensed_fields#" item="cf">
-                            <cfset condensed_pairs = listAppend(condensed_pairs, "'#cf#',#cf#") />
-                        </cfloop>
-                    </cfif>
+                    <!--- Condensed pairs from the linked table's condensed fields (id,label by default), within its expand_fields --->
+                    <cfset condensed_pairs = "" />
+                    <cfloop list="#linkCondensedFields(arguments.codeSchemaInput[field.foreign_key_table])#" item="cf">
+                        <cfset condensed_pairs = listAppend(condensed_pairs, "'#cf#',#cf#") />
+                    </cfloop>
                     <cfsavecontent variable="field.sql_select_condensed">
                     <cfoutput>
                         coalesce((
@@ -788,8 +870,8 @@
                                     <cfcontinue />
                                 </cfif>
 
-                                <!--- Skip sensitive fields from expanded view --->
-                                <cfif listFindNoCase(arguments.codeSchemaInput[field.foreign_key_table]._sensitive_fields ?: "", foreign_table_field_name)>
+                                <!--- Skip sensitive fields, and fields outside the linked table's expand_fields --->
+                                <cfif !linkCarriesField(arguments.codeSchemaInput[field.foreign_key_table], foreign_table_field_name)>
                                     <cfcontinue />
                                 </cfif>
 
@@ -813,16 +895,11 @@
                             ),'{}')::jsonb AS #field.name#
                         </cfoutput>
                         </cfsavecontent>
-                        <!--- Build condensed pairs from _condensed_fields, fall back to id,label --->
-                        <cfset condensed_fields = arguments.codeSchemaInput[field.foreign_key_table]._condensed_fields ?: "" />
-                        <cfif !len(condensed_fields)>
-                            <cfset condensed_pairs = "'id',id,'label',label" />
-                        <cfelse>
-                            <cfset condensed_pairs = "" />
-                            <cfloop list="#condensed_fields#" item="cf">
-                                <cfset condensed_pairs = listAppend(condensed_pairs, "'#cf#',#cf#") />
-                            </cfloop>
-                        </cfif>
+                        <!--- Condensed pairs from the linked table's condensed fields (id,label by default), within its expand_fields --->
+                        <cfset condensed_pairs = "" />
+                        <cfloop list="#linkCondensedFields(arguments.codeSchemaInput[field.foreign_key_table])#" item="cf">
+                            <cfset condensed_pairs = listAppend(condensed_pairs, "'#cf#',#cf#") />
+                        </cfloop>
                         <cfsavecontent variable="field.sql_select_condensed">
                         <cfoutput>
                             coalesce((
@@ -832,6 +909,10 @@
                             ),'{}')::jsonb AS #field.name#
                         </cfoutput>
                         </cfsavecontent>
+                        <!--- expand: "condensed" keeps this link condensed inside an expanded read --->
+                        <cfif (field.expand ?: "") EQ "condensed">
+                            <cfset field.sql_select_expanded = field.sql_select_condensed />
+                        </cfif>
                         <cfcatch>
                             <!--- May not exist yet. This often happens when deploying multiple tables at the same time --->
                             <!--- <cfdump var="#table#" label="#field_name#" expand="true">
@@ -867,8 +948,8 @@
                         <cfloop collection="#arguments.codeSchemaInput[field.foreign_key_table].fields#" item="foreign_table_field" index="foreign_table_field_name">
 
                             <cfif len(foreign_table_field['sql_select_simple'])>
-                                <!--- Skip sensitive fields from expanded view --->
-                                <cfif listFindNoCase(arguments.codeSchemaInput[field.foreign_key_table]._sensitive_fields ?: "", foreign_table_field_name)>
+                                <!--- Skip sensitive fields, and fields outside the linked table's expand_fields --->
+                                <cfif !linkCarriesField(arguments.codeSchemaInput[field.foreign_key_table], foreign_table_field_name)>
                                     <cfcontinue />
                                 </cfif>
                                 <cfset json_build_object_field_list = listAppend(json_build_object_field_list, foreign_table_field['sql_select_simple']) />
@@ -890,13 +971,8 @@
                             ),'[]')::jsonb AS #field_name#
                         </cfoutput>
                         </cfsavecontent>
-                        <!--- Build condensed field list from _condensed_fields, fall back to id,label --->
-                        <cfset condensed_fields = arguments.codeSchemaInput[field.foreign_key_table]._condensed_fields ?: "" />
-                        <cfif !len(condensed_fields)>
-                            <cfset condensed_field_list = "id,label" />
-                        <cfelse>
-                            <cfset condensed_field_list = condensed_fields />
-                        </cfif>
+                        <!--- Condensed field list from the linked table's condensed fields (id,label by default), within its expand_fields --->
+                        <cfset condensed_field_list = linkCondensedFields(arguments.codeSchemaInput[field.foreign_key_table]) />
                         <cfsavecontent variable="field.sql_select_condensed">
                             <cfoutput>
                             coalesce((

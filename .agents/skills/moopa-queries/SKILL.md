@@ -74,10 +74,12 @@ Generates SQL field lists from table schema. Handles foreign keys, computed colu
 <!--- Returns all fields except specified --->
 ```
 
-**Modes** (`sql_type`, the same on `db.select()`, `db.read()` and `db.search()`), which differ in how linked (foreign key) fields come back:
-- `condensed` (default): a linked record is `{id, label}`, or the linked table's fields marked `condensed: true`
-- `simple`: plain column references; a linked record is just its id (many-to-many and relation fields are left out)
-- `expanded`: a linked record is an object of the linked table's fields (sensitive fields left out)
+**Modes** (`sql_type`, the same on `db.select()`, `db.read()` and `db.search()`):
+- `condensed` (default): linked records as `{id, label}`, or `id` plus the linked table's `condensed: true` fields; a linked table's `expand_fields` lets only `id`, `label` and listed fields through
+- `expanded`: linked records with every non-sensitive field, narrowed to the linked table's `expand_fields` (plus `id`, always) and condensed for a link with `expand: "condensed"`
+- `simple`: Basic column references, links as plain uuids (many-to-many and relation fields are left out)
+
+Direct fields of the table itself are the same in every mode; only links differ. `sensitive` fields are left out unless listed in `field_list` or `include_sensitive=true` is passed. See "What a link carries" in the `moopa-table-definitions` skill.
 
 `db.search()` takes `sql_type` too, so a list that shows linked records' detail asks for `sql_type="expanded"` rather than reading each record. Its text-search ordering (score, then primary key; the table's `order_by` does not apply) is in `code/moopa/docs/search.md`.
 
