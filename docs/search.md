@@ -40,11 +40,11 @@ A page that shows linked records' detail from search results asks for `sql_type=
 
 ## Order
 
-- **Text search** (`q` on a table with searchable fields): best match first, by `word_similarity(q, search_text)`. Equal scores are common (every whole-word match scores 1.00), so ties are broken by the table's own `order_by`, the order it has without a search, and then by `id`. The same search returns the same order every time, and pages neither skip nor repeat a record.
+- **Text search** (`q` on a table with searchable fields): best match first, by `word_similarity(q, search_text)`. Equal scores are common (every whole-word match scores 1.00), so tied records come back in primary-key order (`id` for most tables, every key column in turn for a composite key). That order is stable, not meaningful: the same search returns the same order every time, and pages neither skip nor repeat a record. The table's `order_by` plays no part in text-search ranking; sort the results yourself if a page needs another order among equal matches.
 - **`ids` with more than one id**: the order of `ids`.
 - **Otherwise** (no `q`, or `q` on a table with no searchable fields): the table's `order_by`.
 
-`idsInSearchTerm(table_name, term, limit=20)` orders its ids the same way as a text search. When nothing matches, or the table has no searchable fields, it returns one id that matches no record, so the result is safe to put straight into `id IN (...)`.
+`idsInSearchTerm(table_name, term, limit=20)` orders its ids the same way as a text search, so its first N ids are the ids of `db.search()` with the same `q` and `limit=N`. When nothing matches, or the table has no searchable fields, it returns one id that matches no record, so the result is safe to put straight into `id IN (...)`.
 
 ## Testing
 
@@ -52,4 +52,4 @@ A page that shows linked records' detail from search results asks for `sql_type=
 
 ## Upgrading
 
-Nothing to do. Before this, text-search results with equal scores came back in whatever order PostgreSQL produced; they now follow the table's `order_by`, then `id`. Results with different scores keep their order, and `sql_type` defaults to what `db.search()` always returned.
+Nothing to do. Before this, text-search results with equal scores came back in whatever order PostgreSQL produced; they now come back in primary-key order. Results with different scores keep their order, searches without `q` still follow the table's `order_by`, and `sql_type` defaults to what `db.search()` always returned.

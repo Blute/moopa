@@ -244,7 +244,7 @@ Delete - delete
             term = arguments.term,
             limit = arguments.limit,
             searchableTables = this.searchable_tables,
-            searchTieBreak = structKeyExists(this.codeSchema, arguments.table_name) ? variables.projectionBuilder.searchTieBreak(this.codeSchema[arguments.table_name]) : "id"
+            searchTieBreak = structKeyExists(this.codeSchema, arguments.table_name) ? variables.projectionBuilder.searchTieBreak(this.codeSchema[arguments.table_name]) : ""
         ) />
     </cffunction>
 

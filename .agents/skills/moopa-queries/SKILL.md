@@ -79,7 +79,7 @@ Generates SQL field lists from table schema. Handles foreign keys, computed colu
 - `simple`: plain column references; a linked record is just its id (many-to-many and relation fields are left out)
 - `expanded`: a linked record is an object of the linked table's fields (sensitive fields left out)
 
-`db.search()` takes `sql_type` too, so a list that shows linked records' detail asks for `sql_type="expanded"` rather than reading each record. Its text-search ordering (score, then the table's `order_by`, then `id`) is in `code/moopa/docs/search.md`.
+`db.search()` takes `sql_type` too, so a list that shows linked records' detail asks for `sql_type="expanded"` rather than reading each record. Its text-search ordering (score, then primary key; the table's `order_by` does not apply) is in `code/moopa/docs/search.md`.
 
 ## Dynamic WHERE Clauses
 

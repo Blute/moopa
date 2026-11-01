@@ -11,5 +11,5 @@ Agents: read [AGENTS.md](AGENTS.md) first.
 - [Sign-in](docs/signin.md): passwordless sign-in by emailed link, Continue with Google, invitations and sign-in activity.
 - [Account pages](docs/account.md): the profile pages Moopa serves, and replacing one in a project.
 - [Errors](docs/errors.md): what Moopa does with an uncaught error, who sees its details (`this.moopa_error_details`), and replacing the error page.
-- [Search](docs/search.md): `db.search()`'s arguments, `sql_type` for linked records, and the order of text-search results (score, then the table's `order_by`, then `id`).
+- [Search](docs/search.md): `db.search()`'s arguments, `sql_type` for linked records, and the order of text-search results (score, then primary key).
 - [Design](docs/design.md): Moopa's own vanilla-CSS design for the System pages, the `moopa_layout` tag a project page can opt in to, and theming by tokens.

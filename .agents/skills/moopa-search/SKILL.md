@@ -124,14 +124,15 @@ When you call `db.search()` with a `q` parameter:
 SELECT ...
 FROM my_table
 WHERE 'search term' <% search_text
-ORDER BY word_similarity('search term', search_text) DESC, <the table's order_by>, id
+ORDER BY word_similarity('search term', search_text) DESC, my_table.id
 LIMIT 100
 ```
 
 - `<%` operator: Returns rows where the query has word similarity to the text
 - `word_similarity()`: Scores how similar the query is to words in the text (0-1)
-- Results ordered by relevance score descending. Every whole-word match scores 1.00, so ties are common: they follow the table's `order_by` (its order without a search), then `id`. The order is the same on every call, so paging with `offset` neither skips nor repeats a record.
-- Write your own search query the same way: `word_similarity(...) DESC` alone leaves tied rows in no particular order.
+- Results ordered by relevance score descending. Every whole-word match scores 1.00, so ties are common: they come back in primary-key order (every key column, qualified with the table name, for a composite key). That order is stable, not meaningful; it is the same on every call, so paging with `offset` neither skips nor repeats a record.
+- The table's `order_by` does not apply to text-search ranking (it still orders `db.search()` without `q`). Sort the results yourself if a page needs another order among equal matches.
+- Write your own search query the same way: `word_similarity(...) DESC` alone leaves tied rows in no particular order, so add the table's primary key, qualified (`my_table.id`) so a selected alias cannot shadow it.
 
 ## Frontend Integration
 

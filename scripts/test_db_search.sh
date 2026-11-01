@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Regression harness for application.lib.db's search() and idsInSearchTerm(): the order of text
-# search results (score, then the table's order_by, then id) and search()'s sql_type argument.
+# search results (score, then primary key; never the table's order_by) and search()'s sql_type.
 # Starts a throwaway PostgreSQL in Docker, loads scripts/test_db_search/fixture.sql, serves
 # scripts/test_db_search/probe.cfm with RustCFML against this checkout, and prints what the probe
 # found. Nothing outside the container and a temporary directory is touched.

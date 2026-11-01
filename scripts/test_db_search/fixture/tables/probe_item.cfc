@@ -1,6 +1,6 @@
 <cfcomponent>
 
-    <!--- Fixture for scripts/test_db_search.sh: a searchable table whose own order_by is rank. --->
+    <!--- Fixture for scripts/test_db_search.sh: a searchable table whose order_by (rank) applies only to searches without q. --->
     <cffunction name="init">
 
         <cfset this.definition = {
