@@ -68,7 +68,7 @@ A request someone else started still needs the account owner to approve it: the 
 
 ## Inviting someone
 
-System → Profiles → a profile that can sign in → **Invite** gives a message to send: the sign-in address and their email. There is nothing else to share.
+System → Profiles → a profile that can sign in → **Invite** gives a message to send: the sign-in address and their email. There is nothing else to share. It doesn't say how they'll sign in, because a project's `/login/` may not be Moopa's: one that signs people in another way (a company's single sign-on, say) gets an invite that is still true.
 
 ## Sign-in activity
 
