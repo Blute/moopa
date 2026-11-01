@@ -4,6 +4,7 @@
 -- 1.00 and only the primary key orders them. Rows go in out of key order, and some have no
 -- owner, so a search that does not break ties on the key returns an order the harness refuses.
 -- probe_pair is keyed on (group_code, item_code); its id column is the same on every row.
+-- probe_vendor declares expand_fields "name", so a link to it carries only id and name.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE probe_owner (
@@ -17,11 +18,24 @@ CREATE TABLE probe_owner (
     last_updated_by uuid
 );
 
+CREATE TABLE probe_vendor (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name varchar,
+    email varchar,
+    notes text,
+    label varchar GENERATED ALWAYS AS (COALESCE(name::text, id::text)) STORED,
+    created_at timestamptz DEFAULT now(),
+    last_updated_at timestamptz DEFAULT now(),
+    created_by uuid,
+    last_updated_by uuid
+);
+
 CREATE TABLE probe_item (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name varchar,
     rank int4,
     owner_id uuid REFERENCES probe_owner (id),
+    vendor_id uuid REFERENCES probe_vendor (id),
     label varchar GENERATED ALWAYS AS (COALESCE(name::text, id::text)) STORED,
     created_at timestamptz DEFAULT now(),
     last_updated_at timestamptz DEFAULT now(),
@@ -33,6 +47,9 @@ CREATE TABLE probe_item (
 INSERT INTO probe_owner (id, name, email) VALUES
     ('00000000-0000-0000-0000-0000000000a1', 'Alpha', 'alpha@example.com'),
     ('00000000-0000-0000-0000-0000000000b2', 'Bravo', 'bravo@example.com');
+
+INSERT INTO probe_vendor (id, name, email, notes) VALUES
+    ('00000000-0000-0000-0000-0000000000d1', 'Delta Supplies', 'delta@example.com', 'Private note');
 
 INSERT INTO probe_item (id, name, rank, owner_id) VALUES
     ('00000000-0000-0000-0000-000000000005', 'widgets galore', 0, '00000000-0000-0000-0000-0000000000a1'),
@@ -62,3 +79,6 @@ INSERT INTO probe_pair (id, group_code, item_code, name) VALUES
     ('00000000-0000-0000-0000-0000000000cc', 'b', '1', 'gadget'),
     ('00000000-0000-0000-0000-0000000000cc', 'a', '3', 'gadget'),
     ('00000000-0000-0000-0000-0000000000cc', 'a', '1', 'gadget');
+
+UPDATE probe_item SET vendor_id = '00000000-0000-0000-0000-0000000000d1'
+WHERE id = '00000000-0000-0000-0000-000000000001';

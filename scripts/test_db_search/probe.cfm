@@ -150,6 +150,27 @@
         check("sql_type=expanded with q keeps the order", names(db.search(table_name = "probe_item", field_list = fields, q = "widget", sql_type = "expanded", returnFormat = "cfml")), expectedNames);
     });
 
+    // A linked table's expand_fields bounds what an expanded search carries: probe_vendor allows
+    // only name, so the link is id and name, without email or notes, with or without q.
+    attempt("expand_fields", function() {
+        var vendorFields = "id,name,vendor_id";
+        var one = ["00000000-0000-0000-0000-000000000001"];
+        var expanded = db.search(table_name = "probe_item", field_list = vendorFields, ids = one, sql_type = "expanded", returnFormat = "cfml")[1];
+        var vendorKeys = structKeyArray(expanded.vendor_id);
+        arraySort(vendorKeys, "textnocase");
+        check("expanded link to an expand_fields table carries only the allowed fields", lowerAll(vendorKeys), ["id", "name"]);
+        check("expanded link to an expand_fields table: values", [lCase(expanded.vendor_id.id), expanded.vendor_id.name], ["00000000-0000-0000-0000-0000000000d1", "Delta Supplies"]);
+
+        var searched = db.search(table_name = "probe_item", field_list = vendorFields, q = "widget one", sql_type = "expanded", returnFormat = "cfml");
+        var first = {};
+        for (var record in searched) {
+            if (lCase(record.id) EQ one[1]) { first = record; }
+        }
+        var searchedKeys = structKeyArray(first.vendor_id ?: {});
+        arraySort(searchedKeys, "textnocase");
+        check("expanded text search: link carries only the allowed fields", lowerAll(searchedKeys), ["id", "name"]);
+    });
+
     // An unknown sql_type fails loudly instead of selecting nothing.
     threw = false;
     try {

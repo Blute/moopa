@@ -11,7 +11,8 @@
             "fields": {
                 "name": {},
                 "rank": { "type": "int4" },
-                "owner_id": { "type": "uuid", "foreign_key_table": "probe_owner" }
+                "owner_id": { "type": "uuid", "foreign_key_table": "probe_owner" },
+                "vendor_id": { "type": "uuid", "foreign_key_table": "probe_vendor" }
             }
         } />
 

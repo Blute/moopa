@@ -25,6 +25,8 @@
 - `simple`: a linked record is just its id, as stored. Many-to-many and relation fields have no simple form, so they are left out.
 - `expanded`: a linked record is an object of the linked table's fields (sensitive fields left out).
 
+A linked table's `expand_fields`, and a link's `expand: "condensed"`, narrow what a link carries in search results exactly as they do for reads; see "What a link carries" in the `moopa-table-definitions` skill.
+
 A page that shows linked records' detail from search results asks for `sql_type="expanded"` instead of reading each record again. An unknown `sql_type` throws.
 
 ```cfml
