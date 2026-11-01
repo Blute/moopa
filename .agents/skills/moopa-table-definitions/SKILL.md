@@ -54,7 +54,7 @@ Table definitions live in `code/shared/tables/{table_name}.cfc` or `code/apps/{a
 | `label_generation_expression` | No | PostgreSQL expression for record labels in comboboxes |
 | `searchable_fields` | No | Comma-separated field list for full-text search (preferred over per-field `searchable: true`) |
 | `order_by` | No | Default sort order |
-| `expand_fields` | No | Comma-separated allow-list: the only fields of this table a link from another table carries in an `expanded` read. See [What a link carries](#what-a-link-carries) |
+| `expand_fields` | No | Comma-separated allow-list: the only fields of this table a link from another table carries, expanded or condensed. See [What a link carries](#what-a-link-carries) |
 
 ## Field Types
 
@@ -99,7 +99,7 @@ Table definitions live in `code/shared/tables/{table_name}.cfc` or `code/apps/{a
     "generation_expression": "", // For generated columns
     "foreign_key_table": "",     // Creates FK constraint
     "sensitive": false,          // true: left out of every read unless asked for, and of every link
-    "condensed": false,          // true: carried by condensed links (with id)
+    "condensed": false,          // true: carried by condensed links (with id), within the table's expand_fields
     "expand": "condensed",       // uuid foreign key only: this link is always condensed
     "html": { ... }              // UI control settings
 }
@@ -208,10 +208,10 @@ Three options narrow that, all opt-in:
 | Option | Where | Effect |
 |--------|-------|--------|
 | `sensitive: true` | field | Left out of links, and of direct reads of its own table unless the read lists it in `field_list` or passes `include_sensitive=true`. |
-| `expand_fields` | table | Allow-list: an expanded link from another table carries only these fields (plus `id`, always). Direct reads of the table are unaffected. A `sensitive` field stays out even when listed. |
+| `expand_fields` | table | Allow-list for every link from another table. An expanded link carries only these fields, plus `id`: a link always needs the id, and the linking row already holds it as the foreign-key value. A condensed link (including one forced by `expand: "condensed"`) carries only those of its fields that are `id`, `label` or listed: `id` and `label` always pass, so the default `{id, label}` is unchanged, but a `condensed: true` field outside the list stays out. A `sensitive` field stays out of expanded links even when listed. Direct reads of the table are unaffected. |
 | `expand: "condensed"` | uuid foreign-key field | This link is projected condensed even inside an expanded read. Other links on the table are unaffected. |
 
-Use `expand_fields` on a table holding private data (dates of birth, medical notes, payroll fields): a column added later stays out of every link until it is listed, where `sensitive` has to be remembered on each new field. Pages that read the table directly still get everything.
+Use `expand_fields` on a table holding private data (dates of birth, medical notes, payroll fields): a column added later stays out of every link, expanded or condensed, until it is listed, where `sensitive` has to be remembered on each new field. Pages that read the table directly still get everything. A table without `expand_fields` keeps the projections described above exactly.
 
 ```cfml
 <cfset this.definition = [

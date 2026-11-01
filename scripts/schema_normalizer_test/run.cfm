@@ -87,6 +87,9 @@
     check("default: a many_to_many link leaves out a sensitive field", !has(m2m, "tax_file_number"), squash(m2m));
     check("default: _expand_fields is empty", (schema.person._expand_fields ?: "") EQ "", schema.person._expand_fields ?: "");
     check("default: a uuid link stays expanded", fk NEQ schema.booking.fields.person_id.sql_select_condensed);
+    check("default: a condensed uuid link carries id and the condensed fields", has(schema.booking.fields.person_id.sql_select_condensed, "json_build_object('id',id,'email',email)"), squash(schema.booking.fields.person_id.sql_select_condensed));
+    check("default: a condensed many_to_many link carries id and the condensed fields", has(schema.team.fields.members.sql_select_condensed, "jsonb_build_object('id',id,'email',email)"), squash(schema.team.fields.members.sql_select_condensed));
+    check("default: a condensed relation carries id and label", has(squash(schema.person.fields.notes.sql_select_condensed), "SELECT id,label FROM person_note"), squash(schema.person.fields.notes.sql_select_condensed));
 
     // 2. expand_fields on the linked table: links carry only the listed fields, plus id.
     schema = normalized(fixture({ "expand_fields": " label, name ,email,name,tax_file_number" }));
@@ -98,7 +101,7 @@
     check("expand_fields: a many_to_many link carries the listed fields", has(m2m, "'name', person.name") AND has(m2m, "'id', person.id::text"), squash(m2m));
     check("expand_fields: a many_to_many link leaves out unlisted fields", !has(m2m, "date_of_birth") AND !has(m2m, "medical_notes"), squash(m2m));
     check("expand_fields: a listed sensitive field is still left out", !has(fk, "tax_file_number") AND !has(m2m, "tax_file_number"), squash(fk));
-    check("expand_fields: the condensed link is unchanged", has(schema.booking.fields.person_id.sql_select_condensed, "'email',email"), squash(schema.booking.fields.person_id.sql_select_condensed));
+    check("expand_fields: a condensed link carries a listed condensed field", has(schema.booking.fields.person_id.sql_select_condensed, "json_build_object('id',id,'email',email)"), squash(schema.booking.fields.person_id.sql_select_condensed));
     direct = projection.select(tableDef = schema.person, sql_type = "expanded");
     check("expand_fields: a direct read of the table still has every non-sensitive field", has(direct, "person.date_of_birth AS date_of_birth") AND has(direct, "person.medical_notes AS medical_notes") AND !has(direct, "tax_file_number"), direct);
 
@@ -112,6 +115,29 @@
     definitions = fixture();
     schema = normalized(definitions);
     check("default: a relation carries every field", has(schema.person.fields.notes.sql_select_expanded, "person_note.private_body AS private_body"), squash(schema.person.fields.notes.sql_select_expanded));
+
+    // 3b. expand_fields also bounds condensed links: a condensed: true field outside the list
+    // stays out; id and label always pass.
+    definitions = fixture({ "expand_fields": "id,name" }, { "expand": "condensed" });
+    definitions.person.fields.medical_notes.condensed = true;
+    definitions.person.fields.label = { "type": "varchar", "condensed": true };
+    definitions.person_note.expand_fields = "body";
+    definitions.person_note.fields.body.condensed = true;
+    definitions.person_note.fields.private_body.condensed = true;
+    schema = normalized(definitions);
+    fk = schema.booking.fields.backup_person_id.sql_select_condensed;
+    m2m = schema.team.fields.members.sql_select_condensed;
+    rel = schema.person.fields.notes.sql_select_condensed;
+    check("expand_fields: a condensed uuid link leaves out unlisted condensed fields", !has(fk, "email") AND !has(fk, "medical_notes"), squash(fk));
+    check("expand_fields: a condensed uuid link keeps id and label", has(fk, "json_build_object('id',id,'label',label)"), squash(fk));
+    check("expand_fields: a condensed many_to_many link leaves out unlisted condensed fields", !has(m2m, "email") AND !has(m2m, "medical_notes"), squash(m2m));
+    check("expand_fields: a condensed many_to_many link keeps id and label", has(m2m, "jsonb_build_object('id',id,'label',label)"), squash(m2m));
+    check("expand_fields: a condensed relation leaves out unlisted condensed fields", !has(rel, "private_body"), squash(rel));
+    check("expand_fields: a condensed relation keeps id and listed condensed fields", has(squash(rel), "SELECT id,body FROM person_note"), squash(rel));
+    read = projection.select(tableDef = schema.booking, sql_type = "expanded");
+    forced = schema.booking.fields.person_id.sql_select_expanded;
+    check("expand_fields: a forced-condensed link in an expanded read leaves out unlisted condensed fields", !has(forced, "email") AND !has(forced, "medical_notes") AND has(forced, "json_build_object('id',id,'label',label)"), squash(forced));
+    check("expand_fields: an expanded read of the linking table carries neither", !has(read, "email") AND !has(read, "medical_notes") AND !has(read, "date_of_birth"), squash(read));
 
     // 4. expand_fields is checked at startup.
     message = normalizeError(fixture({ "expand_fields": "id,name,birthday" }));

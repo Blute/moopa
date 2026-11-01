@@ -683,7 +683,7 @@
             </cfif>
     </cffunction>
 
-    <cffunction name="buildExpandFields" access="private" returntype="void" output="false" hint="Validate the table's expand_fields and cache it as _expand_fields: the only fields a link from another table may carry in an expanded projection. Empty when the table does not declare expand_fields.">
+    <cffunction name="buildExpandFields" access="private" returntype="void" output="false" hint="Validate the table's expand_fields and cache it as _expand_fields: the only fields a link from another table may carry (condensed links also always pass id and label). Empty when the table does not declare expand_fields.">
         <cfargument name="table" type="struct" required="true">
 
         <cfset var expand_field_name = "" />
@@ -728,6 +728,28 @@
             <cfreturn false />
         </cfif>
         <cfreturn true />
+    </cffunction>
+
+    <cffunction name="linkCondensedFields" access="private" returntype="string" output="false" hint="The fields a condensed link carries from the linked table: its condensed: true fields with id, or id,label when it marks none. When it declares expand_fields, only id, label and fields in that list.">
+        <cfargument name="linkedTable" type="struct" required="true">
+
+        <cfset var condensed_fields = arguments.linkedTable._condensed_fields ?: "" />
+        <cfset var allowed_fields = "" />
+        <cfset var condensed_field = "" />
+
+        <cfif !len(condensed_fields)>
+            <cfset condensed_fields = "id,label" />
+        </cfif>
+        <cfif !len(arguments.linkedTable._expand_fields ?: "")>
+            <cfreturn condensed_fields />
+        </cfif>
+
+        <cfloop list="#condensed_fields#" item="condensed_field">
+            <cfif listFindNoCase("id,label", condensed_field) OR listFindNoCase(arguments.linkedTable._expand_fields, condensed_field)>
+                <cfset allowed_fields = listAppend(allowed_fields, condensed_field) />
+            </cfif>
+        </cfloop>
+        <cfreturn allowed_fields />
     </cffunction>
 
     <cffunction name="normalizeIndexes" access="private" returntype="void" output="false" hint="Apply index defaults after field-derived indexes are generated.">
@@ -802,16 +824,11 @@
                         ),'[]')::jsonb AS #field_name#
                     </cfoutput>
                     </cfsavecontent>
-                    <!--- Build condensed pairs from _condensed_fields, fall back to id,label --->
-                    <cfset condensed_fields = arguments.codeSchemaInput[field.foreign_key_table]._condensed_fields ?: "" />
-                    <cfif !len(condensed_fields)>
-                        <cfset condensed_pairs = "'id',id,'label',label" />
-                    <cfelse>
-                        <cfset condensed_pairs = "" />
-                        <cfloop list="#condensed_fields#" item="cf">
-                            <cfset condensed_pairs = listAppend(condensed_pairs, "'#cf#',#cf#") />
-                        </cfloop>
-                    </cfif>
+                    <!--- Condensed pairs from the linked table's condensed fields (id,label by default), within its expand_fields --->
+                    <cfset condensed_pairs = "" />
+                    <cfloop list="#linkCondensedFields(arguments.codeSchemaInput[field.foreign_key_table])#" item="cf">
+                        <cfset condensed_pairs = listAppend(condensed_pairs, "'#cf#',#cf#") />
+                    </cfloop>
                     <cfsavecontent variable="field.sql_select_condensed">
                     <cfoutput>
                         coalesce((
@@ -878,16 +895,11 @@
                             ),'{}')::jsonb AS #field.name#
                         </cfoutput>
                         </cfsavecontent>
-                        <!--- Build condensed pairs from _condensed_fields, fall back to id,label --->
-                        <cfset condensed_fields = arguments.codeSchemaInput[field.foreign_key_table]._condensed_fields ?: "" />
-                        <cfif !len(condensed_fields)>
-                            <cfset condensed_pairs = "'id',id,'label',label" />
-                        <cfelse>
-                            <cfset condensed_pairs = "" />
-                            <cfloop list="#condensed_fields#" item="cf">
-                                <cfset condensed_pairs = listAppend(condensed_pairs, "'#cf#',#cf#") />
-                            </cfloop>
-                        </cfif>
+                        <!--- Condensed pairs from the linked table's condensed fields (id,label by default), within its expand_fields --->
+                        <cfset condensed_pairs = "" />
+                        <cfloop list="#linkCondensedFields(arguments.codeSchemaInput[field.foreign_key_table])#" item="cf">
+                            <cfset condensed_pairs = listAppend(condensed_pairs, "'#cf#',#cf#") />
+                        </cfloop>
                         <cfsavecontent variable="field.sql_select_condensed">
                         <cfoutput>
                             coalesce((
@@ -959,13 +971,8 @@
                             ),'[]')::jsonb AS #field_name#
                         </cfoutput>
                         </cfsavecontent>
-                        <!--- Build condensed field list from _condensed_fields, fall back to id,label --->
-                        <cfset condensed_fields = arguments.codeSchemaInput[field.foreign_key_table]._condensed_fields ?: "" />
-                        <cfif !len(condensed_fields)>
-                            <cfset condensed_field_list = "id,label" />
-                        <cfelse>
-                            <cfset condensed_field_list = condensed_fields />
-                        </cfif>
+                        <!--- Condensed field list from the linked table's condensed fields (id,label by default), within its expand_fields --->
+                        <cfset condensed_field_list = linkCondensedFields(arguments.codeSchemaInput[field.foreign_key_table]) />
                         <cfsavecontent variable="field.sql_select_condensed">
                             <cfoutput>
                             coalesce((
