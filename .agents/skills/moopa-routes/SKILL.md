@@ -72,7 +72,7 @@ Dynamic slugs like `[customer_id]` become `arguments.customer_id` in endpoint fu
 - Unauthenticated users accessing `logged_in` or `security` routes are redirected to login
 - `bearer` validates against `BEARER_TOKEN` environment variable
 - Default is `security` if omitted
-- A project that validates visitors without logging them in can open `validated` routes to them with `this.moopa_validated_without_login = true` in its `Application.cfc` (default `false`). It grants only `validated` routes, only to a session with a profile in this app; never `logged_in`, `security` or `bearer`. Read `code/moopa/docs/route-access.md` before turning it on.
+- A project that validates visitors without logging them in can open `validated` routes to them with `this.moopa_validated_without_login = true` in its `Application.cfc` (default `false`). It grants only `validated` routes, only to a session with a profile in this app; never `logged_in`, `security` or `bearer`. Such a session is re-checked once a minute: by its stay-signed-in device if it has one, else by the project's `this.moopa_validated_session_check = "<lib>.<method>"`, called as `application.lib.<lib>.<method>(auth = session.auth)` and returning `false` once what backs the validation is revoked or expired (Moopa then ends `session.auth`). With neither, the project owns the session's lifetime. Read `code/moopa/docs/route-access.md` before turning it on.
 
 The full levels, the order the checks run and the setting: `code/moopa/docs/route-access.md`.
 

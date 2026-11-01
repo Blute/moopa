@@ -3,7 +3,7 @@
 Agents: read [AGENTS.md](AGENTS.md) first.
 
 - [Packages](docs/packages.md): how one codebase runs several apps, where code belongs, and why Hub's System pages (`/sysadmin`) are Moopa's alone.
-- [Route access](docs/route-access.md): who opens a route at each `open_to` level, the order the checks run, and `this.moopa_validated_without_login` for projects that validate visitors without a login.
+- [Route access](docs/route-access.md): who opens a route at each `open_to` level, the order the checks run, and `this.moopa_validated_without_login` (with its session check, `this.moopa_validated_session_check`) for projects that validate visitors without a login.
 - [Route links](docs/route-links.md): `route_links.json`, the record of which pages each route links to, read by System → Route Access.
 - [Object storage](docs/object-storage.md): S3 and Cloudflare R2 through Moopa's own client. **Apps upgrading from a Moopa that used the Lucee S3 extension must add `this.s3.defaultLocation`**; see its "Upgrading an existing app".
 - [Re-initialising](docs/reinitialising.md): `?init`, who may restart an app (development, a sysadmin through `req()`, or an operator with `PROJECT_INIT_KEY`), and how.
