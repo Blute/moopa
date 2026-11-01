@@ -74,10 +74,12 @@ Generates SQL field lists from table schema. Handles foreign keys, computed colu
 <!--- Returns all fields except specified --->
 ```
 
-**Modes:**
-- `expanded` (default): Full field expressions with joins/subqueries
-- `simple`: Basic column references
-- `condensed`: Minimal (id, label)
+**Modes** (`sql_type`):
+- `condensed` (default): linked records as `{id, label}`, or `id` plus the linked table's `condensed: true` fields
+- `expanded`: linked records with every non-sensitive field, narrowed by the linked table's `expand_fields` and by a link's `expand: "condensed"`
+- `simple`: Basic column references, links as plain uuids
+
+Direct fields of the table itself are the same in every mode; only links differ. `sensitive` fields are left out unless listed in `field_list` or `include_sensitive=true` is passed. See "What a link carries" in the `moopa-table-definitions` skill.
 
 ## Dynamic WHERE Clauses
 

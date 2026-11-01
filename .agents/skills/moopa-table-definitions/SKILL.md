@@ -54,6 +54,7 @@ Table definitions live in `code/shared/tables/{table_name}.cfc` or `code/apps/{a
 | `label_generation_expression` | No | PostgreSQL expression for record labels in comboboxes |
 | `searchable_fields` | No | Comma-separated field list for full-text search (preferred over per-field `searchable: true`) |
 | `order_by` | No | Default sort order |
+| `expand_fields` | No | Comma-separated allow-list: the only fields of this table a link from another table carries in an `expanded` read. See [What a link carries](#what-a-link-carries) |
 
 ## Field Types
 
@@ -97,6 +98,9 @@ Table definitions live in `code/shared/tables/{table_name}.cfc` or `code/apps/{a
     "index": true,               // Create btree index on this field
     "generation_expression": "", // For generated columns
     "foreign_key_table": "",     // Creates FK constraint
+    "sensitive": false,          // true: left out of every read unless asked for, and of every link
+    "condensed": false,          // true: carried by condensed links (with id)
+    "expand": "condensed",       // uuid foreign key only: this link is always condensed
     "html": { ... }              // UI control settings
 }
 ```
@@ -190,6 +194,49 @@ The combobox automatically calls `search.category_id` endpoint for options, whic
 ```
 
 This auto-creates a bridge table `{table_name}_roles` with proper FK constraints.
+
+## What a link carries
+
+A uuid foreign key, a `many_to_many` list and a `relation` pull in records of another table. How much of each linked record a read carries depends on the read's `sql_type`:
+
+- `simple`: the uuid only (a `many_to_many` or `relation` is left out).
+- `condensed`: `{id, label}`, or `id` plus the linked table's fields marked `condensed: true` when it marks any.
+- `expanded`: every field of the linked table except its `sensitive` ones. A uuid link inside an expanded read leaves out the linked table's own `many_to_many` lists.
+
+Three options narrow that, all opt-in:
+
+| Option | Where | Effect |
+|--------|-------|--------|
+| `sensitive: true` | field | Left out of links, and of direct reads of its own table unless the read lists it in `field_list` or passes `include_sensitive=true`. |
+| `expand_fields` | table | Allow-list: an expanded link from another table carries only these fields (plus `id`, always). Direct reads of the table are unaffected. A `sensitive` field stays out even when listed. |
+| `expand: "condensed"` | uuid foreign-key field | This link is projected condensed even inside an expanded read. Other links on the table are unaffected. |
+
+Use `expand_fields` on a table holding private data (dates of birth, medical notes, payroll fields): a column added later stays out of every link until it is listed, where `sensitive` has to be remembered on each new field. Pages that read the table directly still get everything.
+
+```cfml
+<cfset this.definition = [
+    "title": "Person",
+    "title_plural": "People",
+    "expand_fields": "id,label,name,email",
+    "fields": [
+        "name": { "type": "varchar" },
+        "email": { "type": "varchar" },
+        "date_of_birth": { "type": "date" },
+        "medical_notes": { "type": "text" }
+    ]
+] />
+```
+
+```cfml
+<!--- On a table that links to person: this link never carries more than id and label --->
+"person_id": {
+    "type": "uuid",
+    "foreign_key_table": "person",
+    "expand": "condensed"
+}
+```
+
+Both are checked when the app starts and fail loudly: every `expand_fields` name must be a field of the table, the list must not be empty, and `expand` must be `"condensed"` on a uuid field with a `foreign_key_table`.
 
 ## Generated Columns
 
