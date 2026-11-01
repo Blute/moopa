@@ -51,6 +51,8 @@
         </cfif>
         <!--- Refuse to start with a malformed this.moopa_error_details (docs/errors.md) --->
         <cfset _errorDetailsAudience() />
+        <!--- Whether a validated session without a login may open open_to="validated" routes; refuses to start on a non-boolean (docs/route-access.md) --->
+        <cfset application.moopa_validated_without_login = _validatedWithoutLogin() />
         <!--- Hub always serves Moopa's own System routes and menu (/sysadmin) from the framework; no other app does, and no project may define them. --->
         <cfset application.system_routes = (application.app_name EQ "hub") />
         <cfset application.moopa_packages = _getMoopaPackages() />
@@ -63,6 +65,8 @@
 
 
         <cfset _setupLibs() />
+        <!--- The project's check that a validated session without a login is still valid; refuses to start on a bad name (docs/route-access.md) --->
+        <cfset application.moopa_validated_session_check = _validatedSessionCheck() />
         <cfset _setupControls() />
         <cfset _setupServices() />
         <!--- <cfset application.lib.db.getService("moo_route").initializeRoutesIntoApplicationScope() /> --->
@@ -280,6 +284,91 @@
     </cffunction>
 
 
+    <cffunction name="_validatedWithoutLogin" access="private" returntype="boolean" output="false" hint="Whether open_to=validated routes are open to a session that is validated (application.lib.auth.isValidated()) with a profile in this app but isn't logged in, from this.moopa_validated_without_login. No setting is false. Throws moopa.config.invalidValidatedWithoutLogin when the setting isn't true or false; onApplicationStart calls it so a bad setting stops the app starting.">
+        <cfset var setting = this.moopa_validated_without_login ?: false />
+
+        <cfif NOT isSimpleValue(setting) OR NOT listFindNoCase("true,false", setting)>
+            <cfthrow type="moopa.config.invalidValidatedWithoutLogin"
+                message="this.moopa_validated_without_login must be true or false." />
+        </cfif>
+        <cfreturn setting EQ true />
+    </cffunction>
+
+
+    <cffunction name="_validatedSessionCheck" access="private" returntype="string" output="false" hint="The project's check that a session validated without a login is still valid, from this.moopa_validated_session_check: a lib.method name (application.lib.<lib>.<method>(auth = session.auth), returning true or false), or empty when unset. Throws moopa.config.invalidValidatedSessionCheck when it isn't a lib.method name, names no public method of a loaded lib, or is set without this.moopa_validated_without_login; onApplicationStart calls it, after the libs load, so a bad setting stops the app starting.">
+        <cfset var setting = this.moopa_validated_session_check ?: "" />
+        <cfset var lib_name = "" />
+        <cfset var method_name = "" />
+
+        <cfif NOT isSimpleValue(setting) OR (len(setting) AND NOT reFind("^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$", setting))>
+            <cfthrow type="moopa.config.invalidValidatedSessionCheck"
+                message="this.moopa_validated_session_check must name a lib method as lib.method, such as auth.checkValidatedSession." />
+        </cfif>
+        <cfif NOT len(setting)>
+            <cfreturn "" />
+        </cfif>
+        <cfif NOT (application.moopa_validated_without_login ?: false)>
+            <cfthrow type="moopa.config.invalidValidatedSessionCheck"
+                message="this.moopa_validated_session_check is only used with this.moopa_validated_without_login = true." />
+        </cfif>
+        <cfset lib_name = listFirst(setting, ".") />
+        <cfset method_name = listLast(setting, ".") />
+        <cfif NOT structKeyExists(application.lib, lib_name) OR NOT structKeyExists(application.lib[lib_name], method_name)>
+            <cfthrow type="moopa.config.invalidValidatedSessionCheck"
+                message="this.moopa_validated_session_check names application.lib.#setting#, which isn't a public method of a loaded lib." />
+        </cfif>
+        <cfreturn setting />
+    </cffunction>
+
+
+    <cffunction name="_deviceStillThere" access="private" returntype="boolean" output="false" hint="Whether a stay-signed-in device (moo_profile_extended_session) still exists and hasn't expired: false once it is signed out from Sign-in activity or runs out.">
+        <cfargument name="device_id" type="string" required="true" />
+
+        <cfquery name="local.qDevice" returntype="array">
+            SELECT 1 AS present
+            FROM moo_profile_extended_session
+            WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#arguments.device_id#" />
+              AND expiration > now()
+        </cfquery>
+        <cfreturn arrayLen(local.qDevice) GT 0 />
+    </cffunction>
+
+
+    <cffunction name="_checkValidatedSession" access="private" returntype="void" output="true" hint="With this.moopa_validated_without_login on, checks at most once a minute that a session validated without a login (isValidated(), a profile in this app, not logged in) is still valid: by its stay-signed-in device when it has one, else by the project's this.moopa_validated_session_check. A failed check ends the session's auth, as a failed device check ends a login. With neither a device nor a check, the session is kept: the project owns its lifetime.">
+        <cfset var check = application.moopa_validated_session_check ?: "" />
+        <cfset var by_device = len(session.auth.device_id ?: "") GT 0 />
+        <cfset var still_valid = true />
+
+        <cfif NOT (application.moopa_validated_without_login ?: false)
+              OR application.lib.auth.isLoggedIn()
+              OR NOT len(application.app_name ?: "")
+              OR (session.auth.profile.app_name ?: "") NEQ application.app_name
+              OR dateDiff("s", session.auth.validated_checked_at ?: createDateTime(2000, 1, 1, 0, 0, 0), now()) LT 60
+              OR NOT application.lib.auth.isValidated()>
+            <cfreturn />
+        </cfif>
+
+        <cfif by_device>
+            <cfset still_valid = _deviceStillThere(session.auth.device_id) />
+        <cfelseif len(check)>
+            <cfset still_valid = invoke(application.lib[listFirst(check, ".")], listLast(check, "."), { auth: session.auth }) />
+            <cfif isNull(still_valid) OR NOT isBoolean(still_valid)>
+                <cfthrow type="moopa.config.invalidValidatedSessionCheck"
+                    message="application.lib.#check# must return true or false." />
+            </cfif>
+        </cfif>
+
+        <cfif still_valid>
+            <cfset session.auth.validated_checked_at = now() />
+        <cfelse>
+            <cfset structDelete(session, "auth") />
+            <cfif by_device>
+                <cfcookie name="deviceid" value="" path="/" expires="0" httponly="true" secure="true" samesite="Lax">
+            </cfif>
+        </cfif>
+    </cffunction>
+
+
     <cffunction name="_showErrorDetail" access="private" returntype="boolean" output="false" hint="Whether an error's details (message, stack, exception) may be shown, as this.moopa_error_details allows in this environment: to everyone, to nobody, or (the default) to a sysadmin signed in to this app. False when the setting is malformed, or the session can't be read for a sysadmin, since the error may be the session's.">
         <cftry>
             <cfset local.audience = _errorDetailsAudience() />
@@ -386,19 +475,17 @@
               session from a stay-signed-in device checks, at most once a minute, that the device is still there --->
         <cfif application.lib.auth.isLoggedIn() AND len(session.auth.device_id ?: "")
               AND dateDiff("s", session.auth.device_checked_at ?: createDateTime(2000, 1, 1, 0, 0, 0), now()) GTE 60>
-            <cfquery name="local.qDevice" returntype="array">
-                SELECT 1 AS present
-                FROM moo_profile_extended_session
-                WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#session.auth.device_id#" />
-                  AND expiration > now()
-            </cfquery>
-            <cfif arrayLen(local.qDevice)>
+            <cfif _deviceStillThere(session.auth.device_id)>
                 <cfset session.auth.device_checked_at = now() />
             <cfelse>
                 <cfset structDelete(session, "auth") />
                 <cfcookie name="deviceid" value="" path="/" expires="0" httponly="true" secure="true" samesite="Lax">
             </cfif>
         </cfif>
+
+        <!--- A session validated without a login (this.moopa_validated_without_login) is checked once a minute
+              too: by its device, else by the project's this.moopa_validated_session_check (docs/route-access.md) --->
+        <cfset _checkValidatedSession() />
 
 
         <!---

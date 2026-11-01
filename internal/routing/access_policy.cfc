@@ -46,6 +46,12 @@
             </cfif>
         </cfif>
 
+        <!--- A validated session without a login, where the project allows it (this.moopa_validated_without_login,
+              docs/route-access.md): only open_to="validated", and only with a profile in this app --->
+        <cfif open_to EQ "validated" AND validatedWithoutLogin()>
+            <cfreturn true />
+        </cfif>
+
         <!--- Must be logged in for remaining checks --->
         <cfif !application.lib.auth.isLoggedIn()>
             <cfreturn false />
@@ -131,6 +137,20 @@
             <cfreturn true />
         </cfif>
         <cfreturn false />
+    </cffunction>
+
+
+    <cffunction name="validatedWithoutLogin" access="private" returntype="boolean" output="false" hint="True when the project turned on this.moopa_validated_without_login (read once at start into application.moopa_validated_without_login) and the session has a profile in the running app that application.lib.auth.isValidated() accepts, logged in or not.">
+        <cfset var app_name = application.app_name ?: "" />
+
+        <cfif NOT (application.moopa_validated_without_login ?: false)>
+            <cfreturn false />
+        </cfif>
+        <!--- Profiles are app-scoped, as for a logged-in session: one from another app opens nothing here --->
+        <cfif NOT len(app_name) OR (session.auth.profile.app_name ?: "") NEQ app_name>
+            <cfreturn false />
+        </cfif>
+        <cfreturn application.lib.auth.isValidated() />
     </cffunction>
 
 

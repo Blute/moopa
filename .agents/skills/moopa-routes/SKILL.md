@@ -54,7 +54,7 @@ Dynamic slugs like `[customer_id]` become `arguments.customer_id` in endpoint fu
 | Attribute | Values | Purpose |
 |-----------|--------|---------|
 | `key` | UUID | **Required.** Unique identifier — generate via `uuidgen`, never hand-crafted. Keys must be globally unique across the entire codebase. Missing or empty key throws `No Key Defined for <route>` from `moo_route.cfc` on first request — this is the framework-side check that route identity is wired up before any authorisation logic runs. |
-| `open_to` | `public`, `validated`, `security` | Access control (see below) |
+| `open_to` | `public`, `bearer`, `logged_in`, `validated`, `security` | Access control (see below) |
 | `auth_type` | app auth realm, e.g. `hub`, `www`, `shop`, ... | Restricts which auth source's profiles can hit this route. Normally inherited from the active app package. Declare it on a route only for unusual cross-realm cases. |
 
 ### Access Control: open_to Options
@@ -63,6 +63,7 @@ Dynamic slugs like `[customer_id]` become `arguments.customer_id` in endpoint fu
 |-------|-------------|----------|
 | `security` | Requires security/admin role | **Default for new routes** - Admin panels, system settings |
 | `logged_in` | Requires authenticated user | User dashboards, app pages after access granted |
+| `validated` | Logged in, and the project's `application.lib.auth.isValidated()` is true | Pages for people the project has verified (a customer, a confirmed email) |
 | `bearer` | Requires Bearer token in Authorization header | External API integrations, webhooks |
 | `public` | No authentication required | Landing pages, login, public APIs |
 
@@ -71,6 +72,9 @@ Dynamic slugs like `[customer_id]` become `arguments.customer_id` in endpoint fu
 - Unauthenticated users accessing `logged_in` or `security` routes are redirected to login
 - `bearer` validates against `BEARER_TOKEN` environment variable
 - Default is `security` if omitted
+- A project that validates visitors without logging them in can open `validated` routes to them with `this.moopa_validated_without_login = true` in its `Application.cfc` (default `false`). It grants only `validated` routes, only to a session with a profile in this app; never `logged_in`, `security` or `bearer`. Such a session is re-checked once a minute: by its stay-signed-in device if it has one, else by the project's `this.moopa_validated_session_check = "<lib>.<method>"`, called as `application.lib.<lib>.<method>(auth = session.auth)` and returning `false` once what backs the validation is revoked or expired (Moopa then ends `session.auth`). With neither, the project owns the session's lifetime. Read `code/moopa/docs/route-access.md` before turning it on.
+
+The full levels, the order the checks run and the setting: `code/moopa/docs/route-access.md`.
 
 ```cfml
 <!--- New route - start with security (sysadmin only) --->
