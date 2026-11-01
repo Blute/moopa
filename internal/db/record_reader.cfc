@@ -47,6 +47,7 @@
         <cfargument name="searchableTables" type="struct" required="true" />
         <cfargument name="selectFields" type="string" required="true" />
         <cfargument name="orderBy" type="string" required="true" />
+        <cfargument name="searchTieBreak" type="string" required="false" default="" hint="ORDER BY terms after word_similarity() for a text search (projection_builder.searchTieBreak)" />
         <cfargument name="field_list" type="string" required="false" default="*" />
         <cfargument name="q" type="string" required="false" default="" />
         <cfargument name="where" type="struct" required="false" default="#structNew()#" />
@@ -115,6 +116,9 @@
 
                 <cfif len(arguments.q) AND structKeyExists(arguments.searchableTables, tableName)>
                     ORDER BY word_similarity(<cfqueryparam cfsqltype="varchar" value="#arguments.q#" />, search_text) DESC
+                    <cfif len(arguments.searchTieBreak)>
+                        , #preserveSingleQuotes(arguments.searchTieBreak)#
+                    </cfif>
                 <cfelse>
                     #preserveSingleQuotes(arguments.orderBy)#
                 </cfif>
@@ -140,6 +144,7 @@
         <cfargument name="term" required="true" />
         <cfargument name="limit" required="false" default="20" />
         <cfargument name="searchableTables" type="struct" required="true" />
+        <cfargument name="searchTieBreak" type="string" required="false" default="id" hint="ORDER BY terms after word_similarity() (projection_builder.searchTieBreak)" />
 
         <cfset var search_ids = [] />
         <cfset var qSearchIds = "" />
@@ -150,6 +155,9 @@
                 FROM #arguments.table_name#
                 WHERE <cfqueryparam cfsqltype="varchar" value="#arguments.term#" /> <% search_text
                 ORDER BY word_similarity(<cfqueryparam cfsqltype="varchar" value="#arguments.term#" />, search_text) DESC
+                <cfif len(arguments.searchTieBreak)>
+                    , #preserveSingleQuotes(arguments.searchTieBreak)#
+                </cfif>
                 LIMIT <cfqueryparam cfsqltype="numeric" value="#arguments.limit#" />
             </cfquery>
 

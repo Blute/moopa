@@ -56,6 +56,21 @@
         <cfreturn "ORDER BY #order_by#" />
     </cffunction>
 
+    <cffunction name="searchTieBreak" access="public" returntype="string" output="false" hint="Return the ORDER BY terms that follow word_similarity() in a text search: the table's own order_by, then id.">
+        <cfargument name="tableDef" type="struct" required="true" />
+
+        <!--- Every whole-word match scores 1.00, so equal scores are common. Without these terms
+              Postgres returns tied rows in whatever order the plan produces, which can change
+              between calls and makes paging skip or repeat rows. --->
+        <cfset var terms = trim(arguments.tableDef.order_by ?: "") />
+
+        <cfif structKeyExists(arguments.tableDef.fields, "id")>
+            <cfset terms = listAppend(terms, "id") />
+        </cfif>
+
+        <cfreturn terms />
+    </cffunction>
+
     <cffunction name="getFieldsToProject" access="private" returntype="string" output="false" hint="Resolve include/exclude/sensitive field lists for select().">
         <cfargument name="tableDef" type="struct" required="true" />
         <cfargument name="field_list" type="string" default="" />

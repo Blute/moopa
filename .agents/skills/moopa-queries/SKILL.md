@@ -74,10 +74,12 @@ Generates SQL field lists from table schema. Handles foreign keys, computed colu
 <!--- Returns all fields except specified --->
 ```
 
-**Modes:**
-- `expanded` (default): Full field expressions with joins/subqueries
-- `simple`: Basic column references
-- `condensed`: Minimal (id, label)
+**Modes** (`sql_type`, the same on `db.select()`, `db.read()` and `db.search()`), which differ in how linked (foreign key) fields come back:
+- `condensed` (default): a linked record is `{id, label}`, or the linked table's fields marked `condensed: true`
+- `simple`: plain column references; a linked record is just its id (many-to-many and relation fields are left out)
+- `expanded`: a linked record is an object of the linked table's fields (sensitive fields left out)
+
+`db.search()` takes `sql_type` too, so a list that shows linked records' detail asks for `sql_type="expanded"` rather than reading each record. Its text-search ordering (score, then the table's `order_by`, then `id`) is in `code/moopa/docs/search.md`.
 
 ## Dynamic WHERE Clauses
 
@@ -239,7 +241,7 @@ Pass native CFML structs or arrays straight to JSONB fields — **`db.save()` se
 
 **Round-trip:** `db.read(returnFormat="cfml")` deserializes the whole record — including JSONB fields — into native CFML values. Pass them back to `db.save()` as-is; the mapper re-serializes exactly once.
 
-**db.read() FK expansion gotcha:** `db.read(returnFormat="cfml")` in default `condensed` mode expands FK fields (e.g. `sell_tender_id`) into structs `{id, label}` instead of plain UUID strings. If you then use that value in a `cfqueryparam`, you get "Can't cast Complex Object Type Struct to String". Use `sql_type="simple"` when you need plain ID values:
+**db.read() FK expansion gotcha:** `db.read(returnFormat="cfml")` in default `condensed` mode expands FK fields (e.g. `sell_tender_id`) into structs `{id, label}` instead of plain UUID strings. If you then use that value in a `cfqueryparam`, you get "Can't cast Complex Object Type Struct to String". Use `sql_type="simple"` when you need plain ID values (`db.search()` takes the same argument):
 
 ```cfml
 <!--- GOOD: Plain FK values --->
