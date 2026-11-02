@@ -909,15 +909,19 @@ button.list-row { width: 100%; text-align: left; }
   --shell-scrollbar: oklch(100% 0 0 / 0.18);
   color: var(--ink);
 }
-.moo-shell-root { display: flex; height: 100dvh; }
+/* The page is a column one viewport tall: whatever a layout renders above the shell (an impersonation banner,
+   an environment strip, the mobile bar) keeps its own height, and the shell fills the rest, so nothing pushes
+   the page past the viewport or hides under a fixed bar. The page itself never scrolls; the content does. */
+body:has(> .moo-shell-root) { display: flex; flex-direction: column; height: 100dvh; }
+body:has(> .moo-shell-root) > :not(.moo-shell-root) { flex: none; }
+.moo-shell-root { display: flex; flex: 1 1 auto; min-height: 0; height: 100dvh; }
 .moo-shell-main { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
 .moo-shell-content { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--card-gap); padding: var(--sp-5); }
 @media (min-width: 768px)  { .moo-shell-content { padding: var(--sp-6) 1.75rem; } }
 @media (min-width: 1024px) { .moo-shell-content { padding: var(--sp-6) var(--sp-8); } }
-@media (max-width: 767.98px) { .moo-shell-mobile-bar + .moo-shell-root .moo-shell-content { padding-top: calc(3.5rem + var(--sp-4)); } }
 
 .moo-shell-sidebar {
-  position: sticky; top: 0; height: 100vh;
+  position: sticky; top: 0; align-self: stretch;
   display: flex; flex-direction: column; flex: 0 0 var(--sb-w); width: var(--sb-w); min-width: 0;
   background: var(--surface); border-right: 1px solid var(--shell-edge);
   transition: width var(--t) var(--ease);
@@ -938,7 +942,7 @@ button.list-row { width: 100%; text-align: left; }
 
 .moo-shell-mobile-bar { display: none; }
 @media (max-width: 767.98px) {
-  .moo-shell-mobile-bar { position: fixed; top: 0; left: 0; right: 0; z-index: var(--z-bar); height: 3.5rem; display: flex; align-items: center; gap: 0.5rem; padding: 0 1rem 0 0.5rem; background: var(--surface); border-bottom: 1px solid var(--hairline); font-weight: 500; }
+  .moo-shell-mobile-bar { position: relative; z-index: var(--z-bar); height: 3.5rem; display: flex; align-items: center; gap: 0.5rem; padding: 0 1rem 0 0.5rem; background: var(--surface); border-bottom: 1px solid var(--hairline); font-weight: 500; }
 }
 .moo-shell-icon-button { width: 2rem; height: 2rem; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-md); color: var(--ink-mute); transition: background-color 150ms ease, color 150ms ease; }
 .moo-shell-icon-button:hover, .moo-shell-icon-button:focus-visible { color: var(--ink); background: var(--canvas-soft); }
