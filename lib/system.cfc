@@ -61,6 +61,18 @@
     </cffunction>
 
 
+    <cffunction name="banner" access="public" returntype="string" output="false" hint="The project's banner (application.moopa_theme.banner): a template rendered as the first thing in <body> on every Moopa page, for a strip each page carries, such as one naming a test environment. Empty when the project sets none. moopa_layout (except in a frame, chrome=false, where the page around it shows it) and moopa_bare render it, and a project's own shell layout may too. docs/design.md: Configuring the theme.">
+        <cfset var theme = application.moopa_theme ?: {} />
+        <cfset var template = theme.banner ?: "" />
+        <cfset var html = "" />
+        <cfif NOT len(template)>
+            <cfreturn "" />
+        </cfif>
+        <cfsavecontent variable="html"><cfmodule template="#template#"></cfsavecontent>
+        <cfreturn html />
+    </cffunction>
+
+
     <!--- A project file's URL with ?v= from its content, so browsers keep it until it changes. Worked out once per
           start, and on every call in development, like staticUrl(). A URL that is not a local file is returned as is. --->
     <cffunction name="versioned" access="private" returntype="string" output="false">
@@ -77,6 +89,96 @@
             <cfreturn arguments.path />
         </cfif>
         <cfreturn arguments.path & (find("?", arguments.path) ? "&" : "?") & "v=" & variables.fileVersions[arguments.path] />
+    </cffunction>
+
+
+    <cffunction name="currentRoute" access="public" returntype="string" output="false" hint="The route a shell marks current in its menus: the given one, else this request's, as a path without a query or trailing slash. Pass the result to navHtml().">
+        <cfargument name="route" type="string" default="" hint="Empty: this request's route." />
+
+        <cfset var current = trim(len(arguments.route) ? arguments.route : (url.route ?: "/")) />
+        <cfset current = listFirst(current, "?") />
+        <cfif NOT len(current)><cfset current = "/" /></cfif>
+        <cfif left(current, 1) NEQ "/"><cfset current = "/" & current /></cfif>
+        <cfif len(current) GT 1 AND right(current, 1) EQ "/"><cfset current = left(current, len(current) - 1) /></cfif>
+        <cfreturn current />
+    </cffunction>
+
+
+    <cffunction name="navHtml" access="public" returntype="string" output="false" hint="Nav items (a nav file's, as moo_profile.buildNavs() gives them, or the System menu as one group) as the shell sidebar's rows: icons made solid for the dark panel, the current route marked and the groups holding it open. moopa_layout renders its menus with it, and so does a project's own shell layout, inside its moo-shell-nav, so every shell's menus match. docs/design.md: The layout.">
+        <cfargument name="items" type="array" required="true" />
+        <cfargument name="current" type="string" required="true" hint="The route to mark current, from currentRoute()." />
+
+        <cfset var html = "" />
+        <cfset var item = {} />
+        <cfloop array="#arguments.items#" item="item">
+            <cfset html &= navRow(item, 0, arguments.current) />
+        </cfloop>
+        <cfreturn html />
+    </cffunction>
+
+
+    <!--- A nav item and its children as sidebar rows --->
+    <cffunction name="navRow" access="private" returntype="string" output="false">
+        <cfargument name="item" type="struct" required="true" />
+        <cfargument name="depth" type="numeric" required="true" />
+        <cfargument name="current" type="string" required="true" />
+
+        <cfset var html = "" />
+        <cfset var child = {} />
+        <cfset var isCurrent = (arguments.item.route ?: "") EQ arguments.current />
+        <cfset var hasCurrentChild = false />
+        <cfset var depthClass = arguments.depth GTE 2 ? " is-depth-2" : (arguments.depth EQ 1 ? " is-depth-1" : "") />
+        <!--- The sidebar is dark, so every icon is solid (Font Awesome Free has solid for every free icon) --->
+        <cfset var icon = len(arguments.item.icon ?: "") ? solidIcon(arguments.item.icon) : "" />
+        <cfset var title = encodeForHTML(arguments.item.title ?: "") />
+        <cfset var subId = "" />
+
+        <cfif structKeyExists(arguments.item, "divider")>
+            <cfreturn '<div class="moo-shell-menu-divider"></div>' />
+        </cfif>
+
+        <cfif structKeyExists(arguments.item, "items") AND arrayLen(arguments.item.items)>
+            <cfset hasCurrentChild = containsCurrent(arguments.item.items, arguments.current) />
+            <cfset subId = "moo-shell-sub-" & lCase(left(hash(serializeJSON(arguments.item) & arguments.depth, "MD5"), 10)) />
+            <cfset html &= '<div class="moo-shell-nav-row-wrap" data-moo-shell-submenu#hasCurrentChild ? ' data-open="true"' : ''#>' />
+            <cfset html &= '<button type="button" class="moo-shell-nav-row#hasCurrentChild ? ' moo-shell-nav-row-parent-current' : ''##depthClass#" data-moo-shell-toggle-submenu aria-expanded="#hasCurrentChild ? 'true' : 'false'#" aria-controls="#subId#">' />
+            <cfif arguments.depth EQ 0>
+                <cfset html &= '<span class="moo-shell-nav-icon"><i class="#encodeForHTMLAttribute(len(icon) ? icon : 'fa-solid fa-folder')#"></i></span>' />
+            </cfif>
+            <cfset html &= '<span class="moo-shell-label">#title#</span><span class="moo-shell-chevron"><i class="fa-solid fa-chevron-right"></i></span></button>' />
+            <cfset html &= '<span class="moo-shell-nav-tooltip">#title#</span>' />
+            <cfset html &= '<div id="#subId#" class="moo-shell-sub-nav"><div class="moo-shell-sub-inner">' />
+            <cfloop array="#arguments.item.items#" item="child">
+                <cfset html &= navRow(child, arguments.depth + 1, arguments.current) />
+            </cfloop>
+            <cfset html &= '</div></div></div>' />
+            <cfreturn html />
+        </cfif>
+
+        <cfif NOT len(arguments.item.route ?: "")>
+            <cfreturn "" />
+        </cfif>
+        <cfset html &= '<div class="moo-shell-nav-row-wrap"><a href="#encodeForHTMLAttribute(arguments.item.route)#" class="moo-shell-nav-row#isCurrent ? ' moo-shell-nav-row-current' : ''##depthClass#"#isCurrent ? ' aria-current="page"' : ''#>' />
+        <cfif arguments.depth EQ 0>
+            <cfset html &= '<span class="moo-shell-nav-icon">#len(icon) ? '<i class="#encodeForHTMLAttribute(icon)#"></i>' : ''#</span>' />
+        </cfif>
+        <cfset html &= '<span class="moo-shell-label">#title#</span></a><span class="moo-shell-nav-tooltip">#title#</span></div>' />
+        <cfreturn html />
+    </cffunction>
+
+
+    <!--- Whether the current route is anywhere under a nav item, at any depth --->
+    <cffunction name="containsCurrent" access="private" returntype="boolean" output="false">
+        <cfargument name="items" type="array" required="true" />
+        <cfargument name="current" type="string" required="true" />
+        <cfset var child = {} />
+        <cfloop array="#arguments.items#" item="child">
+            <cfif (child.route ?: "") EQ arguments.current
+                OR (structKeyExists(child, "items") AND isArray(child.items) AND containsCurrent(child.items, arguments.current))>
+                <cfreturn true />
+            </cfif>
+        </cfloop>
+        <cfreturn false />
     </cffunction>
 
 

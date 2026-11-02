@@ -528,8 +528,12 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .empty { padding: var(--sp-8) var(--sp-4); text-align: center; color: var(--ink-mute); }
 .empty > i { display: block; margin: 0 auto var(--sp-2); font-size: 1.5rem; color: var(--ink-mute-2); }
 
-/* a page of its own (tags/moopa_bare.cfm): the status pages (404, 403, 500) and sign-in */
-.status-page { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-6); padding: var(--sp-8) var(--sp-4); text-align: center; }
+/* a page of its own (tags/moopa_bare.cfm): the status pages (404, 403, 500) and sign-in. Its body is a column at
+   least one viewport tall: a project banner above it keeps its own height and the page fills the rest, growing and
+   scrolling past the window only when its content needs to. */
+body:has(> .status-page, > .auth) { display: flex; flex-direction: column; min-height: 100dvh; }
+body:has(> .status-page, > .auth) > :not(.status-page, .auth) { flex: none; }
+.status-page { flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-6); padding: var(--sp-8) var(--sp-4); text-align: center; }
 .status-page-body { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); max-width: 28rem; }
 .status-brand { display: inline-flex; align-items: center; margin-bottom: var(--sp-3); padding: 0.625rem 1rem; border-radius: var(--radius-lg); background: var(--shell-bg); color: var(--shell-ink); font-weight: 600; text-decoration: none; }
 .status-brand img { display: block; height: var(--shell-logo-h); width: auto; }
@@ -543,7 +547,7 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
    The sign-in pages (lib/signin.cfc) use it. On a phone the panel is a header, the step's head sits on
    the same colour and its body is a sheet below. */
 .auth { --auth-brand: linear-gradient(160deg, var(--shell-bg), color-mix(in oklab, var(--shell-bg) 62%, black));
-  min-height: 100vh; display: grid; grid-template-columns: minmax(20rem, 0.8fr) 1fr; background: var(--surface); }
+  flex: 1 0 auto; display: grid; grid-template-columns: minmax(20rem, 0.8fr) 1fr; background: var(--surface); }
 .auth-brand { position: relative; overflow: hidden; isolation: isolate; display: flex; flex-direction: column; gap: var(--sp-8);
   padding: var(--sp-8) clamp(var(--sp-6), 4vw, 3.5rem); background: var(--auth-brand); color: var(--shell-ink); }
 .auth-brand::before, .auth-brand::after { content: ""; position: absolute; z-index: -1; border-radius: 50%;
@@ -909,15 +913,19 @@ button.list-row { width: 100%; text-align: left; }
   --shell-scrollbar: oklch(100% 0 0 / 0.18);
   color: var(--ink);
 }
-.moo-shell-root { display: flex; height: 100dvh; }
+/* The page is a column one viewport tall: whatever a layout renders above the shell (an impersonation banner,
+   an environment strip, the mobile bar) keeps its own height, and the shell fills the rest, so nothing pushes
+   the page past the viewport or hides under a fixed bar. The page itself never scrolls; the content does. */
+body:has(> .moo-shell-root) { display: flex; flex-direction: column; height: 100dvh; }
+body:has(> .moo-shell-root) > :not(.moo-shell-root) { flex: none; }
+.moo-shell-root { display: flex; flex: 1 1 auto; min-height: 0; height: 100dvh; }
 .moo-shell-main { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
 .moo-shell-content { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--card-gap); padding: var(--sp-5); }
 @media (min-width: 768px)  { .moo-shell-content { padding: var(--sp-6) 1.75rem; } }
 @media (min-width: 1024px) { .moo-shell-content { padding: var(--sp-6) var(--sp-8); } }
-@media (max-width: 767.98px) { .moo-shell-mobile-bar + .moo-shell-root .moo-shell-content { padding-top: calc(3.5rem + var(--sp-4)); } }
 
 .moo-shell-sidebar {
-  position: sticky; top: 0; height: 100vh;
+  position: sticky; top: 0; align-self: stretch;
   display: flex; flex-direction: column; flex: 0 0 var(--sb-w); width: var(--sb-w); min-width: 0;
   background: var(--surface); border-right: 1px solid var(--shell-edge);
   transition: width var(--t) var(--ease);
@@ -938,7 +946,7 @@ button.list-row { width: 100%; text-align: left; }
 
 .moo-shell-mobile-bar { display: none; }
 @media (max-width: 767.98px) {
-  .moo-shell-mobile-bar { position: fixed; top: 0; left: 0; right: 0; z-index: var(--z-bar); height: 3.5rem; display: flex; align-items: center; gap: 0.5rem; padding: 0 1rem 0 0.5rem; background: var(--surface); border-bottom: 1px solid var(--hairline); font-weight: 500; }
+  .moo-shell-mobile-bar { position: relative; z-index: var(--z-bar); height: 3.5rem; display: flex; align-items: center; gap: 0.5rem; padding: 0 1rem 0 0.5rem; background: var(--surface); border-bottom: 1px solid var(--hairline); font-weight: 500; }
 }
 .moo-shell-icon-button { width: 2rem; height: 2rem; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-md); color: var(--ink-mute); transition: background-color 150ms ease, color 150ms ease; }
 .moo-shell-icon-button:hover, .moo-shell-icon-button:focus-visible { color: var(--ink); background: var(--canvas-soft); }

@@ -9,7 +9,7 @@ Every Moopa page, the System pages and a project's own, shares one design: one h
 | `static/vendor/alpine-3.17.5/` | Alpine and its focus plugin |
 | `static/vendor/fontawesome-free-7.3.1/` | Font Awesome Free: solid, regular and brands |
 | `tags/moopa_layout.cfm` | The page shell that loads all of the above |
-| `lib/system.cfc` | `stylesheets()` (the `<link>`s every page loads), `staticUrl()`, `solidIcon()`, `avatarUrl()` |
+| `lib/system.cfc` | `stylesheets()` (the `<link>`s every page loads), `staticUrl()`, `navHtml()` and `currentRoute()` (the sidebar's menus), `solidIcon()`, `avatarUrl()` |
 
 Moopa serves `static/` itself at `/_moopa/static/…`, answered before the session or database is touched. `application.lib.system.staticUrl(path)` gives a file's URL versioned by the content of `moopa.css` and `moopa.js`, and versioned URLs and the `vendor/` folders are cached for a year. Only files under `static/` with a known extension are served.
 
@@ -42,7 +42,15 @@ Moopa serves `static/` itself at `/_moopa/static/…`, answered before the sessi
 
 The sidebar shows the app's menus, then, for a sysadmin, a dividing line and a System group with Moopa's pages from `sysadmin_nav.json` (never one of the app's navs). It opens by itself on a System page. A sysadmin's profile menu has Re-initialise. The System pages call the layout as `<cfmodule template="/moopa/tags/moopa_layout.cfm">`, so no project tag of the same name can stand in for it there.
 
-The sidebar is dark, so its icons are always solid: `application.lib.system.solidIcon()` turns any style (`fat`, `fal`, `far`, `fad`, sharp ...) into `fa-solid` and keeps brand icons as `fa-brands`. A project's own shell layout should use it for its sidebar too. The System pages load Font Awesome Free, so a Pro-only icon name shows nothing there.
+The sidebar is dark, so its icons are always solid: `application.lib.system.solidIcon()` turns any style (`fat`, `fal`, `far`, `fad`, sharp ...) into `fa-solid` and keeps brand icons as `fa-brands`. The System pages load Font Awesome Free, so a Pro-only icon name shows nothing there.
+
+`application.lib.system.navHtml(items, current)` renders nav items as the sidebar's rows, with those solid icons, the current route marked and the groups holding it open; `currentRoute()` gives the route to mark (this request's, or one passed in). `moopa_layout` renders its menus with them, and a project's own shell layout uses them inside its `moo-shell-nav` too, so its menus match:
+
+```cfml
+<nav class="moo-shell-nav">#application.lib.system.navHtml(navs.primary, application.lib.system.currentRoute())#</nav>
+```
+
+The page is a column one viewport tall, and the shell (`moo-shell-root`) fills what is left of it. Anything a layout renders above the shell as a child of `<body>` (an impersonation banner, a strip naming a test environment, the mobile bar) keeps its own height, and the content scrolls inside the shell, never the page.
 
 The profile button shows the signed-in profile's picture (its avatar, else its picture) from `application.lib.system.avatarUrl()`, a small square image through the signed-assets Worker, kept in the session for 15 minutes. The picture lies over the initials and removes itself if it fails to load, so the initials show when there is no picture, files are not set up, or the image cannot be fetched.
 
@@ -71,16 +79,18 @@ The profile button shows the signed-in profile's picture (its avatar, else its p
 In the project's `Application.cfc`, `onApplicationStart` (it may differ per app, as `APP_NAME` is known there):
 
 ```cfml
-<!--- Both keys are optional --->
+<!--- Every key is optional --->
 <cfset application.moopa_theme = {
-    icons: "https://kit.fontawesome.com/<kit>.css",
-    css:   [ "/_static/theme.css", "/_static/theme-www.css" ],
-    logo:  "/_static/images/logo.png"
+    icons:  "https://kit.fontawesome.com/<kit>.css",
+    css:    [ "/_static/theme.css", "/_static/theme-www.css" ],
+    logo:   "/_static/images/logo.png",
+    banner: "/shared/tags/environment_strip.cfm"
 } />
 ```
 
 - **`icons`**: a Font Awesome kit or other icon CSS. Unset, Moopa's vendored Font Awesome Free (solid, regular, brands) loads. A Pro kit makes Pro icon names work on the System pages too.
 - **`logo`**: the project's logo for the dark sidebar and mobile bar, shown instead of its name (`moo-shell-logo`, 3.25rem tall). Pick the version made for dark backgrounds. A project's own shell layout shows the same file.
+- **`banner`**: a template (a path Lucee can include) rendered as the first thing in `<body>` on every Moopa page, `moopa_layout`'s and `moopa_bare`'s, for a strip each page carries, such as one naming a test environment. It sits above the shell or the status page, which fills the rest of the window. A page in a frame (`chrome="false"`) leaves it out, as the page around the frame shows it. It renders on the status pages too, which may be reporting a failed database or session, so it reads neither; one that fails there is left out rather than taking the status page down with it. `application.lib.system.banner()` returns it, for a project's own shell layout.
 - **`css`**: the theme files. Unset, Moopa loads `/_static/theme.css` and then `/_static/theme-<app>.css` (for example `theme-www.css`) when they exist, so a project with one theme needs no configuration at all. Each is versioned by its content, so browsers keep it until it changes.
 
 ### What a theme sets
@@ -125,7 +135,7 @@ From a copied stylesheet (a project with its own `basic.css` and `shell.css`):
 
 1. Put the project's real differences in `theme.css`: compare its `:root` with Moopa's; usually only the accent and the font differ.
 2. Put what only that project has in its own CSS (`app.css`); drop every rule Moopa already has.
-3. Its layout loads `system.stylesheets()` then `app.css`, uses `system.solidIcon()` and `system.avatarUrl()`, and keeps the shell markup Moopa's layout uses (`moo-shell-*`). Moopa's `moopa.js` drives the shell.
+3. Its layout loads `system.stylesheets()` then `app.css`, renders its menus with `system.navHtml()`, uses `system.avatarUrl()`, and keeps the shell markup Moopa's layout uses (`moo-shell-*`). Moopa's `moopa.js` drives the shell.
 4. A project with its own copy of the components (a `components.js` registering `comboSingle`, `fileUpload`…) loads `system.staticUrl('moopa.js')` before Alpine instead, and deletes its copy. Moopa's `fileUpload` dispatches `files-uploading`, `file-uploaded` and `files-uploaded`; `adminList` keeps its filters itself, without Alpine's persist plugin. Components only that project uses stay in its own script.
 5. Compare screenshots of every page before and after.
 

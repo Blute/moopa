@@ -29,6 +29,14 @@
 <cfset projectTitle = application.project_title ?: "Moopa" />
 <cfset brandLogo = structKeyExists(application, "moopa_theme") AND isStruct(application.moopa_theme) AND structKeyExists(application.moopa_theme, "logo") ? application.moopa_theme.logo : "" />
 
+<!--- The project's banner, if it renders: this page may be reporting the very failure that stops it --->
+<cftry>
+    <cfset bareBanner = application.lib.system.banner() />
+    <cfcatch>
+        <cfset bareBanner = "" />
+    </cfcatch>
+</cftry>
+
 <!--- The theme, if it can be read; Moopa's stylesheet on its own if not --->
 <cftry>
     <cfset bareStyles = application.lib.system.stylesheets() />
@@ -52,6 +60,7 @@
     </cfif>
 </head>
 <body>
+#bareBanner#
 <cfset brandMark = len(brandLogo) ? '<img src="#encodeForHTMLAttribute(brandLogo)#" alt="#encodeForHTMLAttribute(projectTitle)#">' : encodeForHTML(projectTitle) />
 <cfif len(attributes.welcome)>
 <div class="auth">

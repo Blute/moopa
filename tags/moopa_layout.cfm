@@ -46,12 +46,8 @@
 <!--- The project's logo for the dark panel (application.moopa_theme.logo), else its name --->
 <cfset brandLogo = structKeyExists(application, "moopa_theme") AND isStruct(application.moopa_theme) AND structKeyExists(application.moopa_theme, "logo") ? application.moopa_theme.logo : "" />
 
-<!--- The route to mark current: the route's own path, without a query or trailing slash --->
-<cfset currentRoute = trim(len(attributes.current) ? attributes.current : (url.route ?: "/")) />
-<cfset currentRoute = listFirst(currentRoute, "?") />
-<cfif NOT len(currentRoute)><cfset currentRoute = "/" /></cfif>
-<cfif left(currentRoute, 1) NEQ "/"><cfset currentRoute = "/" & currentRoute /></cfif>
-<cfif len(currentRoute) GT 1 AND right(currentRoute, 1) EQ "/"><cfset currentRoute = left(currentRoute, len(currentRoute) - 1) /></cfif>
+<!--- The route to mark current in the menus --->
+<cfset currentRoute = system.currentRoute(attributes.current) />
 
 <cfset builtNavs = signedIn ? application.lib.db.getService("moo_profile").buildNavs() : {} />
 <cfset navNames = len(attributes.navs) ? listToArray(attributes.navs) : structKeyArray(builtNavs) />
@@ -65,67 +61,6 @@
 <cfloop list="#currentProfile.full_name ?: ''#" item="namePart" delimiters=" ">
     <cfif len(initials) LT 2 AND len(namePart)><cfset initials &= uCase(left(namePart, 1)) /></cfif>
 </cfloop>
-
-<!--- Whether the current route is anywhere under a nav item, at any depth --->
-<cffunction name="containsCurrent" access="private" returntype="boolean" output="false">
-    <cfargument name="items" type="array" required="true" />
-    <cfset var child = {} />
-    <cfloop array="#arguments.items#" item="child">
-        <cfif (child.route ?: "") EQ currentRoute
-            OR (structKeyExists(child, "items") AND isArray(child.items) AND containsCurrent(child.items))>
-            <cfreturn true />
-        </cfif>
-    </cfloop>
-    <cfreturn false />
-</cffunction>
-
-<!--- A nav item and its children as sidebar rows --->
-<cffunction name="navRow" access="private" returntype="string" output="false">
-    <cfargument name="item" type="struct" required="true" />
-    <cfargument name="depth" type="numeric" required="true" />
-
-    <cfset var html = "" />
-    <cfset var child = {} />
-    <cfset var isCurrent = (arguments.item.route ?: "") EQ currentRoute />
-    <cfset var hasCurrentChild = false />
-    <cfset var depthClass = arguments.depth GTE 2 ? " is-depth-2" : (arguments.depth EQ 1 ? " is-depth-1" : "") />
-    <!--- The sidebar is dark, so every icon is solid (Font Awesome Free has solid for every free icon) --->
-    <cfset var icon = len(arguments.item.icon ?: "") ? system.solidIcon(arguments.item.icon) : "" />
-    <cfset var title = encodeForHTML(arguments.item.title ?: "") />
-    <cfset var subId = "" />
-
-    <cfif structKeyExists(arguments.item, "divider")>
-        <cfreturn '<div class="moo-shell-menu-divider"></div>' />
-    </cfif>
-
-    <cfif structKeyExists(arguments.item, "items") AND arrayLen(arguments.item.items)>
-        <cfset hasCurrentChild = containsCurrent(arguments.item.items) />
-        <cfset subId = "moo-shell-sub-" & lCase(left(hash(serializeJSON(arguments.item) & arguments.depth, "MD5"), 10)) />
-        <cfset html &= '<div class="moo-shell-nav-row-wrap" data-moo-shell-submenu#hasCurrentChild ? ' data-open="true"' : ''#>' />
-        <cfset html &= '<button type="button" class="moo-shell-nav-row#hasCurrentChild ? ' moo-shell-nav-row-parent-current' : ''##depthClass#" data-moo-shell-toggle-submenu aria-expanded="#hasCurrentChild ? 'true' : 'false'#" aria-controls="#subId#">' />
-        <cfif arguments.depth EQ 0>
-            <cfset html &= '<span class="moo-shell-nav-icon"><i class="#encodeForHTMLAttribute(len(icon) ? icon : 'fa-solid fa-folder')#"></i></span>' />
-        </cfif>
-        <cfset html &= '<span class="moo-shell-label">#title#</span><span class="moo-shell-chevron"><i class="fa-solid fa-chevron-right"></i></span></button>' />
-        <cfset html &= '<span class="moo-shell-nav-tooltip">#title#</span>' />
-        <cfset html &= '<div id="#subId#" class="moo-shell-sub-nav"><div class="moo-shell-sub-inner">' />
-        <cfloop array="#arguments.item.items#" item="child">
-            <cfset html &= navRow(child, arguments.depth + 1) />
-        </cfloop>
-        <cfset html &= '</div></div></div>' />
-        <cfreturn html />
-    </cfif>
-
-    <cfif NOT len(arguments.item.route ?: "")>
-        <cfreturn "" />
-    </cfif>
-    <cfset html &= '<div class="moo-shell-nav-row-wrap"><a href="#encodeForHTMLAttribute(arguments.item.route)#" class="moo-shell-nav-row#isCurrent ? ' moo-shell-nav-row-current' : ''##depthClass#"#isCurrent ? ' aria-current="page"' : ''#>' />
-    <cfif arguments.depth EQ 0>
-        <cfset html &= '<span class="moo-shell-nav-icon">#len(icon) ? '<i class="#encodeForHTMLAttribute(icon)#"></i>' : ''#</span>' />
-    </cfif>
-    <cfset html &= '<span class="moo-shell-label">#title#</span></a><span class="moo-shell-nav-tooltip">#title#</span></div>' />
-    <cfreturn html />
-</cffunction>
 
 <cfoutput><!doctype html>
 <html lang="en"<cfif attributes.density EQ "compact"> data-density="compact"</cfif>>
@@ -142,6 +77,8 @@
     <script defer src="#system.staticUrl('vendor/alpine-3.17.5/alpine.min.js')#"></script>
 </head>
 <body>
+<!--- The project's banner, except inside a frame (chrome=false): the page around the frame shows it already --->
+<cfif attributes.chrome>#system.banner()#</cfif>
 <!--- Not inside a framed page (chrome=false): the page around the frame shows it already --->
 <cfif attributes.chrome AND (session.auth.is_impersonating ?: false)>
     <div class="moo-shell-banner" role="status">
@@ -178,14 +115,14 @@
                 <cfif structKeyExists(builtNavs, navName) AND arrayLen(builtNavs[navName])>
                     <cfif shownNavs GT 0><div class="moo-shell-menu-divider"></div></cfif>
                     <cfset shownNavs++ />
-                    <cfloop array="#builtNavs[navName]#" item="navItem">#navRow(navItem, 0)#</cfloop>
+                    #system.navHtml(builtNavs[navName], currentRoute)#
                 </cfif>
             </cfloop>
             <!--- Moopa's System pages, for sysadmins: their own group after the app's menus, below a line --->
             <cfif arrayLen(systemItems)>
                 <div class="moo-shell-nav-system">
                     <div class="moo-shell-menu-divider"></div>
-                    #navRow({ icon: "fa-solid fa-gear", title: "System", items: systemItems }, 0)#
+                    #system.navHtml([{ icon: "fa-solid fa-gear", title: "System", items: systemItems }], currentRoute)#
                 </div>
             </cfif>
         </nav>
