@@ -50,6 +50,8 @@ The sidebar is dark, so its icons are always solid: `application.lib.system.soli
 <nav class="moo-shell-nav">#application.lib.system.navHtml(navs.primary, application.lib.system.currentRoute())#</nav>
 ```
 
+An item is `{ title, icon, route }`, or a group of them (`items`). Two more kinds shape a menu a layout builds itself: `{ section: "My work" }` is a heading over the rows after it (`moo-shell-section-title`, hidden in the collapsed rail), and `{ divider: true }` a line. An item's own `current` (`true` or `false`) overrides matching its route, for a layout that knows the current page better than the route does: a record's detail page marks its list's row.
+
 The page is a column one viewport tall, and the shell (`moo-shell-root`) fills what is left of it. Anything a layout renders above the shell as a child of `<body>` (an impersonation banner, a strip naming a test environment, the mobile bar) keeps its own height, and the content scrolls inside the shell, never the page.
 
 The profile button shows the signed-in profile's picture (its avatar, else its picture) from `application.lib.system.avatarUrl()`, a small square image through the signed-assets Worker, kept in the session for 15 minutes. The picture lies over the initials and removes itself if it fails to load, so the initials show when there is no picture, files are not set up, or the image cannot be fetched.
@@ -147,7 +149,7 @@ From Tailwind and daisyUI: theme first, then page by page. Map daisyUI's theme c
 The class list is the stylesheet's own sections; read them before writing markup, and add a primitive only when a second page needs it (page-specific styles go in a `<style>` block on that page, using tokens).
 
 - **Layout:** `page`, `page-header` (`page-lede`, `page-actions`), `stack`, `cluster`, `row`, `split` (`split-end` puts the aside on the right), `auto-grid` (`--auto-min`)
-- **Content:** `card` (`card-header`, `card-title`, `card-sub`, `card-body`, `card-footer`), `stat`, `table` (`table-sm`, `table-hover`, `table-clickable`, `table-fixed`, `table-top`, `cell-main`, `cell-sub`, `actions`, `row-action`), `grid-row` (rows that line up like a table, for trees), `list-rows`, `kv-grid`, `empty`, `code-block`, `code-inline`
+- **Content:** `card` (`card-header`, `card-title`, `card-sub`, `card-body`, `card-footer`), `stat`, `table` (`table-sm`, `table-hover`, `table-clickable`, `table-fixed`, `table-top`, `cell-main`, `cell-sub`, `actions`, `row-action`), `grid-row` (rows that line up like a table, for trees), `list-rows`, `kv-grid`, `empty`, `skeleton` (a placeholder block shaped like the content still loading; size it where it is used), `code-block`, `code-inline`
 - **Controls:** `btn` (`btn-primary`, `btn-ghost`, `btn-danger`, `btn-danger-solid`, `btn-sm`, `btn-xs`, `btn-icon`), `chip`, `field`, `label`, `help`, `input`, `select`, `textarea`, `input-icon`, `input-group`, `switch`, `checkbox`, `radio`, `option`
 - **Status:** `badge` (`-success`, `-warning`, `-danger`, `-info`, `-signal`, `-outline`), `dot`, `avatar` (`avatar-sm`, `avatar-lg`, `avatar-logo`), `alert`, `eyebrow`
 - **Overlays:** `modal` (a native `<dialog>`: `showModal()` and `close()`; `modal-sm`, `modal-lg`, `modal-xl`, `modal-full`, `modal-header`, `modal-body`, `modal-body-frame`, `modal-footer`), `dropdown` (a native `<details>`; `dropdown-menu-panel`, `dropdown-scroll`), `drawer` (`drawer-backdrop`, `drawer-header`, `drawer-body`), `tabs` (`tab-count`, `.is-attention`), toasts
