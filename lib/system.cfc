@@ -104,7 +104,7 @@
     </cffunction>
 
 
-    <cffunction name="navHtml" access="public" returntype="string" output="false" hint="Nav items (a nav file's, as moo_profile.buildNavs() gives them, or the System menu as one group) as the shell sidebar's rows: icons made solid for the dark panel, the current route marked and the groups holding it open. moopa_layout renders its menus with it, and so does a project's own shell layout, inside its moo-shell-nav, so every shell's menus match. docs/design.md: The layout.">
+    <cffunction name="navHtml" access="public" returntype="string" output="false" hint="Nav items (a nav file's, as moo_profile.buildNavs() gives them, or the System menu as one group) as the shell sidebar's rows: icons made solid for the dark panel, the current route marked and the groups holding it open. An item is a title, icon and route, or a group with items; an item with section is a heading over the rows after it, one with divider a line. An item's own current (true or false) overrides matching its route, for a layout that knows the current page better than the route (a detail page under its list's row). moopa_layout renders its menus with it, and so does a project's own shell layout, inside its moo-shell-nav, so every shell's menus match. docs/design.md: The layout.">
         <cfargument name="items" type="array" required="true" />
         <cfargument name="current" type="string" required="true" hint="The route to mark current, from currentRoute()." />
 
@@ -125,7 +125,7 @@
 
         <cfset var html = "" />
         <cfset var child = {} />
-        <cfset var isCurrent = (arguments.item.route ?: "") EQ arguments.current />
+        <cfset var isCurrent = isItemCurrent(arguments.item, arguments.current) />
         <cfset var hasCurrentChild = false />
         <cfset var depthClass = arguments.depth GTE 2 ? " is-depth-2" : (arguments.depth EQ 1 ? " is-depth-1" : "") />
         <!--- The sidebar is dark, so every icon is solid (Font Awesome Free has solid for every free icon) --->
@@ -135,6 +135,9 @@
 
         <cfif structKeyExists(arguments.item, "divider")>
             <cfreturn '<div class="moo-shell-menu-divider"></div>' />
+        </cfif>
+        <cfif structKeyExists(arguments.item, "section")>
+            <cfreturn '<div class="moo-shell-section-title">#encodeForHTML(arguments.item.section)#</div>' />
         </cfif>
 
         <cfif structKeyExists(arguments.item, "items") AND arrayLen(arguments.item.items)>
@@ -168,12 +171,27 @@
 
 
     <!--- Whether the current route is anywhere under a nav item, at any depth --->
+    <!--- An item is current when it says so (current: true or false), else when its route is the current one --->
+    <cffunction name="isItemCurrent" access="private" returntype="boolean" output="false">
+        <cfargument name="item" type="struct" required="true" />
+        <cfargument name="current" type="string" required="true" />
+        <cfif structKeyExists(arguments.item, "current")>
+            <cfif NOT isBoolean(arguments.item.current)>
+                <cfset var itemName = arguments.item.title ?: (arguments.item.route ?: "") />
+                <cfthrow type="moopa.nav.badCurrent" message="Nav item '#itemName#' has a current that isn't true or false." />
+            </cfif>
+            <cfreturn arguments.item.current />
+        </cfif>
+        <cfreturn len(arguments.item.route ?: "") AND (arguments.item.route EQ arguments.current) />
+    </cffunction>
+
+
     <cffunction name="containsCurrent" access="private" returntype="boolean" output="false">
         <cfargument name="items" type="array" required="true" />
         <cfargument name="current" type="string" required="true" />
         <cfset var child = {} />
         <cfloop array="#arguments.items#" item="child">
-            <cfif (child.route ?: "") EQ arguments.current
+            <cfif isItemCurrent(child, arguments.current)
                 OR (structKeyExists(child, "items") AND isArray(child.items) AND containsCurrent(child.items, arguments.current))>
                 <cfreturn true />
             </cfif>

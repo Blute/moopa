@@ -534,6 +534,10 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 /* empty and loading states */
 .empty { padding: var(--sp-8) var(--sp-4); text-align: center; color: var(--ink-mute); }
 .empty > i { display: block; margin: 0 auto var(--sp-2); font-size: 1.5rem; color: var(--ink-mute-2); }
+/* skeleton — a placeholder shaped like the content still loading; the page sizes each block (width, height) */
+.skeleton { display: block; height: 1rem; border-radius: var(--radius-sm); background: linear-gradient(90deg, var(--canvas-soft) 25%, var(--hairline) 37%, var(--canvas-soft) 63%); background-size: 400% 100%; animation: skeleton-shimmer 1.4s ease infinite; }
+@keyframes skeleton-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
 
 /* a page of its own (tags/moopa_bare.cfm): the status pages (404, 403, 500) and sign-in. Its body is a column at
    least one viewport tall: a project banner above it keeps its own height and the page fills the rest, growing and
