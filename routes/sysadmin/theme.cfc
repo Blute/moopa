@@ -87,7 +87,7 @@
                     <div class="card stat">
                         <div class="stat-label">Logo</div>
                         <cfif len(model.logo)>
-                            <div style="margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-md); background: var(--shell-bg); display: inline-block"><img src="#encodeForHTMLAttribute(model.logo)#" alt="" style="height: 1.75rem; width: auto" /></div>
+                            <div style="margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-md); background: var(--brand-bg); display: inline-block"><img src="#encodeForHTMLAttribute(model.logo)#" alt="" style="height: 1.75rem; width: auto" /></div>
                         <cfelse>
                             <div class="stat-value" style="font-size: var(--text-md)">Project name</div>
                             <div class="stat-sub">application.moopa_theme.logo is not set</div>
