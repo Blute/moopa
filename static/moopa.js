@@ -92,8 +92,10 @@
 // req(): call an endpoint of a route. GET without a body, POST with one. The endpoint goes in
 // the X-Endpoint query parameter so it shows in the network tab. JSON or HTML comes back; an
 // error shows a toast (401 sends the browser to sign in) and is re-thrown for the caller.
+// toastOnError: false leaves the toast to the caller, which explains the error its own way; a 401
+// still sends the browser to sign in.
 // ---------------------------------------------------------------------------------------------
-async function req({ method, route, endpoint, x_signed_route, x_signature, q, exclude_ids, limit, id, url_params, body, data, callback } = {}) {
+async function req({ method, route, endpoint, x_signed_route, x_signature, q, exclude_ids, limit, id, url_params, body, data, callback, toastOnError = true } = {}) {
   try {
     let payload = body || data || null;
     if (!method) method = payload ? 'POST' : 'GET';
@@ -153,9 +155,9 @@ async function req({ method, route, endpoint, x_signed_route, x_signature, q, ex
     try { parsed = JSON.parse(error.message); } catch { parsed = { status: 500, message: error.message }; }
 
     if (parsed.status === 401) {
-      window.toast({ type: 'error', message: 'You are not signed in. Taking you to sign in…', duration: 5000 });
+      if (toastOnError) window.toast({ type: 'error', message: 'You are not signed in. Taking you to sign in…', duration: 5000 });
       setTimeout(() => { window.location.href = parsed.login_route || '/login'; }, 2500);
-    } else {
+    } else if (toastOnError) {
       window.toast({ type: 'error', title: 'Something went wrong', description: parsed.message || 'Contact an administrator if this continues.', duration: 6000 });
     }
     throw error;

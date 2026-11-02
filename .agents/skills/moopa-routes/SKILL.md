@@ -301,6 +301,7 @@ const result = await req({
 | `id` | string | Record ID → becomes `url.id` |
 | `limit` | number | Result limit → becomes `url.limit` |
 | `url_params` | object | Additional URL params |
+| `toastOnError` | boolean | `true` by default. `false` leaves the error toast to the caller, which explains the error its own way; a 401 still sends the browser to sign in |
 
 ## Data Flow: Frontend → Backend
 
