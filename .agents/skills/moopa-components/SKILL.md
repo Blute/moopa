@@ -62,7 +62,7 @@ Search endpoints are named `search.<field>`, upload endpoints `uploadFileToServe
 | `comboSingle({ endpoint, placeholder, limit, groupBy, request })` | option or null | one record, searched |
 | `comboMany({ endpoint, placeholder, limit, request })` | array of options | several records, as chips |
 | `sortList({ endpoint, limit })` | ordered array of `{ id, label }` | an ordered many, drag to sort |
-| `addressSearch({ endpoint })` | suggestion or null | an address from the project's own lookup |
+| `addressSearch({ endpoint, details, session })` | suggestion, or the details' address, or null | an address from the project's own lookup |
 | `addressGoogle({ key, country, language, bias })` | place or null | an address from Google Places |
 | `emailRecipients()` | comma-joined string | email addresses as chips |
 | `fileUpload({ endpoint, table, field, parentId })` | array of finished files | uploads with progress |
@@ -227,7 +227,7 @@ Drag to reorder with the browser's own drag and drop; search to add. `remove(i)`
 
 ### Address
 
-`addressSearch({ endpoint })` asks the page's own endpoint (a proxy to the lookup service the project uses). `addressGoogle({ key, country: 'au', bias: { lat, lng, radius } })` asks Google Places from the browser with the project's Maps key, and its model is `{ place_id, name, formatted_address, geometry: { location: { lat, lng } }, state, postcode, suburb }`. The markup is the same for both; Google's options are keyed by `place_id`.
+`addressSearch({ endpoint })` asks the page's own endpoint (a proxy to the lookup service the project uses). Suggestions are `{ id, formatted_address, ... }`. A lookup whose suggestions are only text (no coordinates or parts) also names a `details` endpoint: after a pick it is called with the suggestion's `id` (`url.id`) and answers `{ address }`, and that address becomes the model; until it answers, and if it fails, the model is the suggestion. `session: true` sends one token as `url.st` with each search and the details call, renewed after every pick, for a service that bills a search and its details as one session (Google Places). `addressGoogle({ key, country: 'au', bias: { lat, lng, radius } })` asks Google Places from the browser with the project's Maps key, and its model is `{ place_id, name, formatted_address, geometry: { location: { lat, lng } }, state, postcode, suburb }`. The markup is the same for both; Google's options are keyed by `place_id`.
 
 ```html
 <div class="field" x-data="addressSearch({ endpoint: 'search.address' })" x-modelable="value" x-model="form.address">

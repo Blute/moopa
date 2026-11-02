@@ -367,17 +367,46 @@ document.addEventListener('alpine:init', () => {
   }));
 
   // --- address, from the project's own lookup endpoint -----------------------------------------
-  // The model is the picked suggestion ({ formatted_address, ... }) or null
-  Alpine.data('addressSearch', ({ endpoint }) => ({
-    value: null, query: '', options: [], open: false, loading: false, _t: null, _req: 0,
+  // The model is the picked suggestion ({ formatted_address, ... }) or null. With `details`, a pick
+  // then asks that endpoint for the address to store (req's id is the suggestion's id; it answers
+  // { address }), and the model becomes that address: suggestions often carry no coordinates or
+  // parts. `session: true` sends one token (url param st) with a run of searches and the details
+  // call that ends it, for a lookup that bills them as one session; each pick starts a new one.
+  Alpine.data('addressSearch', ({ endpoint, details = null, session = false }) => ({
+    value: null, query: '', options: [], open: false, loading: false, _t: null, _req: 0, _session: null,
+    sessionParams() {
+      if (!session) return {};
+      if (!this._session) this._session = crypto.randomUUID();
+      return { url_params: { st: this._session } };
+    },
     search() { this.cancel(); if (!this.query) { this.options = []; return; } this.loading = true; this._t = setTimeout(() => this.fetch(), 300); },
     async fetch() {
       const id = ++this._req;
-      try { const r = await req({ ...target(endpoint), q: this.query }); if (id === this._req) this.options = r?.suggestions || []; }
+      try { const r = await req({ ...target(endpoint), q: this.query, ...this.sessionParams() }); if (id === this._req) this.options = r?.suggestions || []; }
       finally { if (id === this._req) this.loading = false; }
     },
-    pick(s) { this.value = s; this.close(); this.$dispatch('model-change', { selected_option: s }); },
-    clear() { this.value = null; this.options = []; this.$refs.input.focus(); },
+    // The suggestion is the model at once, so a save while details load keeps the pick
+    async pick(s) {
+      this.value = s; this.close(); this.$dispatch('model-change', { selected_option: s });
+      if (!details) { this._session = null; return; }
+      const id = ++this._req;
+      // the details call ends this session, so a search typed while it loads starts a new one
+      const sessionParams = this.sessionParams();
+      this._session = null;
+      this.loading = true;
+      let r;
+      try { r = await req({ ...target(details), id: s.id, ...sessionParams }); }
+      catch { return; }   // req() has said what went wrong; the suggestion stays the model
+      finally { if (id === this._req) this.loading = false; }
+      if (id !== this._req) return;   // cleared or picked again while this loaded
+      if (!r?.address) {
+        window.toast({ type: 'error', title: "The address's details couldn't be loaded", description: r?.error || 'Only the address text was kept.' });
+        return;
+      }
+      this.value = r.address;
+      this.$dispatch('model-change', { selected_option: r.address });
+    },
+    clear() { this.value = null; this.options = []; this.cancel(); this.$refs.input.focus(); },
     close() { this.cancel(); this.open = false; this.query = ''; this.options = []; },
     // a pending or in-flight lookup may no longer touch the list
     cancel() { clearTimeout(this._t); this._req++; this.loading = false; },
