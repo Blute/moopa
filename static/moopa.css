@@ -248,6 +248,7 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .text-danger  { color: var(--danger-text); }
 .text-success { color: var(--success-text); }
 .text-warning { color: var(--warning-text); }
+.text-info    { color: var(--info-text); }
 .text-signal  { color: var(--signal-deep); }
 
 /* ---------------------------------------------------------------------
@@ -519,10 +520,11 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .table tr:hover .row-action, .row-action:focus-visible { opacity: 1; }
 .row-action { opacity: 0; transition: opacity 120ms ease; }
 @media (hover: none) { .row-action { opacity: 1; } }
-.card > .table-wrap:first-child .table th:first-child { border-top-left-radius: var(--radius-lg); }
-.card > .table-wrap:first-child .table th:last-child { border-top-right-radius: var(--radius-lg); }
-.card > .table-wrap .table th:first-child, .card > .table-wrap .table td:first-child { padding-left: var(--card-pad); }
-.card > .table-wrap .table th:last-child, .card > .table-wrap .table td:last-child { padding-right: var(--card-pad); }
+/* of-type, not child: a row whose cells come from an Alpine x-for starts with its <template> */
+.card > .table-wrap:first-child .table th:first-of-type { border-top-left-radius: var(--radius-lg); }
+.card > .table-wrap:first-child .table th:last-of-type { border-top-right-radius: var(--radius-lg); }
+.card > .table-wrap .table th:first-of-type, .card > .table-wrap .table td:first-of-type { padding-left: var(--card-pad); }
+.card > .table-wrap .table th:last-of-type, .card > .table-wrap .table td:last-of-type { padding-right: var(--card-pad); }
 
 /* empty and loading states */
 .empty { padding: var(--sp-8) var(--sp-4); text-align: center; color: var(--ink-mute); }
