@@ -148,6 +148,8 @@
   --shell-ink-mute-2:    #7f889b;
   --shell-signal:        oklch(74% 0.120 258);   /* the accent, lifted to read on the dark panel */
   --shell-danger:        oklch(75% 0.140 22);
+  --brand-bg:            var(--shell-bg);    /* behind the brand logo outside the sidebar: the status pages, System → Theme */
+  --brand-ink:           var(--shell-ink);   /* the project's name there, when it has no logo */
 
   /* shell */
   --sb-w: 264px;
@@ -540,7 +542,7 @@ body:has(> .status-page, > .auth) { display: flex; flex-direction: column; min-h
 body:has(> .status-page, > .auth) > :not(.status-page, .auth) { flex: none; }
 .status-page { flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-6); padding: var(--sp-8) var(--sp-4); text-align: center; }
 .status-page-body { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); max-width: 28rem; }
-.status-brand { display: inline-flex; align-items: center; margin-bottom: var(--sp-3); padding: 0.625rem 1rem; border-radius: var(--radius-lg); background: var(--shell-bg); color: var(--shell-ink); font-weight: 600; text-decoration: none; }
+.status-brand { display: inline-flex; align-items: center; margin-bottom: var(--sp-3); padding: 0.625rem 1rem; border-radius: var(--radius-lg); background: var(--brand-bg); color: var(--brand-ink); font-weight: 600; text-decoration: none; }
 .status-brand img { display: block; height: var(--shell-logo-h); width: auto; }
 .status-code { color: var(--signal-deep); font-size: var(--text-sm); font-weight: 600; letter-spacing: 0.12em; font-variant-numeric: tabular-nums; }
 .status-page h1 { font-size: var(--text-2xl); }
