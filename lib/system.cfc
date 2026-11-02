@@ -61,7 +61,7 @@
     </cffunction>
 
 
-    <cffunction name="banner" access="public" returntype="string" output="false" hint="The project's banner (application.moopa_theme.banner): a template rendered as the first thing in <body> on every Moopa page, for a strip each page carries, such as one naming a test environment. Empty when the project sets none. moopa_layout and moopa_bare render it, and a project's own shell layout may too. docs/design.md: Configuring the theme.">
+    <cffunction name="banner" access="public" returntype="string" output="false" hint="The project's banner (application.moopa_theme.banner): a template rendered as the first thing in <body> on every Moopa page, for a strip each page carries, such as one naming a test environment. Empty when the project sets none. moopa_layout (except in a frame, chrome=false, where the page around it shows it) and moopa_bare render it, and a project's own shell layout may too. docs/design.md: Configuring the theme.">
         <cfset var theme = application.moopa_theme ?: {} />
         <cfset var template = theme.banner ?: "" />
         <cfset var html = "" />

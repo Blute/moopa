@@ -77,7 +77,8 @@
     <script defer src="#system.staticUrl('vendor/alpine-3.17.5/alpine.min.js')#"></script>
 </head>
 <body>
-#system.banner()#
+<!--- The project's banner, except inside a frame (chrome=false): the page around the frame shows it already --->
+<cfif attributes.chrome>#system.banner()#</cfif>
 <!--- Not inside a framed page (chrome=false): the page around the frame shows it already --->
 <cfif attributes.chrome AND (session.auth.is_impersonating ?: false)>
     <div class="moo-shell-banner" role="status">
