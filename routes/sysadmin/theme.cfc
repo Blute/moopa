@@ -398,10 +398,11 @@
     <span class="avatar avatar-ok">OK</span>
     <span class="avatar avatar-bad">NO</span>
     <span class="avatar avatar-ink">TM</span>
+    <span class="avatar avatar-logo avatar-lg"><i class="fa-solid fa-building"></i></span>
     <span class="avatar-stack"><span class="avatar">AB</span><span class="avatar">CD</span><span class="avatar">EF</span></span>
 </div>
         </cfsavecontent>
-        <cfset arrayAppend(out, { id: "avatar", title: "Avatar", block: false, html: html, description: "Initials or a picture (an <code class='code-inline'>img</code> inside). <code class='code-inline'>avatar-ok</code> and <code class='code-inline'>avatar-bad</code> ring it; <code class='code-inline'>avatar-stack</code> overlaps a group." }) />
+        <cfset arrayAppend(out, { id: "avatar", title: "Avatar", block: false, html: html, description: "Initials or a picture (an <code class='code-inline'>img</code> inside). <code class='code-inline'>avatar-ok</code> and <code class='code-inline'>avatar-bad</code> ring it; <code class='code-inline'>avatar-stack</code> overlaps a group; <code class='code-inline'>avatar-logo</code> is a rounded square that shows a logo whole." }) />
 
         <cfsavecontent variable="html">
 <div class="stack" style="width: 100%; max-width: 26rem">
