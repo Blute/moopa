@@ -115,15 +115,27 @@
         <cfset var q = trim(url.q ?: "") />
         <cfset var out = [] />
         <cfset var a = {} />
-        <cfset var all = [
-            { "formatted_address": "1 Example Street, Sydney NSW 2000, Australia", "lat": -33.87, "lng": 151.21 },
-            { "formatted_address": "22 Sample Road, Melbourne VIC 3000, Australia", "lat": -37.81, "lng": 144.96 },
-            { "formatted_address": "5 Placeholder Lane, Brisbane QLD 4000, Australia", "lat": -27.47, "lng": 153.03 }
-        ] />
-        <cfloop array="#all#" item="a">
-            <cfif NOT len(q) OR findNoCase(q, a.formatted_address)><cfset arrayAppend(out, a) /></cfif>
+        <cfloop array="#demoAddresses()#" item="a">
+            <cfif NOT len(q) OR findNoCase(q, a.formatted_address)><cfset arrayAppend(out, { "id": a.id, "formatted_address": a.formatted_address }) /></cfif>
         </cfloop>
         <cfreturn { "suggestions": out } />
+    </cffunction>
+
+    <!--- A suggestion carries only its text; its details are the address to store --->
+    <cffunction name="details.address">
+        <cfset var a = {} />
+        <cfloop array="#demoAddresses()#" item="a">
+            <cfif a.id EQ (url.id ?: "")><cfreturn { "address": a } /></cfif>
+        </cfloop>
+        <cfreturn { "error": "No such address" } />
+    </cffunction>
+
+    <cffunction name="demoAddresses" access="private" returntype="array" output="false">
+        <cfreturn [
+            { "id": "a1", "formatted_address": "1 Example Street, Sydney NSW 2000, Australia", "locality": "Sydney", "postcode": "2000", "lat": -33.87, "lng": 151.21 },
+            { "id": "a2", "formatted_address": "22 Sample Road, Melbourne VIC 3000, Australia", "locality": "Melbourne", "postcode": "3000", "lat": -37.81, "lng": 144.96 },
+            { "id": "a3", "formatted_address": "5 Placeholder Lane, Brisbane QLD 4000, Australia", "locality": "Brisbane", "postcode": "4000", "lat": -27.47, "lng": 153.03 }
+        ] />
     </cffunction>
 
     <!---
@@ -311,7 +323,7 @@
         <cfset arrayAppend(out, { id: "sort-list", name: "sortList", title: "Ordered list", model: "{ contacts: [{ id: 'c2', label: 'Harbour Joinery' }, { id: 'c4', label: 'Example Pty Ltd' }] }", html: html, description: "Drag to reorder (the browser's own drag and drop, nothing to load), search to add. The model is the ordered array of <code class='code-inline'>{ id, label }</code>." }) />
 
         <cfsavecontent variable="html">
-<div class="field" x-data="addressSearch({ endpoint: 'search.address' })" x-modelable="value" x-model="form.address">
+<div class="field" x-data="addressSearch({ endpoint: 'search.address', details: 'details.address' })" x-modelable="value" x-model="form.address">
     <label class="label" for="cx-address">Delivery address</label>
     <div class="combo" @keydown.escape.prevent="close()" @click.outside="close()">
         <div class="combo-shell" @click="$refs.input.focus()">
@@ -330,7 +342,7 @@
     </div>
 </div>
         </cfsavecontent>
-        <cfset arrayAppend(out, { id: "address", name: "addressSearch", title: "Address, from your endpoint", model: "{ address: null }", html: html, description: "The page's own endpoint looks the address up (a proxy to whatever service the project uses) and returns <code class='code-inline'>{ suggestions: [{ formatted_address, ... }] }</code>. The model is the picked suggestion." }) />
+        <cfset arrayAppend(out, { id: "address", name: "addressSearch", title: "Address, from your endpoint", model: "{ address: null }", html: html, description: "The page's own endpoint looks the address up (a proxy to whatever service the project uses) and returns <code class='code-inline'>{ suggestions: [{ id, formatted_address, ... }] }</code>. The model is the picked suggestion; with <code class='code-inline'>details</code>, an endpoint that answers <code class='code-inline'>{ address }</code> for the suggestion's <code class='code-inline'>id</code> replaces it with the address to store (coordinates, parts). <code class='code-inline'>session: true</code> sends one <code class='code-inline'>st</code> token with the searches and the details call they end in." }) />
 
         <cfsavecontent variable="html">
 <div class="field" x-data="addressGoogle({ key: '#encodeForJavaScript(server.system.environment.GOOGLE_MAP_API_KEY)#', country: 'au' })"

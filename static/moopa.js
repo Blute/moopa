@@ -92,6 +92,8 @@
 // req(): call an endpoint of a route. GET without a body, POST with one. The endpoint goes in
 // the X-Endpoint query parameter so it shows in the network tab. JSON or HTML comes back; an
 // error shows a toast (401 sends the browser to sign in) and is re-thrown for the caller.
+// The page's own query string rides along; a parameter req() is given replaces the page's of
+// that name, so an edit page at ?id=… can still ask for another id.
 // toastOnError: false leaves the toast to the caller, which explains the error its own way; a 401
 // still sends the browser to sign in.
 // ---------------------------------------------------------------------------------------------
@@ -102,17 +104,17 @@ async function req({ method, route, endpoint, x_signed_route, x_signature, q, ex
 
     const params = new URLSearchParams(window.location.search);
     if (!route || route.trim() === '') route = window.location.origin + window.location.pathname;
-    if (id) params.append('id', id);
-    if (q) params.append('q', q);
+    if (id) params.set('id', id);
+    if (q) params.set('q', q);
     if (exclude_ids) {
       const value = Array.isArray(exclude_ids)
         ? exclude_ids.map(item => (typeof item === 'object' ? item.id : item)).join(',')
         : (exclude_ids?.id || '');
-      params.append('exclude_ids', value);
+      params.set('exclude_ids', value);
     }
-    if (limit) params.append('limit', limit);
-    if (url_params) Object.entries(url_params).forEach(([key, value]) => params.append(key, value));
-    if (endpoint) params.append('X-Endpoint', endpoint);
+    if (limit) params.set('limit', limit);
+    if (url_params) Object.entries(url_params).forEach(([key, value]) => params.set(key, value));
+    if (endpoint) params.set('X-Endpoint', endpoint);
     if (params.toString()) route += (route.includes('?') ? '&' : '?') + params.toString();
 
     const headers = {
@@ -367,20 +369,53 @@ document.addEventListener('alpine:init', () => {
   }));
 
   // --- address, from the project's own lookup endpoint -----------------------------------------
-  // The model is the picked suggestion ({ formatted_address, ... }) or null
-  Alpine.data('addressSearch', ({ endpoint }) => ({
-    value: null, query: '', options: [], open: false, loading: false, _t: null, _req: 0,
-    search() { this.cancel(); if (!this.query) { this.options = []; return; } this.loading = true; this._t = setTimeout(() => this.fetch(), 300); },
+  // The model is the picked suggestion ({ formatted_address, ... }) or null. With `details`, a pick
+  // then asks that endpoint for the address to store (req's id is the suggestion's id; it answers
+  // { address }), and the model becomes that address: suggestions often carry no coordinates or
+  // parts. `session: true` sends one token (url param st) with a run of searches and the details
+  // call that ends it, for a lookup that bills them as one session; each pick starts a new one.
+  Alpine.data('addressSearch', ({ endpoint, details = null, session = false }) => ({
+    // _req counts searches; _pick counts picks and clears, so closing the list never drops a details answer.
+    // loading is either one in flight: _searching or _detailing, each cleared only by its own lookup.
+    value: null, query: '', options: [], open: false, loading: false, _t: null, _req: 0, _pick: 0, _searching: false, _detailing: false, _session: null,
+    syncLoading() { this.loading = this._searching || this._detailing; },
+    sessionParams() {
+      if (!session) return {};
+      if (!this._session) this._session = crypto.randomUUID();
+      return { url_params: { st: this._session } };
+    },
+    search() { this.cancel(); if (!this.query) { this.options = []; return; } this._searching = true; this.syncLoading(); this._t = setTimeout(() => this.fetch(), 300); },
     async fetch() {
       const id = ++this._req;
-      try { const r = await req({ ...target(endpoint), q: this.query }); if (id === this._req) this.options = r?.suggestions || []; }
-      finally { if (id === this._req) this.loading = false; }
+      try { const r = await req({ ...target(endpoint), q: this.query, ...this.sessionParams() }); if (id === this._req) this.options = r?.suggestions || []; }
+      finally { if (id === this._req) { this._searching = false; this.syncLoading(); } }
     },
-    pick(s) { this.value = s; this.close(); this.$dispatch('model-change', { selected_option: s }); },
-    clear() { this.value = null; this.options = []; this.$refs.input.focus(); },
+    // The suggestion is the model at once, so a save while details load keeps the pick
+    async pick(s) {
+      this.value = s; this.close(); this.$dispatch('model-change', { selected_option: s });
+      if (!details) { this._session = null; return; }
+      const seq = ++this._pick;
+      // the details call ends this session, so a search typed while it loads starts a new one
+      const sessionParams = this.sessionParams();
+      this._session = null;
+      this._detailing = true;
+      this.syncLoading();
+      let r;
+      try { r = await req({ ...target(details), id: s.id, ...sessionParams }); }
+      catch { return; }   // req() has said what went wrong; the suggestion stays the model
+      finally { if (seq === this._pick) { this._detailing = false; this.syncLoading(); } }
+      if (seq !== this._pick) return;   // cleared or picked again while this loaded
+      if (!r?.address) {
+        window.toast({ type: 'error', title: "The address's details couldn't be loaded", description: r?.error || 'Only the address text was kept.' });
+        return;
+      }
+      this.value = r.address;
+      this.$dispatch('model-change', { selected_option: r.address });
+    },
+    clear() { this.value = null; this.options = []; this._pick++; this._detailing = false; this.cancel(); this.$refs.input.focus(); },
     close() { this.cancel(); this.open = false; this.query = ''; this.options = []; },
-    // a pending or in-flight lookup may no longer touch the list
-    cancel() { clearTimeout(this._t); this._req++; this.loading = false; },
+    // a pending or in-flight search may no longer touch the list; a details lookup carries on
+    cancel() { clearTimeout(this._t); this._req++; this._searching = false; this.syncLoading(); },
     destroy() { this.cancel(); },
   }));
 
