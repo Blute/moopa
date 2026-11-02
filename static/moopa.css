@@ -248,6 +248,7 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .text-danger  { color: var(--danger-text); }
 .text-success { color: var(--success-text); }
 .text-warning { color: var(--warning-text); }
+.text-info    { color: var(--info-text); }
 .text-signal  { color: var(--signal-deep); }
 
 /* ---------------------------------------------------------------------
