@@ -43,6 +43,8 @@
   --surface:            oklch(99% 0.001 80);
   --hairline:           oklch(88% 0.004 80);
   --hairline-strong:    oklch(80% 0.006 80);
+  --card-bg:            var(--surface);   /* the page's containers: card, section, metrics, row-card */
+  --card-border:        var(--hairline);  /* their edge; transparent for a fill-only card on a lighter page */
 
   /* semantic */
   --info:               oklch(57% 0.105 238);
@@ -295,8 +297,8 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
    Card
    --------------------------------------------------------------------- */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--hairline);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-1);
   min-width: 0;
@@ -781,7 +783,7 @@ button.list-row { width: 100%; text-align: left; }
 .dropdown-menu-panel > * + * { margin-top: 0.5rem; }
 .dropdown-scroll { max-height: 56vh; overflow-y: auto; }
 .input-group > .input-narrow { flex: 0 0 auto; width: 6.5rem; }
-.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); border: 1px solid var(--hairline); border-radius: var(--radius-md); overflow: hidden; background: var(--surface); }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); border: 1px solid var(--card-border); border-radius: var(--radius-md); overflow: hidden; background: var(--card-bg); }
 .metric { padding: 0.75rem; min-height: 4.5rem; border-right: 1px solid var(--hairline); }
 .metric:last-child { border-right: 0; }
 .metric-label { color: var(--ink-mute); font-size: var(--text-xs); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
@@ -791,7 +793,7 @@ button.list-row { width: 100%; text-align: left; }
 .drawer-header { flex: 0 0 auto; padding: var(--sp-4) var(--sp-5); border-bottom: 1px solid var(--hairline); }
 .drawer-body { flex: 1 1 auto; overflow-y: auto; padding: var(--sp-4) var(--sp-5) var(--sp-5); }
 .drawer-body > * + * { margin-top: var(--sp-4); }
-.section { border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface); }
+.section { border: 1px solid var(--card-border); border-radius: var(--radius-md); background: var(--card-bg); }
 .section-header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--hairline); }
 .section-body { padding: 0.75rem; }
 .editable { display: inline-flex; align-items: center; min-height: 1.45rem; border-bottom: 1px dotted var(--ink-mute-2); color: var(--ink-secondary); cursor: pointer; line-height: 1.2; padding: 0 0.1rem 0.05rem; }
@@ -808,7 +810,7 @@ button.list-row { width: 100%; text-align: left; }
 }
 .note-list > .note-item { padding: 0.75rem; border-bottom: 1px solid var(--hairline); }
 .note-list > .note-item:last-child { border-bottom: 0; }
-.row-card { display: grid; grid-template-columns: minmax(260px, 1.05fr) minmax(240px, 1.3fr) minmax(200px, 0.9fr) auto; gap: var(--sp-4); align-items: center; padding: 0.85rem 1rem; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface); cursor: pointer; transition: border-color 120ms ease, box-shadow 120ms ease; }
+.row-card { display: grid; grid-template-columns: minmax(260px, 1.05fr) minmax(240px, 1.3fr) minmax(200px, 0.9fr) auto; gap: var(--sp-4); align-items: center; padding: 0.85rem 1rem; border: 1px solid var(--card-border); border-radius: var(--radius-md); background: var(--card-bg); cursor: pointer; transition: border-color 120ms ease, box-shadow 120ms ease; }
 .row-card:hover { border-color: var(--hairline-strong); box-shadow: var(--shadow-1); }
 .row-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.55rem; color: var(--ink-mute); font-size: var(--text-sm); }
 .row-card-list { display: grid; gap: 0.65rem; }
@@ -916,6 +918,8 @@ button.list-row { width: 100%; text-align: left; }
   --canvas-cream: var(--shell-bg-raised);
   --hairline: var(--shell-line);
   --hairline-strong: var(--shell-line);
+  --card-bg: var(--shell-bg);
+  --card-border: var(--shell-line);
   --ink: var(--shell-ink);
   --ink-secondary: var(--shell-ink-secondary);
   --ink-mute: var(--shell-ink-mute);
