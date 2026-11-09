@@ -4,6 +4,15 @@
 
         <cfset statements = application.lib.schemaSync.compareDatabaseSchema(application.lib.db.codeSchema) />
 
+        <!--- The page hides destructive statements by default, so it cannot show one it cannot classify:
+              the project's schemaSync marks each one (docs/schema.md). --->
+        <cfloop array="#statements#" item="local.statement">
+            <cfif NOT structKeyExists(local.statement, "destructive") OR NOT isBoolean(local.statement.destructive)>
+                <cfthrow type="moopa.schema.destructiveMissing" message="schemaSync statement '#local.statement.title ?: local.statement.statement ?: '(untitled)'#' has no boolean destructive. Every statement compareDatabaseSchema returns must set destructive true or false; see moopa/docs/schema.md." />
+            </cfif>
+            <cfset local.statement.destructive = local.statement.destructive ? true : false />
+        </cfloop>
+
         <cfmodule template="/moopa/tags/moopa_layout.cfm" title="Schema">
             <div x-data="coapi" x-cloak class="page">
 
@@ -11,7 +20,7 @@
                     <div>
                         <div class="eyebrow" x-text="statementSummary()"></div>
                         <h1>Schema</h1>
-                        <p class="page-lede">The database changes Moopa's table definitions call for. Select statements to review or copy them; Moopa never applies them itself.</p>
+                        <p class="page-lede">The database changes Moopa's table definitions call for. Select statements to review or copy them; Moopa never applies them itself. Destructive statements, which drop a column the definitions no longer declare, stay hidden until you show them.</p>
                     </div>
                     <div class="page-actions">
                         <!--- Re-initialising is for sysadmins only (application.cfc _reinitAllowed) --->
@@ -34,6 +43,7 @@
                                     <option :value="table" x-text="table"></option>
                                 </template>
                             </select>
+                            <label class="option"><input type="checkbox" class="switch" x-model="showDestructive" :disabled="destructiveCount === 0"> <span>Show destructive (<span x-text="destructiveCount"></span>)</span></label>
                             <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters" :disabled="!hasActiveFilters()">Reset</button>
                         </div>
                         <div class="cluster">
@@ -72,6 +82,9 @@
                                             <div class="stack stack-sm">
                                                 <div class="cluster">
                                                     <span class="cell-main" x-text="statement.title"></span>
+                                                    <template x-if="statement.destructive">
+                                                        <span class="badge badge-danger"><i class="fa-solid fa-triangle-exclamation"></i> Destructive</span>
+                                                    </template>
                                                     <template x-if="statement.mismatches && statement.mismatches.length > 0">
                                                         <button type="button" class="badge badge-warning" @click.stop="openMismatch = statement; $refs.mismatch.showModal()">
                                                             <span x-text="statement.mismatches.length"></span> diff
@@ -88,9 +101,9 @@
                     </div>
 
                     <div class="empty" x-show="filteredCount === 0">
-                        <i class="fa-solid" :class="hasActiveFilters() ? 'fa-filter-circle-xmark' : 'fa-circle-check'"></i>
-                        <p class="strong secondary" x-text="hasActiveFilters() ? 'No statements match these filters.' : 'No pending schema statements.'"></p>
-                        <p class="small" x-text="hasActiveFilters() ? 'Clear the filters, or search for a different table or statement.' : 'The database matches the table definitions.'"></p>
+                        <i class="fa-solid" :class="hasActiveFilters() ? 'fa-filter-circle-xmark' : (hiddenDestructiveCount > 0 ? 'fa-eye-slash' : 'fa-circle-check')"></i>
+                        <p class="strong secondary" x-text="emptyTitle()"></p>
+                        <p class="small" x-text="emptyDetail()"></p>
                     </div>
 
                     <div class="card-footer cluster cluster-between small muted" x-show="statements.length > 0">
@@ -111,7 +124,11 @@
                         </div>
                         <button type="button" class="btn btn-ghost btn-icon btn-sm" @click="closeSqlDrawer()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
                     </div>
-                    <div class="modal-body">
+                    <div class="modal-body stack">
+                        <div class="alert alert-danger" x-show="selectedDestructiveCount > 0">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <span>This script includes <strong x-text="selectedDestructiveCount"></strong> destructive statement<span x-show="selectedDestructiveCount !== 1">s</span>. Check each column it drops holds nothing still needed.</span>
+                        </div>
                         <pre class="code-block" x-show="selectedCount > 0"><code x-text="selectedSql"></code></pre>
                         <p class="empty" x-show="selectedCount === 0">Select statements to build a script.</p>
                     </div>
@@ -156,9 +173,33 @@
                         statements: #serializeJson(statements)#,
                         openMismatch: null,
                         sqlDrawerOpen: false,
+                        showDestructive: false,
                         filter: {
                             table: "",
                             statement: ""
+                        },
+
+                        init() {
+                            // Hiding destructive statements also takes them out of the script, so a copy never
+                            // carries a drop that is no longer on screen.
+                            this.$watch("showDestructive", (show) => {
+                                if (show) return;
+                                this.statements.forEach((statement) => {
+                                    if (statement.destructive) statement.selected = false;
+                                });
+                            });
+                        },
+
+                        get destructiveCount() {
+                            return this.statements.filter((statement) => statement.destructive).length;
+                        },
+
+                        get hiddenDestructiveCount() {
+                            return this.showDestructive ? 0 : this.destructiveCount;
+                        },
+
+                        get selectedDestructiveCount() {
+                            return this.getSelectedStatements().filter((statement) => statement.destructive).length;
                         },
 
                         get filteredCount() {
@@ -178,7 +219,8 @@
                             if (!selectedStatements.length) {
                                 return "";
                             }
-                            return selectedStatements.map((statement) => statement.statement).join(";\n") + ";";
+                            // A statement may or may not end with its own semicolon; the script gives each exactly one.
+                            return selectedStatements.map((statement) => statement.statement.trim().replace(/;+$/, "")).join(";\n") + ";";
                         },
 
                         getUniqueTables() {
@@ -194,7 +236,9 @@
                                 const haystack = [statement.title, statement.table_name, statement.statement].join(" ").toLowerCase();
                                 const statementMatch = statementFilter === "" || haystack.includes(statementFilter);
 
-                                return tableMatch && statementMatch;
+                                const destructiveMatch = this.showDestructive || !statement.destructive;
+
+                                return tableMatch && statementMatch && destructiveMatch;
                             });
                         },
 
@@ -209,8 +253,21 @@
                         statementSummary() {
                             const total = this.statements.length;
                             if (!total) return "No statements";
-                            if (total === 1) return "1 statement";
-                            return `${total} statements`;
+                            const count = total === 1 ? "1 statement" : `${total} statements`;
+                            const hidden = this.hiddenDestructiveCount;
+                            return hidden ? `${count} · ${hidden} destructive hidden` : count;
+                        },
+
+                        emptyTitle() {
+                            if (this.hasActiveFilters()) return "No statements match these filters.";
+                            if (this.hiddenDestructiveCount) return "Only destructive statements are pending.";
+                            return "No pending schema statements.";
+                        },
+
+                        emptyDetail() {
+                            if (this.hasActiveFilters()) return "Clear the filters, or search for a different table or statement.";
+                            if (this.hiddenDestructiveCount) return "Turn on Show destructive to review them.";
+                            return "The database matches the table definitions.";
                         },
 
                         async reinit() {
