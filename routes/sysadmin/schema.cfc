@@ -101,7 +101,7 @@
                     </div>
 
                     <div class="empty" x-show="filteredCount === 0">
-                        <i class="fa-solid" :class="hasActiveFilters() ? 'fa-filter-circle-xmark' : (hiddenDestructiveCount > 0 ? 'fa-eye-slash' : 'fa-circle-check')"></i>
+                        <i class="fa-solid" :class="hiddenMatchingDestructiveCount > 0 ? 'fa-eye-slash' : (hasActiveFilters() ? 'fa-filter-circle-xmark' : 'fa-circle-check')"></i>
                         <p class="strong secondary" x-text="emptyTitle()"></p>
                         <p class="small" x-text="emptyDetail()"></p>
                     </div>
@@ -228,18 +228,26 @@
                             return tables.sort();
                         },
 
-                        getFilteredStatements() {
+                        // The table and search filters alone, before the destructive switch.
+                        matchesFilters(statement) {
                             const statementFilter = this.filter.statement.toLowerCase().trim();
+                            const tableMatch = this.filter.table === "" || statement.table_name === this.filter.table;
+                            const haystack = [statement.title, statement.table_name, statement.statement].join(" ").toLowerCase();
+                            const statementMatch = statementFilter === "" || haystack.includes(statementFilter);
 
-                            return this.statements.filter((statement) => {
-                                const tableMatch = this.filter.table === "" || statement.table_name === this.filter.table;
-                                const haystack = [statement.title, statement.table_name, statement.statement].join(" ").toLowerCase();
-                                const statementMatch = statementFilter === "" || haystack.includes(statementFilter);
+                            return tableMatch && statementMatch;
+                        },
 
-                                const destructiveMatch = this.showDestructive || !statement.destructive;
+                        getFilteredStatements() {
+                            return this.statements.filter((statement) =>
+                                this.matchesFilters(statement) && (this.showDestructive || !statement.destructive)
+                            );
+                        },
 
-                                return tableMatch && statementMatch && destructiveMatch;
-                            });
+                        // Destructive statements the filters match that only the switch is hiding.
+                        get hiddenMatchingDestructiveCount() {
+                            if (this.showDestructive) return 0;
+                            return this.statements.filter((statement) => statement.destructive && this.matchesFilters(statement)).length;
                         },
 
                         getSelectedStatements() {
@@ -259,14 +267,16 @@
                         },
 
                         emptyTitle() {
+                            if (this.hiddenMatchingDestructiveCount) {
+                                return this.hasActiveFilters() ? "Only destructive statements match these filters." : "Only destructive statements are pending.";
+                            }
                             if (this.hasActiveFilters()) return "No statements match these filters.";
-                            if (this.hiddenDestructiveCount) return "Only destructive statements are pending.";
                             return "No pending schema statements.";
                         },
 
                         emptyDetail() {
+                            if (this.hiddenMatchingDestructiveCount) return "Turn on Show destructive to review them.";
                             if (this.hasActiveFilters()) return "Clear the filters, or search for a different table or statement.";
-                            if (this.hiddenDestructiveCount) return "Turn on Show destructive to review them.";
                             return "The database matches the table definitions.";
                         },
 
