@@ -66,13 +66,23 @@ A browser uploads a file straight to the store through `application.lib.file_upl
 2. **PUT**: the browser sends the file to `presignedURL` with exactly `headers`. Its Content-Length is the browser's own, from the file.
 3. **Finish** (`finish(file_id, owner)`): checks the store holds the file at its signed size and type, and that its first bytes are a file of its kind (a page named `.jpg` is not an image). Returns `{ success: true, file }`, with an image's thumbnail now its own picture. A file that never arrived, or isn't what its name says, is removed: `{ success: false, error_code }`, `not_uploaded` or `file_content`.
 
-`kinds` is a list of `image` (JPEG, PNG, GIF, WebP, HEIC/HEIF, TIFF, BMP), `pdf` and `video` (MP4, MOV, WebM, Matroska, AVI). SVG is no kind: it is a document that can run script.
+`kinds` is a list of `image` (JPEG, PNG, GIF, WebP, HEIC/HEIF, TIFF, BMP), `pdf`, `video` (MP4, M4V, MOV, WebM, Matroska, AVI) and `zip`. SVG is no kind: it is a document that can run script.
 
 **An endpoint that only uploads** answers with `answer(data, owner, kinds, max_bytes)`: `finish()` when the request names a `file_id`, `start()` otherwise, and a refusal as a 422 marked `X-Refusal`, which `req()` shows. An endpoint that does more, such as attaching the file to a record or capping how many a record holds, calls `start()` and `finish()` itself.
 
 **The owner** is whatever the caller vouches the upload belongs to: `"moo_profile:" & session.auth.profile.id` for a signed-in person, or a record an anonymous visitor owns, checked by the route first. Only an ask naming the same owner may finish or `discard()` the upload, so one visitor can't finish another's. `underWay(owner)` counts the owner's uploads still under way, for a caller that caps how many files an owner holds.
 
 **Abandoned uploads**: a browser that starts an upload and never finishes it leaves a file and maybe an object. `sweep()` removes every upload left unfinished for a day. Run it on a schedule.
+
+### Videos
+
+A video for Cloudflare Stream uploads the same way through `application.lib.video_upload`, onto a `moo_video` instead of a `moo_file`:
+
+1. **Start** (`start(file_name, file_size, owner, max_bytes, metadata)`): the same refusals (`file_type` for anything but a video, `empty`, `file_size`). Otherwise it makes the `moo_video` with `metadata` merged into its own (what the video is for, a length limit), records the upload (`moo_video_upload`), and returns `{ success: true, video, video_id, presignedURL, headers }`. The URL works for 30 minutes.
+2. **PUT** with exactly `headers`.
+3. **Finish** (`finish(video_id, owner, source)`): the same check (`file_upload.storedFault()`), and only then hands the file to Stream (`moo_video` `sendToStream()`). Returns `{ success: true, video }`. A file that fails is removed with its video, and Stream is never asked. Of two finishes at once only one copies to Stream. A copy Stream refuses throws `moo_video.streamRefused` and puts the upload back as it was, to finish again or be swept; any other failure (no answer, or one after Stream took the copy) throws and leaves the upload finished, because Stream may hold a video and asking again could bill a second one. A caller whose own record refers to the video before its upload finishes passes `release`, a function given the video id that lets go of it before the video is removed.
+
+An endpoint answers a refusal with `refused(result)`, a 422 marked `X-Refusal` that `req()` shows. `discard(video_id, owner)` drops an upload the browser gave up on, `underWay(owner)` lists an owner's, and `sweep()` removes those left a day. A record that refers to a video before its upload finishes lets go of those `abandoned()` lists before the sweep, because the sweep deletes the `moo_video`. The `moo_video` service's `handleVideoAction()` now only polls Stream (`video_ids`) and deletes (`delete`, `video_id`).
 
 ## Serving uploaded files
 
@@ -87,3 +97,12 @@ The signed assets Worker (`config/init/cloudflare-signed-assets-worker.js`) answ
 3. **PUT with the `headers` the start returns**, not the file's own type. Moopa's `fileUpload` component and its own pages already do. An upload sending another Content-Type is refused by the store (403).
 4. **Schedule `application.lib.file_upload.sweep()`**, daily.
 5. **Redeploy the signed assets Worker** from `config/init/cloudflare-signed-assets-worker.js`, so raw assets carry `nosniff` and only media and PDFs open inline.
+
+### Upgrading to checked video uploads
+
+`moo_video`'s `uploadVideoInit()` is gone, and `uploadVideoComplete(data, source)` is `sendToStream(video_id, source)`: the old start signed an upload URL for any body, and `handleVideoAction()` finished any video it was given an id for. When a project moves to this version:
+
+1. **Sync the schema**: it adds the `moo_video_upload` table.
+2. **Start and finish video uploads through `video_upload`**, naming the owner; `handleVideoAction()` throws for anything but a poll or a delete.
+3. **PUT with the `headers` the start returns.**
+4. **Schedule `application.lib.video_upload.sweep()`**, daily, after letting go of any `abandoned()` video a record refers to.
