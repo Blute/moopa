@@ -5,8 +5,12 @@ export default {
   //
   // No answer may be read as anything but the type it says it is (nosniff): a browser never runs a file as script or
   // styles because its bytes look like them.
+  //
+  // The answer is copied before these headers go on: one from the edge cache (caches.default.match) has immutable
+  // headers, and setting one would throw.
   async fetch(request, env, ctx) {
-    const response = await handleRequest(request, env, ctx);
+    const answer = await handleRequest(request, env, ctx);
+    const response = new Response(answer.body, answer);
     if (new URL(request.url).pathname.startsWith("/a/")) {
       response.headers.set("Access-Control-Allow-Origin", "*");
     }

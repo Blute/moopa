@@ -232,7 +232,8 @@
             <cfreturn { "exists": false, "size": 0, "contentType": "" } />
         </cfif>
         <cfset var length = responseHeader(httpResult, "Content-Length") />
-        <cfif NOT isValid("integer", length)>
+        <!--- Not isValid("integer"), which stops at 2^31: an object can be far bigger. --->
+        <cfif NOT reFind("^[0-9]+$", length)>
             <cfthrow type="s3.request.failed" message="#arguments.store.label#: HEAD #arguments.objectKey# answered without a Content-Length" />
         </cfif>
         <cfreturn { "exists": true, "size": val(length), "contentType": responseHeader(httpResult, "Content-Type") } />

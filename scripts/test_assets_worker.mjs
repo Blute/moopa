@@ -35,10 +35,11 @@ async function hmacHex(message) {
   return Buffer.from(signature).toString("hex");
 }
 
-// A signed /a/ URL for a key, as the CFML and SQL signers make it: the decoded path and the query without sig.
-async function signedUrl(key) {
+// A signed URL for a key (a raw asset, /a/, unless another kind is named), as the CFML and SQL signers make it: the
+// decoded path and the query without sig.
+async function signedUrl(key, kind = "a") {
   const exp = Math.floor(Date.now() / 1000) + 600;
-  const path = `/a/${key}`;
+  const path = `/${kind}/${key}`;
   const sig = await hmacHex(`${path}?exp=${exp}`);
   return `https://assets.example.com${encodeURI(path)}?exp=${exp}&sig=${sig}`;
 }
@@ -86,6 +87,29 @@ for (const [key, type, disposition] of downloads) {
   check(`${type} answers 200`, response.status, 200);
   check(`${type} is a download, whatever its name`, response.headers.get("Content-Disposition"), disposition);
   check(`${type} is nosniff`, response.headers.get("X-Content-Type-Options"), "nosniff");
+}
+
+// A thumbnail (/i/) or a PDF's text (/m/) already in the edge cache: the Workers runtime hands back a cached answer
+// whose headers can't be changed, so the Worker must still add its own without throwing.
+class ImmutableHeaders extends Headers {
+  set() { throw new TypeError("Can't modify immutable headers."); }
+  append() { throw new TypeError("Can't modify immutable headers."); }
+}
+globalThis.caches = {
+  default: {
+    async match() {
+      const cached = new Response("cached thumbnail", { status: 200 });
+      Object.defineProperty(cached, "headers", { value: new ImmutableHeaders({ "Content-Type": "image/webp" }) });
+      return cached;
+    },
+    async put() {},
+  },
+};
+for (const kind of ["i", "m"]) {
+  const response = await worker.fetch(new Request(await signedUrl("photos/house.jpg", kind)), { ...env, AI: { toMarkdown() {} } }, { waitUntil() {} });
+  check(`a cached /${kind}/ answer is served`, response.status, 200);
+  check(`...with its own body`, await response.text(), "cached thumbnail");
+  check(`...and is nosniff`, response.headers.get("X-Content-Type-Options"), "nosniff");
 }
 
 const unsigned = await worker.fetch(new Request("https://assets.example.com/a/photos/house.jpg"), env, { waitUntil() {} });

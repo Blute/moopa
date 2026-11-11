@@ -69,7 +69,7 @@
 
         <cfset assertOwner(arguments.owner) />
         <cfset var types = typesFor(arguments.kinds) />
-        <cfif NOT isValid("integer", arguments.max_bytes) OR arguments.max_bytes LT 1>
+        <cfif NOT isWholeNumber(arguments.max_bytes) OR arguments.max_bytes LT 1>
             <cfthrow type="file_upload.invalid" message="max_bytes is a whole number of bytes, at least 1, not #arguments.max_bytes#" />
         </cfif>
 
@@ -78,7 +78,7 @@
         <cfif NOT structKeyExists(types, extension)>
             <cfreturn refusal("file_type") />
         </cfif>
-        <cfif NOT isValid("integer", arguments.file_size) OR arguments.file_size LT 1>
+        <cfif NOT isWholeNumber(arguments.file_size) OR arguments.file_size LT 1>
             <cfreturn refusal("empty") />
         </cfif>
         <cfif arguments.file_size GT arguments.max_bytes>
@@ -223,7 +223,7 @@
         hint="Removes every upload left unfinished for longer than older_than_seconds (a day by default): its object, its moo_file and its upload. Returns how many it removed. A project runs it on a schedule.">
         <cfargument name="older_than_seconds" type="numeric" required="false" default="#variables.ABANDONED_SECONDS#" />
 
-        <cfif NOT isValid("integer", arguments.older_than_seconds) OR arguments.older_than_seconds LT variables.UPLOAD_SECONDS>
+        <cfif NOT isWholeNumber(arguments.older_than_seconds) OR arguments.older_than_seconds LT variables.UPLOAD_SECONDS>
             <cfthrow type="file_upload.invalid" message="sweep() takes uploads at least #variables.UPLOAD_SECONDS# seconds old (the life of their URL), not #arguments.older_than_seconds#" />
         </cfif>
         <cfquery name="local.qAbandoned" returntype="array">
@@ -335,6 +335,13 @@
         <cfif NOT len(trim(arguments.owner))>
             <cfthrow type="file_upload.invalid" message="An upload belongs to an owner the caller names; none was given" />
         </cfif>
+    </cffunction>
+
+
+    <!--- A whole number of 0 or more, however big: not isValid("integer"), which stops at 2^31 (2 GiB as bytes). --->
+    <cffunction name="isWholeNumber" access="private" returntype="boolean" output="false">
+        <cfargument name="value" type="any" required="true" />
+        <cfreturn isSimpleValue(arguments.value) AND reFind("^[0-9]+$", trim(arguments.value)) GT 0 />
     </cffunction>
 
 
