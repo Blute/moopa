@@ -68,6 +68,8 @@ A browser uploads a file straight to the store through `application.lib.file_upl
 
 `kinds` is a list of `image` (JPEG, PNG, GIF, WebP, HEIC/HEIF, TIFF, BMP), `pdf` and `video` (MP4, MOV, WebM, Matroska, AVI). SVG is no kind: it is a document that can run script.
 
+**An endpoint that only uploads** answers with `answer(data, owner, kinds, max_bytes)`: `finish()` when the request names a `file_id`, `start()` otherwise, and a refusal as a 422 marked `X-Refusal`, which `req()` shows. An endpoint that does more, such as attaching the file to a record or capping how many a record holds, calls `start()` and `finish()` itself.
+
 **The owner** is whatever the caller vouches the upload belongs to: `"moo_profile:" & session.auth.profile.id` for a signed-in person, or a record an anonymous visitor owns, checked by the route first. Only an ask naming the same owner may finish or `discard()` the upload, so one visitor can't finish another's. `underWay(owner)` counts the owner's uploads still under way, for a caller that caps how many files an owner holds.
 
 **Abandoned uploads**: a browser that starts an upload and never finishes it leaves a file and maybe an object. `sweep()` removes every upload left unfinished for a day. Run it on a schedule.
@@ -81,7 +83,7 @@ The signed assets Worker (`config/init/cloudflare-signed-assets-worker.js`) answ
 `moo_file`'s `uploadFileToServerWithProgress()` is gone: it signed an upload URL for any body, checked nothing when the upload finished, and let anyone finish any file. When a project moves to this version of Moopa:
 
 1. **Sync the schema** (System → Schema): it adds the `moo_file_upload` table. Without it every upload fails.
-2. **Move each upload endpoint to `file_upload`**: `start()` without a `file_id`, `finish()` with one, naming the owner and the kinds the field accepts (the `moopa-routes` skill, File Upload Endpoint). `finish()` answers `{ success, file }`, not the bare file.
+2. **Move each upload endpoint to `file_upload`**: `answer(request.data, owner, kinds, max_bytes)`, naming the owner and the kinds the field accepts (the `moopa-routes` skill, File Upload Endpoint). A finished upload answers `{ success, file }`, not the bare file.
 3. **PUT with the `headers` the start returns**, not the file's own type. Moopa's `fileUpload` component and its own pages already do. An upload sending another Content-Type is refused by the store (403).
 4. **Schedule `application.lib.file_upload.sweep()`**, daily.
 5. **Redeploy the signed assets Worker** from `config/init/cloudflare-signed-assets-worker.js`, so raw assets carry `nosniff` and only media and PDFs open inline.

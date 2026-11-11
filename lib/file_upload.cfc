@@ -129,6 +129,25 @@
     </cffunction>
 
 
+    <cffunction name="answer" access="public" returntype="struct" output="false"
+        hint="An upload endpoint's whole answer, for the usual endpoint that only uploads: finish() when the request names a file_id, start() otherwise (with its file_name and file_size). A refusal sets the response to 422 marked X-Refusal, so req() shows its error, and returns { error, error_code }; anything else is start()'s or finish()'s own answer.">
+        <cfargument name="data" type="struct" required="true" hint="The request's data: { file_name, file_size } to start, { file_id } to finish." />
+        <cfargument name="owner" type="string" required="true" />
+        <cfargument name="kinds" type="string" required="true" />
+        <cfargument name="max_bytes" type="numeric" required="true" />
+
+        <cfset var result = len(trim(arguments.data.file_id ?: ""))
+            ? finish(file_id = trim(arguments.data.file_id), owner = arguments.owner)
+            : start(file_name = arguments.data.file_name ?: "", file_size = arguments.data.file_size ?: "", owner = arguments.owner, kinds = arguments.kinds, max_bytes = arguments.max_bytes) />
+        <cfif result.success>
+            <cfreturn result />
+        </cfif>
+        <cfheader statuscode="422" />
+        <cfheader name="X-Refusal" value="true" />
+        <cfreturn { "error": result.error, "error_code": result.error_code } />
+    </cffunction>
+
+
     <cffunction name="finish" access="public" returntype="struct" output="false"
         hint="Finishes an upload once the browser's PUT is done: checks the store holds the file at the size and type its URL was signed for, and that its first bytes are a file of its kind. Returns { success: true, file } (an image's thumbnail now its own picture), and the upload is no longer under way. An upload this owner has no such upload of is { success: false, error_code: unknown_upload, error } and changes nothing. A file the store doesn't hold, or holds as something else, is removed with its upload: { success: false, error_code (not_uploaded or file_content), error }.">
         <cfargument name="file_id" type="string" required="true" />

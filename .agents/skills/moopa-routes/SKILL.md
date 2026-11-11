@@ -500,22 +500,13 @@ For routes with slugs like `[customer_id]`:
 
 ## File Upload Endpoint
 
-Any route that renders a form with an editable file field needs a per-field upload handler. It starts and finishes the upload with lib `file_upload`, naming the owner the route vouches for and the kinds of file it accepts — never reinvent the upload pipeline: the lib signs the URL for the file's own type and length, checks what arrived, and wires up the signed Cloudflare Worker thumbnail URL.
+Any route that renders a form with an editable file field needs a per-field upload handler. It answers with lib `file_upload`'s `answer()`, which starts or finishes the upload, naming the owner the route vouches for and the kinds of file it accepts — never reinvent the upload pipeline: the lib signs the URL for the file's own type and length, checks what arrived, and wires up the signed Cloudflare Worker thumbnail URL.
 
 ```cfml
 <!--- Pattern: uploadFileToServerWithProgress.<field_id> --->
 <cffunction name="uploadFileToServerWithProgress.profile_picture_id">
-    <cfset var owner = "moo_profile:" & session.auth.profile.id />
-    <cfset var result = len(request.data.file_id ?: "")
-        ? application.lib.file_upload.finish(file_id = request.data.file_id, owner = owner)
-        : application.lib.file_upload.start(file_name = request.data.file_name ?: "", file_size = request.data.file_size ?: "",
-                                            owner = owner, kinds = "image", max_bytes = 20 * 1024 * 1024) />
-    <cfif NOT result.success>
-        <cfheader statuscode="422" />
-        <cfheader name="X-Refusal" value="true" />
-        <cfreturn { "error": result.error } />
-    </cfif>
-    <cfreturn result />
+    <cfreturn application.lib.file_upload.answer(data = request.data, owner = "moo_profile:" & session.auth.profile.id,
+                                                 kinds = "image", max_bytes = 20 * 1024 * 1024) />
 </cffunction>
 ```
 
@@ -534,17 +525,8 @@ Different shape from the CRUD example: the logged-in user edits their *own* reco
 
     <!--- Upload handler for the user's profile picture: as in File Upload Endpoint above --->
     <cffunction name="uploadFileToServerWithProgress.profile_picture_id">
-        <cfset var owner = "moo_profile:" & session.auth.profile.id />
-        <cfset var result = len(request.data.file_id ?: "")
-            ? application.lib.file_upload.finish(file_id = request.data.file_id, owner = owner)
-            : application.lib.file_upload.start(file_name = request.data.file_name ?: "", file_size = request.data.file_size ?: "",
-                                                owner = owner, kinds = "image", max_bytes = 20 * 1024 * 1024) />
-        <cfif NOT result.success>
-            <cfheader statuscode="422" />
-            <cfheader name="X-Refusal" value="true" />
-            <cfreturn { "error": result.error } />
-        </cfif>
-        <cfreturn result />
+        <cfreturn application.lib.file_upload.answer(data = request.data, owner = "moo_profile:" & session.auth.profile.id,
+                                                     kinds = "image", max_bytes = 20 * 1024 * 1024) />
     </cffunction>
 
     <!--- Load — uses session.auth.profile.id, not request.data.id --->

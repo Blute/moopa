@@ -2,16 +2,7 @@
 
 
     <cffunction name="uploadFileToServerWithProgress.profile_picture_id" hint="Start or finish uploading a profile's picture (lib file_upload): an image of up to 20 MB, belonging to the sysadmin uploading it.">
-        <cfset var owner = "moo_profile:" & session.auth.profile.id />
-        <cfset var result = len(request.data.file_id ?: "")
-            ? application.lib.file_upload.finish(file_id = request.data.file_id, owner = owner)
-            : application.lib.file_upload.start(file_name = request.data.file_name ?: "", file_size = request.data.file_size ?: "", owner = owner, kinds = "image", max_bytes = 20 * 1024 * 1024) />
-        <cfif NOT result.success>
-            <cfheader statuscode="422" />
-            <cfheader name="X-Refusal" value="true" />
-            <cfreturn { "error": result.error } />
-        </cfif>
-        <cfreturn result />
+        <cfreturn application.lib.file_upload.answer(data = request.data, owner = "moo_profile:" & session.auth.profile.id, kinds = "image", max_bytes = 20 * 1024 * 1024) />
     </cffunction>
 
 

@@ -123,14 +123,7 @@
         <cfif NOT who.allowed>
             <cfreturn refuse("You can only change your own picture.") />
         </cfif>
-        <cfset var owner = "moo_profile:" & session.auth.profile.id />
-        <cfset var result = len(request.data.file_id ?: "")
-            ? application.lib.file_upload.finish(file_id = request.data.file_id, owner = owner)
-            : application.lib.file_upload.start(file_name = request.data.file_name ?: "", file_size = request.data.file_size ?: "", owner = owner, kinds = "image", max_bytes = 20 * 1024 * 1024) />
-        <cfif NOT result.success>
-            <cfreturn refuse(result.error, 422) />
-        </cfif>
-        <cfreturn result />
+        <cfreturn application.lib.file_upload.answer(data = request.data, owner = "moo_profile:" & session.auth.profile.id, kinds = "image", max_bytes = 20 * 1024 * 1024) />
     </cffunction>
 
 
