@@ -284,7 +284,11 @@
               says success false) is certain, so the copy may be asked for again; no answer, or one without a video,
               might still have made one, so asking again could make a second. --->
         <cfif NOT len(stream_id)>
-            <cfif isStruct(cloudflare_copy.details) AND (cloudflare_copy.details.success ?: "") IS false>
+            <cfset var refused = isStruct(cloudflare_copy.details)
+                AND structKeyExists(cloudflare_copy.details, "success")
+                AND isBoolean(cloudflare_copy.details.success)
+                AND NOT cloudflare_copy.details.success />
+            <cfif refused>
                 <cfthrow type="moo_video.streamRefused" message="Cloudflare Stream refused video #video_id# (HTTP #cloudflare_copy.status_code#)" detail="#serializeJSON(cloudflare_copy.details.errors ?: [])#" />
             </cfif>
             <cfthrow type="moo_video.streamUncertain" message="Cloudflare Stream gave no video for #video_id# (HTTP #cloudflare_copy.status_code#); it may still have made one" detail="#serializeJSON(cloudflare_copy.details)#" />
