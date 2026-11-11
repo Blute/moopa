@@ -86,7 +86,7 @@
 
 
     <cffunction name="finish" access="public" returntype="struct" output="false"
-        hint="Finishes a video upload once the browser's PUT is done: checks the store holds the video at the size and type its URL was signed for and that its first bytes are a video, then hands it to Stream (moo_video sendToStream()). Returns { success: true, video } (the video as describe() gives it), and the upload is no longer under way. An upload this owner has no such upload of is { success: false, error_code: unknown_upload, error } and changes nothing. A file the store doesn't hold, or holds as something else, is removed with its video and upload: { success: false, error_code (not_uploaded or file_content), error }, and Stream is never asked. A Stream copy that fails throws moo_video.streamFailed and leaves the upload under way, to finish again or be swept.">
+        hint="Finishes a video upload once the browser's PUT is done: checks the store holds the video at the size and type its URL was signed for and that its first bytes are a video, then hands it to Stream (moo_video sendToStream()). Returns { success: true, video } (the video as describe() gives it), and the upload is no longer under way. An upload this owner has no such upload of is { success: false, error_code: unknown_upload, error } and changes nothing. A file the store doesn't hold, or holds as something else, is removed with its video and upload: { success: false, error_code (not_uploaded or file_content), error }, and Stream is never asked. A copy Stream refuses throws moo_video.streamRefused and leaves the upload under way, to finish again or be swept; any other failure throws and leaves it finished, since Stream may hold a video.">
         <cfargument name="video_id" type="string" required="true" />
         <cfargument name="owner" type="string" required="true" />
         <cfargument name="source" type="string" required="true" hint="What the video is for, recorded in Stream's metadata." />
@@ -111,7 +111,9 @@
         </cfif>
 
         <!--- Claimed in one statement, so of two finishes at once only one goes on to Stream; the other finds no
-              upload. A Stream copy that fails puts the upload back as it was, so it can be finished again or swept. --->
+              upload. Only a copy Stream certainly refused (moo_video.streamRefused) puts the upload back as it was, to
+              finish again or be swept: after any other failure Stream may hold a video, and asking again could bill a
+              second one, so the upload stays finished and the caller sees the error. --->
         <cfquery name="local.qClaimed" returntype="array">
             DELETE FROM moo_video_upload
             WHERE video_id = <cfqueryparam cfsqltype="other" value="#upload.video_id#" />
@@ -123,7 +125,7 @@
         </cfif>
         <cftry>
             <cfset var video = application.lib.db.getService(table_name = "moo_video").sendToStream(upload.video_id, arguments.source) />
-            <cfcatch>
+            <cfcatch type="moo_video.streamRefused">
                 <cfquery>
                     INSERT INTO moo_video_upload (id, video_id, owner, content_type, size, created_at, created_by)
                     VALUES (
