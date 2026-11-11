@@ -78,8 +78,9 @@
                         profile: profile.id,
                         saving: false,
                         uploading: false,
-                        // The picture: the endpoint makes a file record and an upload URL, the browser PUTs the file
-                        // there, then the endpoint finishes the record (its thumbnail), as System > Profiles does
+                        // The picture: the endpoint starts an upload (lib file_upload), the browser PUTs the file to its
+                        // URL with exactly the headers it was signed for, then the endpoint checks and finishes it, as
+                        // System > Profiles does
                         async upload(event) {
                             const file = event.target.files?.[0];
                             event.target.value = '';
@@ -88,10 +89,10 @@
                             const endpoint = 'uploadFileToServerWithProgress.profile_picture_id';
                             this.uploading = true;
                             try {
-                                const started = await req({ endpoint, body: { file_name: file.name, file_size: file.size, parent_table_name: 'moo_profile', parent_field: 'profile_picture_id', parent_id: this.profile } });
-                                const put = await fetch(started.presignedURL, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+                                const started = await req({ endpoint, body: { file_name: file.name, file_size: file.size, parent_id: this.profile } });
+                                const put = await fetch(started.presignedURL, { method: 'PUT', headers: started.headers, body: file });
                                 if (!put.ok) throw new Error('The upload failed (' + put.status + ').');
-                                this.picture = await req({ endpoint, body: { file_id: started.file.id, parent_id: this.profile } });
+                                this.picture = (await req({ endpoint, body: { file_id: started.file.id, parent_id: this.profile } })).file;
                             } catch (error) {
                                 if (!String(error.message).startsWith('{')) window.toast({ type: 'error', title: 'The picture was not uploaded', description: error.message });
                             } finally {
@@ -117,13 +118,12 @@
     </cffunction>
 
 
-    <cffunction name="uploadFileToServerWithProgress.profile_picture_id" hint="Start or finish uploading a picture for the profile being edited.">
+    <cffunction name="uploadFileToServerWithProgress.profile_picture_id" hint="Start or finish uploading a picture for the profile being edited (lib file_upload): an image of up to 20 MB, belonging to the person uploading it.">
         <cfset var who = target(request.data.parent_id ?: "") />
         <cfif NOT who.allowed>
             <cfreturn refuse("You can only change your own picture.") />
         </cfif>
-        <cfset request.data.parent_id = who.id />
-        <cfreturn application.lib.db.getService(table_name = "moo_file").uploadFileToServerWithProgress(data = request.data) />
+        <cfreturn application.lib.file_upload.answer(data = request.data, owner = "moo_profile:" & session.auth.profile.id, kinds = "image", max_bytes = 20 * 1024 * 1024) />
     </cffunction>
 
 

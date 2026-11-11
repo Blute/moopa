@@ -29,7 +29,7 @@ An `endpoint` option is the name of an endpoint on the current route, or the obj
 |---|---|---|
 | Search | `req({ endpoint, q, limit, exclude_ids })`, so `url.q`, `url.limit`, `url.exclude_ids` (comma-joined) | `[{ id, label, disabled?, ...extra }]` |
 | Address | `req({ endpoint, q })` | `{ suggestions: [{ formatted_address, ... }] }` |
-| Upload | presign `{ file_name, file_size, parent_table_name, parent_field, parent_id }`, then finalise `{ file_id }` | `{ presignedURL, file }`, then the file record |
+| Upload | start `{ file_name, file_size, parent_table_name, parent_field, parent_id }`, then finish `{ file_id }` | `{ presignedURL, headers, file }`, then `{ file }` |
 
 Search endpoints are named `search.<field>`, upload endpoints `uploadFileToServerWithProgress.<field>`:
 
@@ -45,9 +45,14 @@ Search endpoints are named `search.<field>`, upload endpoints `uploadFileToServe
 </cffunction>
 
 <cffunction name="uploadFileToServerWithProgress.attachments">
-    <cfreturn application.lib.db.getService(table_name="moo_file").uploadFileToServerWithProgress(data=request.data) />
+    <!--- Who the upload belongs to: here the person signed in. A page for an anonymous visitor names a record the
+          visitor owns, checked first. --->
+    <cfreturn application.lib.file_upload.answer(data = request.data, owner = "moo_profile:" & session.auth.profile.id,
+                                                 kinds = "image,pdf", max_bytes = 25 * 1024 * 1024) />
 </cffunction>
 ```
+
+An upload endpoint is lib `file_upload` (`docs/object-storage.md`, Uploads from the browser): `answer()` starts the upload (`start()` signs the URL for the file's own type and length) or finishes it (`finish()` checks what arrived before the file counts), and answers a refusal as a 422 `req()` shows. An endpoint that does more than upload, such as attaching the file to a record, calls `start()` and `finish()` itself.
 
 ## Components
 

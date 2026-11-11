@@ -500,12 +500,13 @@ For routes with slugs like `[customer_id]`:
 
 ## File Upload Endpoint
 
-Any route that renders a form with an editable file field needs a per-field upload handler. The canonical pattern is a one-line delegation to the moo_file table service — never reinvent the upload pipeline, because the table service is what wires up the signed Cloudflare Worker thumbnail URL.
+Any route that renders a form with an editable file field needs a per-field upload handler. It answers with lib `file_upload`'s `answer()`, which starts or finishes the upload, naming the owner the route vouches for and the kinds of file it accepts — never reinvent the upload pipeline: the lib signs the URL for the file's own type and length, checks what arrived, and wires up the signed Cloudflare Worker thumbnail URL.
 
 ```cfml
 <!--- Pattern: uploadFileToServerWithProgress.<field_id> --->
 <cffunction name="uploadFileToServerWithProgress.profile_picture_id">
-    <cfreturn application.lib.db.getService(table_name="moo_file").uploadFileToServerWithProgress(data=request.data) />
+    <cfreturn application.lib.file_upload.answer(data = request.data, owner = "moo_profile:" & session.auth.profile.id,
+                                                 kinds = "image", max_bytes = 20 * 1024 * 1024) />
 </cffunction>
 ```
 
@@ -513,7 +514,7 @@ The function name suffix (`profile_picture_id`) must match the field id used in 
 
 > **Use `"#...#"` only when you're building a string — otherwise pass the value bare.** Write `data=request.data`, not `data="#request.data#"`. The wrapper is for interpolation or concatenation (`"%#term#%"`, `"/moo_file/#id#/file.jpg"`); around a single variable it does nothing, and for a struct/array/query it's a stringification footgun that survives only by CFML's single-`#...#` type pass-through — one stray character and it breaks the `type="struct"` contract.
 
-The implementation lives in `code/moopa/tables/moo_file.cfc` `uploadFileToServerWithProgress`. It runs in two legs (presign + finalise), signs the resulting thumbnail via `application.lib.cloudflare.signed_asset_url(..., kind='i', ...)`, and writes the signed URL into `moo_file.thumbnail`. Don't write your own version of this; keep upload/signing behaviour centralised in the framework service.
+The implementation lives in `code/moopa/lib/file_upload.cfc`. It runs in two legs: `start()` makes the `moo_file` and a URL signed for the file's Content-Type and Content-Length (the browser PUTs with exactly the `headers` it returns), and `finish()` checks the stored file's size, type and first bytes, then signs its thumbnail via `application.lib.cloudflare.signed_asset_url(..., kind='i', ...)` into `moo_file.thumbnail`. Don't write your own version of this; keep upload/signing behaviour centralised in the framework lib.
 
 ## Self-Edit Profile Recipe
 
@@ -522,9 +523,10 @@ Different shape from the CRUD example: the logged-in user edits their *own* reco
 ```cfml
 <cfcomponent key="<uuidgen>" open_to="logged_in">
 
-    <!--- Upload handler for the user's profile picture --->
+    <!--- Upload handler for the user's profile picture: as in File Upload Endpoint above --->
     <cffunction name="uploadFileToServerWithProgress.profile_picture_id">
-        <cfreturn application.lib.db.getService(table_name="moo_file").uploadFileToServerWithProgress(data=request.data) />
+        <cfreturn application.lib.file_upload.answer(data = request.data, owner = "moo_profile:" & session.auth.profile.id,
+                                                     kinds = "image", max_bytes = 20 * 1024 * 1024) />
     </cffunction>
 
     <!--- Load — uses session.auth.profile.id, not request.data.id --->

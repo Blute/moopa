@@ -4,7 +4,7 @@ Moopa talks to S3-compatible stores, AWS S3 and Cloudflare R2, through its own c
 
 ## The default store
 
-Moopa's uploads (`moo_file`, `moo_video`) use the application's default store, `s3_client.defaultStore()`:
+Moopa's uploads (`moo_file` through `file_upload`, and `moo_video`) use the application's default store, `s3_client.defaultStore()`:
 
 - **Bucket:** the `S3_BUCKET` environment variable.
 - **Endpoint, region and keys:** the application's S3 settings in `Application.cfc`, in Lucee's own names:
@@ -40,9 +40,11 @@ Every call takes a store: `defaultStore()`, or one built with `configure(label, 
 | `downloadObject(store, objectKey, filePath)` | streams the object to a file, for anything large |
 | `writeObject(store, objectKey, value, contentType)` | writes text or bytes |
 | `objectExists(store, objectKey)` | asks the store (HEAD): true, false, or throws |
+| `headObject(store, objectKey)` | what the store holds (HEAD): `{ exists, size, contentType }` |
+| `readObjectStart(store, objectKey, bytes)` | the first `bytes` bytes (a ranged GET), to read a file's signature |
 | `deleteObject(store, objectKey)` | deletes it |
 | `listObjects(store, prefix)` | `[{ key, etag, size, last_modified }]` under a prefix |
-| `presignedUrl(store, objectKey, method, expiresSeconds)` | a URL a browser can GET or PUT without credentials |
+| `presignedUrl(store, objectKey, method, expiresSeconds, signedHeaders)` | a URL a browser can GET or PUT without credentials; with `signedHeaders` (such as `{ "Content-Type": "image/jpeg", "Content-Length": 48213 }`) the browser must send each with exactly that value, or the store refuses it |
 
 A failed request throws `s3.request.failed` with the store's status and answer in the detail.
 
@@ -55,3 +57,33 @@ store = application.lib.s3_client.defaultStore();
 application.lib.s3_client.writeObject(store, "reports/#id#.pdf", pdfBytes, "application/pdf");
 uploadUrl = application.lib.s3_client.presignedUrl(store, "uploads/#name#", "PUT", 300);
 ```
+
+## Uploads from the browser
+
+A browser uploads a file straight to the store through `application.lib.file_upload`, which checks it at both ends. Never hand a browser a bare `presignedUrl` for PUT: it lets it store any body of any length and type under your key.
+
+1. **Start** (`start(file_name, file_size, owner, kinds, max_bytes)`): refuses a file of a kind the caller doesn't accept, an empty one or one over `max_bytes` (`{ success: false, error_code, error }`, with `error_code` `file_type`, `empty` or `file_size`). Otherwise it makes the `moo_file`, records the upload under way (`moo_file_upload`), and returns `{ success: true, file, presignedURL, headers }`. The URL is signed for the file's Content-Type, chosen by the server from its extension, and its exact Content-Length, so the store refuses any other body.
+2. **PUT**: the browser sends the file to `presignedURL` with exactly `headers`. Its Content-Length is the browser's own, from the file.
+3. **Finish** (`finish(file_id, owner)`): checks the store holds the file at its signed size and type, and that its first bytes are a file of its kind (a page named `.jpg` is not an image). Returns `{ success: true, file }`, with an image's thumbnail now its own picture. A file that never arrived, or isn't what its name says, is removed: `{ success: false, error_code }`, `not_uploaded` or `file_content`.
+
+`kinds` is a list of `image` (JPEG, PNG, GIF, WebP, HEIC/HEIF, TIFF, BMP), `pdf` and `video` (MP4, MOV, WebM, Matroska, AVI). SVG is no kind: it is a document that can run script.
+
+**An endpoint that only uploads** answers with `answer(data, owner, kinds, max_bytes)`: `finish()` when the request names a `file_id`, `start()` otherwise, and a refusal as a 422 marked `X-Refusal`, which `req()` shows. An endpoint that does more, such as attaching the file to a record or capping how many a record holds, calls `start()` and `finish()` itself.
+
+**The owner** is whatever the caller vouches the upload belongs to: `"moo_profile:" & session.auth.profile.id` for a signed-in person, or a record an anonymous visitor owns, checked by the route first. Only an ask naming the same owner may finish or `discard()` the upload, so one visitor can't finish another's. `underWay(owner)` counts the owner's uploads still under way, for a caller that caps how many files an owner holds.
+
+**Abandoned uploads**: a browser that starts an upload and never finishes it leaves a file and maybe an object. `sweep()` removes every upload left unfinished for a day. Run it on a schedule.
+
+## Serving uploaded files
+
+The signed assets Worker (`config/init/cloudflare-signed-assets-worker.js`) answers every request `X-Content-Type-Options: nosniff`, and opens only images, video, audio and PDFs in the browser. Anything else a raw asset (`/a/`) is stored as, SVG and HTML included, is a download (`Content-Disposition: attachment`), so a signed link can never show a page on the asset hostname. `node scripts/test_assets_worker.mjs` checks it.
+
+## Upgrading to checked uploads
+
+`moo_file`'s `uploadFileToServerWithProgress()` is gone: it signed an upload URL for any body, checked nothing when the upload finished, and let anyone finish any file. When a project moves to this version of Moopa:
+
+1. **Sync the schema** (System → Schema): it adds the `moo_file_upload` table. Without it every upload fails.
+2. **Move each upload endpoint to `file_upload`**: `answer(request.data, owner, kinds, max_bytes)`, naming the owner and the kinds the field accepts (the `moopa-routes` skill, File Upload Endpoint). A finished upload answers `{ success, file }`, not the bare file.
+3. **PUT with the `headers` the start returns**, not the file's own type. Moopa's `fileUpload` component and its own pages already do. An upload sending another Content-Type is refused by the store (403).
+4. **Schedule `application.lib.file_upload.sweep()`**, daily.
+5. **Redeploy the signed assets Worker** from `config/init/cloudflare-signed-assets-worker.js`, so raw assets carry `nosniff` and only media and PDFs open inline.
