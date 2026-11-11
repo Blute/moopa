@@ -72,8 +72,9 @@
 
     <!--- Presigns one request in the query string, for a client that holds no credentials (a browser uploading or
           downloading straight to the store). Returns the query string, without the "?", to append to the URL whose host and
-          canonicalUri were signed. Only the host header is signed and the payload is UNSIGNED-PAYLOAD, so the client may send
-          any body and other headers (a PUT's Content-Type) without breaking the signature. A session token is signed into
+          canonicalUri were signed. The host header is always signed, and so is each of `headers` (name -> value): the client
+          must send each with exactly that value, or the store refuses the request, which is how an upload is held to one
+          Content-Type and Content-Length. The payload is UNSIGNED-PAYLOAD, and headers not signed are the client's own. A session token is signed into
           the query as X-Amz-Security-Token. canonicalUri must already be URI-encoded exactly as it will go on the wire.
           Fully parameterised (including signingTime) so it can be checked against AWS's published example. --->
     <cffunction name="presign" access="public" returntype="string" output="false">
@@ -85,6 +86,7 @@
         <cfargument name="credentials" type="struct" required="true" />
         <cfargument name="signingTime" type="date" required="true" />
         <cfargument name="expiresSeconds" type="numeric" required="true" hint="How long the URL works: 1 second to 7 days." />
+        <cfargument name="headers" type="struct" required="false" default="#{}#" hint="Headers the client must send with exactly these values (name -> value), signed with the host. Not host, and no X-Amz- header." />
 
         <cfset var amzDate = dateTimeFormat(arguments.signingTime, "yyyyMMdd'T'HHnnss'Z'", "UTC") />
         <cfset var dateStamp = dateTimeFormat(arguments.signingTime, "yyyyMMdd", "UTC") />
@@ -96,6 +98,22 @@
         <cfset var canonicalQueryString = "" />
         <cfset var canonicalRequest = "" />
         <cfset var signature = "" />
+        <cfset var signed = { "host": trim(arguments.host) } />
+        <cfset var headerName = "" />
+        <cfset var headerNames = [] />
+        <cfset var canonicalHeaders = "" />
+
+        <cfloop collection="#arguments.headers#" item="headerName">
+            <cfif listFindNoCase("host", trim(headerName)) OR reFindNoCase("^x-amz-", trim(headerName)) OR NOT reFind("^[A-Za-z0-9-]+$", trim(headerName))>
+                <cfthrow type="aws.sigv4.invalid" message="A presigned URL signs the host itself and no X-Amz- header; '#headerName#' can't be one of its headers" />
+            </cfif>
+            <cfset signed[lCase(trim(headerName))] = trim(arguments.headers[headerName]) />
+        </cfloop>
+        <cfset headerNames = structKeyArray(signed) />
+        <cfset arraySort(headerNames, function(a, b) { return compare(a, b); }) />
+        <cfloop array="#headerNames#" item="headerName">
+            <cfset canonicalHeaders &= headerName & ":" & signed[headerName] & chr(10) />
+        </cfloop>
 
         <cfif NOT isValid("integer", arguments.expiresSeconds) OR arguments.expiresSeconds LT 1 OR arguments.expiresSeconds GT 604800>
             <cfthrow type="aws.sigv4.invalid" message="A presigned URL expires in 1 to 604800 seconds (7 days), not #arguments.expiresSeconds#" />
@@ -106,7 +124,7 @@
             ["X-Amz-Credential", arguments.credentials.accessKeyId & "/" & credentialScope],
             ["X-Amz-Date", amzDate],
             ["X-Amz-Expires", int(arguments.expiresSeconds)],
-            ["X-Amz-SignedHeaders", "host"]
+            ["X-Amz-SignedHeaders", arrayToList(headerNames, ";")]
         ] />
         <cfif len(sessionToken)>
             <cfset arrayAppend(parameters, ["X-Amz-Security-Token", sessionToken]) />
@@ -121,7 +139,7 @@
         </cfloop>
 
         <cfset canonicalRequest = arguments.method & chr(10) & arguments.canonicalUri & chr(10) & canonicalQueryString & chr(10)
-            & "host:" & trim(arguments.host) & chr(10) & chr(10) & "host" & chr(10) & "UNSIGNED-PAYLOAD" />
+            & canonicalHeaders & chr(10) & arrayToList(headerNames, ";") & chr(10) & "UNSIGNED-PAYLOAD" />
         <cfset signature = signatureFor(
             secretAccessKey = arguments.credentials.secretAccessKey,
             dateStamp = dateStamp,

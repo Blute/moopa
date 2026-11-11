@@ -1,8 +1,17 @@
 <cfcomponent key="88fcf7cb-d88c-41b0-b1c8-861c1cfe1895" open_to="security">
 
 
-    <cffunction name="uploadFileToServerWithProgress.profile_picture_id">
-        <cfreturn application.lib.db.getService(table_name="moo_file").uploadFileToServerWithProgress(data="#request.data#") />
+    <cffunction name="uploadFileToServerWithProgress.profile_picture_id" hint="Start or finish uploading a profile's picture (lib file_upload): an image of up to 20 MB, belonging to the sysadmin uploading it.">
+        <cfset var owner = "moo_profile:" & session.auth.profile.id />
+        <cfset var result = len(request.data.file_id ?: "")
+            ? application.lib.file_upload.finish(file_id = request.data.file_id, owner = owner)
+            : application.lib.file_upload.start(file_name = request.data.file_name ?: "", file_size = request.data.file_size ?: "", owner = owner, kinds = "image", max_bytes = 20 * 1024 * 1024) />
+        <cfif NOT result.success>
+            <cfheader statuscode="422" />
+            <cfheader name="X-Refusal" value="true" />
+            <cfreturn { "error": result.error } />
+        </cfif>
+        <cfreturn result />
     </cffunction>
 
 
@@ -683,8 +692,8 @@
                             this.current_record.roles = (this.current_record.roles || []).filter(role => role.id !== id);
                         },
 
-                        // The picture: the endpoint makes a moo_file and an upload URL, the browser PUTs the file there,
-                        // then the endpoint finishes the record (its thumbnail) — moo_file.uploadFileToServerWithProgress
+                        // The picture: the endpoint starts an upload (lib file_upload), the browser PUTs the file to its URL
+                        // with exactly the headers it was signed for, then the endpoint checks and finishes it
                         picture_uploading: false,
                         async uploadPicture(event) {
                             const file = event.target.files?.[0];
@@ -697,10 +706,10 @@
                             const endpoint = 'uploadFileToServerWithProgress.profile_picture_id';
                             this.picture_uploading = true;
                             try {
-                                const started = await req({ endpoint, body: { file_name: file.name, file_size: file.size, parent_table_name: 'moo_profile', parent_field: 'profile_picture_id', parent_id: this.current_record.id || '' } });
-                                const put = await fetch(started.presignedURL, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+                                const started = await req({ endpoint, body: { file_name: file.name, file_size: file.size } });
+                                const put = await fetch(started.presignedURL, { method: 'PUT', headers: started.headers, body: file });
                                 if (!put.ok) throw new Error(`The upload failed (${put.status}).`);
-                                this.current_record.profile_picture_id = await req({ endpoint, body: { file_id: started.file.id } });
+                                this.current_record.profile_picture_id = (await req({ endpoint, body: { file_id: started.file.id } })).file;
                             } catch (error) {
                                 if (!String(error.message).startsWith('{')) window.toast({ type: 'error', title: 'The picture was not uploaded', description: error.message });
                             } finally {

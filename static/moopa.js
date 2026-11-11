@@ -623,10 +623,12 @@ document.addEventListener('alpine:init', () => {
   window.adminList = adminList;
 
   // --- file upload: drop zone, progress per file -------------------------------------------------
-  // 1) presign: req({ endpoint, body: { file_name, file_size, parent_table_name, parent_field, parent_id } }) -> { presignedURL, file }
-  // 2) PUT the bytes to presignedURL (XHR, for progress)
-  // 3) finalise: req({ endpoint, body: { file_id } }) -> the file record
-  // moo_file's uploadFileToServerWithProgress(request.data) does 1 and 3. The model (`files`) holds
+  // 1) start: req({ endpoint, body: { file_name, file_size, parent_table_name, parent_field, parent_id } })
+  //    -> { presignedURL, headers, file }
+  // 2) PUT the bytes to presignedURL with exactly those headers (XHR, for progress): the URL is signed for
+  //    them and the file's length, so the store refuses anything else
+  // 3) finish: req({ endpoint, body: { file_id } }) -> { file }
+  // The endpoint does 1 and 3 with lib file_upload (start, finish). The model (`files`) holds
   // completed uploads only; uploads in progress (`pending`) and removed files (`removed`) stay here.
   const FILE_ICONS = [
     [/^pdf$/, 'fa-file-pdf'],
@@ -697,12 +699,13 @@ document.addEventListener('alpine:init', () => {
           await new Promise((resolve, reject) => {
             const x = new XMLHttpRequest();
             x.open('PUT', pre.presignedURL);
+            Object.entries(pre.headers || {}).forEach(([name, value]) => x.setRequestHeader(name, value));
             x.upload.onprogress = e => { if (e.lengthComputable) row.progress = Math.round(e.loaded / e.total * 100); };
             x.onload = () => (x.status < 300 ? resolve() : reject(new Error('Upload failed: ' + x.status)));
             x.onerror = () => reject(new Error('Upload failed'));
             x.send(f);
           });
-          const done = await req({ ...target(endpoint), body: { file_id: row.id } });
+          const done = (await req({ ...target(endpoint), body: { file_id: row.id } })).file;
           this.files = [...(this.files || []), { ...pre.file, ...done, status: 'uploaded' }];
           this.pending = this.pending.filter(p => p.id !== row.id);
           sources.delete(row.id);

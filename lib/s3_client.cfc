@@ -214,6 +214,52 @@
         <cfreturn left(httpResult.statusCode ?: "", 3) NEQ "404" />
     </cffunction>
 
+    <!--- What the store holds at a key (a HEAD request): { exists, size, contentType }. size is the stored length in
+          bytes and contentType the type it was stored with; both are 0 and "" when the object isn't there. Anything but
+          200 or 404 throws, since it says nothing about the object. --->
+    <cffunction name="headObject" access="public" returntype="struct" output="false">
+        <cfargument name="store" type="struct" required="true" />
+        <cfargument name="objectKey" type="string" required="true" />
+
+        <cfset var httpResult = signedRequest(
+            store = arguments.store,
+            method = "HEAD",
+            canonicalUri = objectCanonicalUri(arguments.store, arguments.objectKey),
+            canonicalQueryString = "",
+            allowedStatuses = "404"
+        ) />
+        <cfif left(httpResult.statusCode ?: "", 3) EQ "404">
+            <cfreturn { "exists": false, "size": 0, "contentType": "" } />
+        </cfif>
+        <cfset var length = responseHeader(httpResult, "Content-Length") />
+        <cfif NOT isValid("integer", length)>
+            <cfthrow type="s3.request.failed" message="#arguments.store.label#: HEAD #arguments.objectKey# answered without a Content-Length" />
+        </cfif>
+        <cfreturn { "exists": true, "size": val(length), "contentType": responseHeader(httpResult, "Content-Type") } />
+    </cffunction>
+
+    <!--- The first `bytes` bytes of an object (a ranged GET; S3 and R2 both honour Range), or all of it when it is
+          shorter: enough to read a file's signature without fetching the whole thing. Throws s3.request.failed when the
+          object isn't there. --->
+    <cffunction name="readObjectStart" access="public" returntype="binary" output="false">
+        <cfargument name="store" type="struct" required="true" />
+        <cfargument name="objectKey" type="string" required="true" />
+        <cfargument name="bytes" type="numeric" required="true" hint="How many bytes, at least 1." />
+
+        <cfif NOT isValid("integer", arguments.bytes) OR arguments.bytes LT 1>
+            <cfthrow type="s3.request.invalid" message="#arguments.store.label#: readObjectStart reads at least 1 byte, not #arguments.bytes#" />
+        </cfif>
+        <cfset var httpResult = signedRequest(
+            store = arguments.store,
+            method = "GET",
+            canonicalUri = objectCanonicalUri(arguments.store, arguments.objectKey),
+            canonicalQueryString = "",
+            binaryResponse = true,
+            requestHeaders = { "Range": "bytes=0-#int(arguments.bytes) - 1#" }
+        ) />
+        <cfreturn httpResult.fileContent />
+    </cffunction>
+
     <!--- Deletes an object. Deleting a key that isn't there succeeds, as S3 answers it. --->
     <cffunction name="deleteObject" access="public" returntype="void" output="false">
         <cfargument name="store" type="struct" required="true" />
@@ -228,12 +274,16 @@
     </cffunction>
 
     <!--- A presigned URL for a client holding no credentials, typically a browser uploading (PUT) or downloading (GET)
-          straight to the store. Works for expiresSeconds from now; any body and Content-Type may be sent with it. --->
+          straight to the store. Works for expiresSeconds from now. Without signedHeaders any body and Content-Type may be
+          sent with it; with them, the client must send each header with exactly its value, or the store refuses the
+          request: an upload signed with Content-Type and Content-Length can store only a body of that length, as that
+          type. --->
     <cffunction name="presignedUrl" access="public" returntype="string" output="false">
         <cfargument name="store" type="struct" required="true" />
         <cfargument name="objectKey" type="string" required="true" />
         <cfargument name="method" type="string" required="true" hint="GET, PUT, HEAD or DELETE" />
         <cfargument name="expiresSeconds" type="numeric" required="true" />
+        <cfargument name="signedHeaders" type="struct" required="false" default="#{}#" hint="Headers the client must send with exactly these values, such as { 'Content-Type': 'image/jpeg', 'Content-Length': 48213 }." />
 
         <cfset var canonicalUri = objectCanonicalUri(arguments.store, arguments.objectKey) />
         <cfset var credentials = application.lib.aws_credentials.resolve(
@@ -254,7 +304,8 @@
             service = "s3",
             credentials = credentials,
             signingTime = now(),
-            expiresSeconds = arguments.expiresSeconds
+            expiresSeconds = arguments.expiresSeconds,
+            headers = arguments.signedHeaders
         ) />
     </cffunction>
 
@@ -270,8 +321,15 @@
         <cfargument name="binaryResponse" type="boolean" required="false" default="false" />
         <cfargument name="filePath" type="string" required="false" default="" />
         <cfargument name="allowedStatuses" type="string" required="false" default="" />
+        <cfargument name="requestHeaders" type="struct" required="false" default="#{}#" hint="More headers to send, unsigned (a GET's Range). Not Host, Authorization or any X-Amz- header." />
 
         <cfset var httpResult = {} />
+        <cfset var extraName = "" />
+        <cfloop collection="#arguments.requestHeaders#" item="extraName">
+            <cfif listFindNoCase("host,authorization,content-type", extraName) OR reFindNoCase("^x-amz-", extraName)>
+                <cfthrow type="s3.request.invalid" message="#arguments.store.label#: the header '#extraName#' is the client's own to send" />
+            </cfif>
+        </cfloop>
         <cfset var payloadHash = application.lib.aws_sigv4.sha256Hex(arguments.body) />
         <cfset var credentials = application.lib.aws_credentials.resolve(
             accessKeyId = arguments.store.accessKeyId,
@@ -311,6 +369,9 @@
                 <cfif len(arguments.contentType)>
                     <cfhttpparam type="header" name="Content-Type" value="#arguments.contentType#" />
                 </cfif>
+                <cfloop collection="#arguments.requestHeaders#" item="extraName">
+                    <cfhttpparam type="header" name="#extraName#" value="#arguments.requestHeaders[extraName]#" />
+                </cfloop>
                 <cfif arguments.method EQ "PUT">
                     <cfhttpparam type="body" value="#arguments.body#" />
                 </cfif>
@@ -336,6 +397,20 @@
         </cfif>
 
         <cfreturn httpResult />
+    </cffunction>
+
+    <!--- A response header's value, whatever case the store wrote its name in, or "" when it's absent. --->
+    <cffunction name="responseHeader" access="private" returntype="string" output="false">
+        <cfargument name="httpResult" type="struct" required="true" />
+        <cfargument name="name" type="string" required="true" />
+        <cfset var headers = arguments.httpResult.responseHeader ?: {} />
+        <cfset var key = "" />
+        <cfloop collection="#headers#" item="key">
+            <cfif compareNoCase(key, arguments.name) EQ 0>
+                <cfreturn isSimpleValue(headers[key]) ? trim(headers[key]) : trim(headers[key][1] ?: "") />
+            </cfif>
+        </cfloop>
+        <cfreturn "" />
     </cffunction>
 
     <!--- The first 1000 characters of a file as text, or "" when there's no file or it can't be read as text. --->

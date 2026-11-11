@@ -139,15 +139,18 @@
     </cffunction>
 
     <!---
-        A real page delegates to moo_file: application.lib.db.getService("moo_file").uploadFileToServerWithProgress(request.data).
-        Here the presign step hands back this route's demoPut endpoint as the upload URL, and nothing is stored.
+        A real page starts and finishes the upload with lib file_upload (start() without a file_id, finish() with one),
+        naming the owner it vouches for and the kinds of file it accepts. Here the start hands back this route's demoPut
+        endpoint as the upload URL, and nothing is stored.
     --->
     <cffunction name="uploadFileToServerWithProgress.attachments">
         <cfif len(request.data.file_id ?: "")>
-            <cfreturn { "id": request.data.file_id, "created_at": dateTimeFormat(now(), "iso") } />
+            <cfreturn { "success": true, "file": { "id": request.data.file_id, "created_at": dateTimeFormat(now(), "iso") } } />
         </cfif>
         <cfreturn {
+            "success": true,
             "presignedURL": "/sysadmin/components?X-Endpoint=demoPut",
+            "headers": {},
             "file": { "id": createUUID(), "name": request.data.file_name ?: "file", "size": request.data.file_size ?: 0 }
         } />
     </cffunction>
@@ -424,7 +427,7 @@
     </ul>
 </div>
         </cfsavecontent>
-        <cfset arrayAppend(out, { id: "files", name: "fileUpload", title: "File upload", model: "{ attachments: [] }", html: html, description: "Presign, PUT to storage with progress, then finalise: the endpoint delegates to <code class='code-inline'>moo_file</code>'s <code class='code-inline'>uploadFileToServerWithProgress(request.data)</code>. The model holds finished uploads only; <code class='code-inline'>remove</code> and <code class='code-inline'>restore</code> undo, <code class='code-inline'>retry</code> and <code class='code-inline'>dismiss</code> handle a failed one. Events: <code class='code-inline'>files-uploading</code>, <code class='code-inline'>file-uploaded</code> (<code class='code-inline'>detail.file</code>), <code class='code-inline'>files-uploaded</code>. Nothing is stored from this page." }) />
+        <cfset arrayAppend(out, { id: "files", name: "fileUpload", title: "File upload", model: "{ attachments: [] }", html: html, description: "Start, PUT to storage with progress, then finish: the endpoint calls lib <code class='code-inline'>file_upload</code>'s <code class='code-inline'>start()</code> and <code class='code-inline'>finish()</code>, and the PUT sends exactly the <code class='code-inline'>headers</code> the start returns. The model holds finished uploads only; <code class='code-inline'>remove</code> and <code class='code-inline'>restore</code> undo, <code class='code-inline'>retry</code> and <code class='code-inline'>dismiss</code> handle a failed one. Events: <code class='code-inline'>files-uploading</code>, <code class='code-inline'>file-uploaded</code> (<code class='code-inline'>detail.file</code>), <code class='code-inline'>files-uploaded</code>. Nothing is stored from this page." }) />
 
         <cfsavecontent variable="html">
 <!-- Once per page: <link rel="stylesheet" href="…/trix.css"> and <script src="…/trix.umd.min.js"></script> -->

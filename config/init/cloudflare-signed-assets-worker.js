@@ -2,11 +2,15 @@ export default {
   // Every answer for a signed asset (/a/) can be read by any page, refusals and failures included: a signed URL is its
   // own authorisation (no cookies are involved), and a web app that keeps a copy to work offline (Cache API,
   // IndexedDB) reads it with a CORS request, so it needs to see a 404 or a 416 as that, not as a network failure.
+  //
+  // No answer may be read as anything but the type it says it is (nosniff): a browser never runs a file as script or
+  // styles because its bytes look like them.
   async fetch(request, env, ctx) {
     const response = await handleRequest(request, env, ctx);
     if (new URL(request.url).pathname.startsWith("/a/")) {
       response.headers.set("Access-Control-Allow-Origin", "*");
     }
+    response.headers.set("X-Content-Type-Options", "nosniff");
     return response;
   },
 };
@@ -165,6 +169,11 @@ async function handleAssetProxy({ request, env, objectKey, method, url }) {
     guessContentType(objectKey) ||
     "application/octet-stream";
   headers.set("Content-Type", contentType);
+  // Only media and PDFs open in the browser. Anything else (a page, an SVG, a script, whatever type an upload was
+  // stored with) is a download, so a signed link to it can never show a page on this hostname.
+  if (!opensInline(contentType)) {
+    headers.set("Content-Disposition", `attachment; filename="${downloadFilename(objectKey)}"`);
+  }
   if (obj.etag) headers.set("ETag", obj.etag);
 
   // Partial only when a range was asked for: R2 reports a range on every object it returns, asked for or not, so
@@ -662,6 +671,20 @@ function getSignedTtlSeconds(url) {
   const exp = Number(url.searchParams.get("exp"));
   const now = Math.floor(Date.now() / 1000);
   return Number.isFinite(exp) ? Math.max(0, exp - now) : 0;
+}
+
+// Whether a raw asset of this type may open in the browser: images (but not SVG, a document that can run script),
+// video, audio and PDF.
+function opensInline(contentType) {
+  const type = String(contentType).split(";")[0].trim().toLowerCase();
+  if (type === "image/svg+xml") return false;
+  return /^(image|video|audio)\/[a-z0-9.+-]+$/.test(type) || type === "application/pdf";
+}
+
+// The last segment of an object key, kept to characters that are safe inside a quoted header value.
+function downloadFilename(objectKey) {
+  const name = String(objectKey).split("/").pop() || "download";
+  return name.replace(/[^A-Za-z0-9._-]/g, "_");
 }
 
 function guessContentType(key) {
