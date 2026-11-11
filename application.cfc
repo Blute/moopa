@@ -6,6 +6,9 @@
 
     <cfset this.tag.cflocation.addtoken = false />
 
+    <!--- How long ?init waits for running requests to finish before it gives up (_reinitialize) --->
+    <cfset variables.REINIT_WAIT_SECONDS = 30 />
+
     <!--- Sessions must be explicitly enabled (CFML spec default is false; Lucee
           installs often enable it admin-side, which masked this). RustCFML
           follows the spec default, so without this no session scope persists
@@ -36,6 +39,9 @@
 
         <!--- LET THE TEMPLATE KNOW WE HAVE INITIALIZE IN CASE WE WANT TO ALERT THE USER --->
         <cfset request.application_initialized = true />
+
+        <!--- The requests this application is running, which ?init waits for (_requestStarted) --->
+        <cfset application.moopa_requests = {} />
 
         <!---
             App resolution order:
@@ -112,7 +118,8 @@
 
 
 
-        <cfif (application.about_to_initialize?:false)>
+        <!--- While ?init waits to restart the application, new requests are sent to /restarting/ --->
+        <cfif NOT _requestStarted()>
             <cflocation url="/restarting/index.html?redirect=#encodeForURL(_localPath(url.route ?: '/'))#" />
         </cfif>
 
@@ -152,10 +159,26 @@
 	</cffunction>
 
 
+	<!---
+        A request leaves by one of three doors: OnRequestEnd when it runs to the end, onAbort when
+        it stops at a cfabort or cflocation (every endpoint does), OnError when it throws. Each marks
+        it finished for ?init. A project overriding OnRequestEnd or onAbort calls super; one
+        changing error pages overrides handleError, never OnError.
+    --->
 	<cffunction name="OnRequestEnd" access="public" returntype="void" output="true" hint="Fires after the page processing is complete.">
+
+        <cfset _requestFinished() />
 
 		<!--- Return out. --->
 		<cfreturn />
+
+	</cffunction>
+
+
+	<cffunction name="onAbort" access="public" returntype="void" output="true" hint="Fires when a request stops at a cfabort or cflocation, in place of OnRequestEnd.">
+		<cfargument name="TargetPage" type="string" required="false" default="" />
+
+        <cfset _requestFinished() />
 
 	</cffunction>
 
@@ -179,14 +202,25 @@
 	</cffunction>
 
 
-	<cffunction name="OnError" access="public" returntype="void" output="true" hint="Fires when an exception occures that is not caught by a try/catch.">
+	<cffunction name="OnError" access="public" returntype="void" output="true" hint="Fires when an exception occures that is not caught by a try/catch: answers it with handleError, then marks the request finished for ?init. A project changes how errors are answered by overriding handleError, not this.">
 		<cfargument name="Exception" type="any" required="true" />
 		<cfargument name="EventName" type="string" required="false" default="" />
 
-        <cfset _get500(Exception,EventName) >
+        <cftry>
+            <cfset handleError(argumentCollection = arguments) />
+            <cffinally>
+                <cfset _requestFinished() />
+            </cffinally>
+        </cftry>
 
-		<!--- Return out. --->
-		<cfreturn />
+	</cffunction>
+
+
+	<cffunction name="handleError" access="private" returntype="void" output="true" hint="Answers an uncaught error: Moopa's 500 page, logged to the Error Log. A project overrides this to answer some errors its own way, calling super.handleError for the rest.">
+		<cfargument name="Exception" type="any" required="true" />
+		<cfargument name="EventName" type="string" required="false" default="" />
+
+        <cfset _get500(arguments.Exception, arguments.EventName) />
 
 	</cffunction>
 
@@ -198,6 +232,12 @@
         (a POST carrying X-Fetch-Request, which a cross-site page cannot send), or to an operator
         POSTing the init key (PROJECT_INIT_KEY) in the X-Moopa-Init-Key header. The key is never
         read from the query string, which lands in access logs. Anything else is refused with 403.
+
+        Stopping the application empties its scope under any request still running, whose next
+        application.lib lookup then fails. So ?init first sends new requests to /restarting/, then
+        waits for the requests already running to finish (REINIT_WAIT_SECONDS at most) and stops
+        the application only when none is left. When some are still running at the end of the wait,
+        the application isn't stopped: ?init answers 503 naming them, and requests flow again.
     --->
     <cffunction name="_reinitialize" access="private" returntype="void" output="true" hint="Answers a ?init request: restarts the application when _reinitAllowed says so, else refuses with 403. A GET is answered with a redirect back to the page, a POST with JSON.">
         <cfset var isFetch = (getHttpRequestData().headers["X-Fetch-Request"] ?: "") EQ "true" />
@@ -216,14 +256,19 @@
         </cfif>
 
         <!--- Requests arriving from here on are sent to /restarting/ (OnRequestStart) --->
-        <cfset application.about_to_initialize = true />
+        <cflock name="#_requestsLockName()#" type="exclusive" timeout="5">
+            <cfset application.about_to_initialize = true />
+        </cflock>
+
+        <cfset var running = _waitForRequests(variables.REINIT_WAIT_SECONDS) />
+        <cfif arrayLen(running)>
+            <cflock name="#_requestsLockName()#" type="exclusive" timeout="5">
+                <cfset application.about_to_initialize = false />
+            </cflock>
+            <cfset _refuseReinit(running, isFetch) />
+        </cfif>
 
         <cftry>
-            <!--- Give other requests 1 second to finish processing on production --->
-            <cfif (server.system.environment.APP_ENVIRONMENT ?: 'production') EQ 'production'>
-                <cfsleep time="1000" />
-            </cfif>
-
             <cfset applicationStop() />
 
             <cfcatch>
@@ -241,6 +286,93 @@
         </cfif>
 
         <cflocation url="#_localPath(url.route ?: '/')#" addtoken="false" />
+    </cffunction>
+
+
+    <cffunction name="_requestsLockName" access="private" returntype="string" output="false" hint="The lock over this application's running requests (application.moopa_requests) and its about_to_initialize flag.">
+        <cfreturn "moopa_requests_" & (this.name ?: "") />
+    </cffunction>
+
+
+    <cffunction name="_requestStarted" access="private" returntype="boolean" output="false" hint="Counts this request as running, for ?init to wait for, and returns true; or returns false, counting nothing, while ?init is waiting to restart the application. Counting and the flag's check happen under one lock, so ?init either sees this request running or this request sees it waiting, never neither.">
+        <cflock name="#_requestsLockName()#" type="exclusive" timeout="5">
+            <cfif application.about_to_initialize ?: false>
+                <cfreturn false />
+            </cfif>
+            <!--- Made at start; an application that was running before this code was deployed has none yet --->
+            <cfif NOT structKeyExists(application, "moopa_requests")>
+                <cfset application.moopa_requests = {} />
+            </cfif>
+            <cfset request.moopa_request_id = createUUID() />
+            <cfset application.moopa_requests[request.moopa_request_id] = {
+                "path": url.route ?: cgi.script_name,
+                "started": getTickCount()
+            } />
+        </cflock>
+        <cfreturn true />
+    </cffunction>
+
+
+    <cffunction name="_requestFinished" access="private" returntype="void" output="false" hint="Stops counting this request as running. Called from each way a request ends (OnRequestEnd, onAbort, OnError); once is enough, and a request never counted (sent to /restarting/) has nothing to do.">
+        <cfif NOT structKeyExists(request, "moopa_request_id")>
+            <cfreturn />
+        </cfif>
+        <cflock name="#_requestsLockName()#" type="exclusive" timeout="5">
+            <cfif structKeyExists(application, "moopa_requests")>
+                <cfset structDelete(application.moopa_requests, request.moopa_request_id) />
+            </cfif>
+        </cflock>
+        <cfset structDelete(request, "moopa_request_id") />
+    </cffunction>
+
+
+    <cffunction name="_waitForRequests" access="private" returntype="array" output="false" hint="Waits up to the given seconds for every running request but this one to finish. Returns those still running when it stops waiting, each { path, seconds }: an empty array once none is left.">
+        <cfargument name="seconds" type="numeric" required="true" />
+
+        <cfset var deadline = getTickCount() + arguments.seconds * 1000 />
+        <cfset var running = [] />
+        <cfset var id = "" />
+
+        <cfloop condition="true">
+            <cfset running = [] />
+            <cflock name="#_requestsLockName()#" type="readonly" timeout="5">
+                <cfloop collection="#application.moopa_requests ?: {}#" item="id">
+                    <cfif id NEQ (request.moopa_request_id ?: "")>
+                        <cfset arrayAppend(running, {
+                            "path": application.moopa_requests[id].path,
+                            "seconds": int((getTickCount() - application.moopa_requests[id].started) / 1000)
+                        }) />
+                    </cfif>
+                </cfloop>
+            </cflock>
+            <cfif NOT arrayLen(running) OR getTickCount() GTE deadline>
+                <cfreturn running />
+            </cfif>
+            <cfsleep time="100" />
+        </cfloop>
+    </cffunction>
+
+
+    <cffunction name="_refuseReinit" access="private" returntype="void" output="true" hint="Answers a ?init that waited REINIT_WAIT_SECONDS and still found requests running: 503, naming them, and the application left running.">
+        <cfargument name="running" type="array" required="true" />
+        <cfargument name="isFetch" type="boolean" required="true" />
+
+        <cfset var names = [] />
+        <cfloop array="#arguments.running#" item="local.one">
+            <cfset arrayAppend(names, "#local.one.path# (#local.one.seconds# s)") />
+        </cfloop>
+        <cfset var message = "The application wasn't restarted: after #variables.REINIT_WAIT_SECONDS# seconds, #arrayLen(arguments.running)# request#arrayLen(arguments.running) EQ 1 ? ' is' : 's are'# still running: #arrayToList(names, ', ')#. Try again once they finish." />
+
+        <cfheader statuscode="503" statustext="Service Unavailable" />
+        <cfheader name="Cache-Control" value="no-store" />
+        <cfif arguments.isFetch OR cgi.request_method EQ "POST">
+            <cfcontent type="application/json" reset="true" />
+            <cfoutput>#serializeJSON({ "success": false, "error": message, "status": 503 })#</cfoutput>
+        <cfelse>
+            <cfcontent type="text/plain" reset="true" />
+            <cfoutput>#message#</cfoutput>
+        </cfif>
+        <cfabort />
     </cffunction>
 
 

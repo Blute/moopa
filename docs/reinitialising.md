@@ -1,8 +1,33 @@
 # Re-initialising an app
 
-A request carrying `?init` restarts the application: `applicationStop()`, so the next request runs `onApplicationStart` again and picks up route, lib and table-definition changes. While it stops, other requests are sent to `/restarting/`.
+A request carrying `?init` restarts the application: `applicationStop()`, so the next request runs `onApplicationStart` again and picks up route, lib and table-definition changes.
 
-Who may restart it (`application.cfc` `_reinitAllowed`):
+## Requests still running
+
+Stopping the application empties its scope, including under requests that are still running: their next `application.lib` lookup would fail part-way through. So `?init`:
+
+1. sends every new request to `/restarting/`,
+2. waits for the requests already running to finish, up to 30 seconds (`REINIT_WAIT_SECONDS`),
+3. stops the application once none is left.
+
+If any are still running after 30 seconds, the application is **not** stopped. `?init` answers **503** naming each one and how long it has run, and new requests go through again. Try again once they finish.
+
+Moopa counts a request as running from `OnRequestStart` until it leaves by one of the three ways a request ends: `OnRequestEnd`, `onAbort` (a `cfabort` or `cflocation`, which every endpoint ends with) or `OnError`. So a project's `Application.cfc`:
+
+- overriding `OnRequestStart`, `OnRequestEnd` or `onAbort` calls `super`;
+- changing how errors are answered overrides `handleError(Exception, EventName)`, calling `super.handleError` for errors it leaves to Moopa, and never overrides `OnError`.
+
+A request that leaves without passing through one of these is counted as running until the server restarts, and every `?init` after it answers 503 naming it.
+
+Work running outside a request, such as a `cfthread` that outlives the request that started it, isn't counted, and a restart can still empty the scope under it.
+
+### Upgrading
+
+A project whose `Application.cfc` overrides `OnError` moves that code into `handleError`, calling `super.handleError` where it called `super.OnError`.
+
+## Who may restart it
+
+As `application.cfc`'s `_reinitAllowed` decides:
 
 | Environment | Allowed |
 |---|---|

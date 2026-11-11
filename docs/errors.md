@@ -6,7 +6,7 @@ What Moopa does with an error nothing caught (`application.cfc` `OnError`):
 2. **Emails the sysadmin** (`SYSADMIN_EMAIL`) in production, through Moopa's email library or the project's Postmark library ([email.md](email.md)).
 3. **Answers the request:** a `req()` call gets JSON with status 500, a page gets the 500 status page.
 
-The project decides who sees the error's details, and may replace the page. Recording and emailing stay Moopa's.
+The project decides who sees the error's details, and may replace the page. Recording and emailing stay Moopa's. A project that answers some errors its own way overrides `handleError(Exception, EventName)` in its `Application.cfc`, calling `super.handleError` for the rest, never `OnError`: `OnError` also marks the request finished, which `?init` waits for ([reinitialising.md](reinitialising.md)).
 
 ## Who sees the details
 
