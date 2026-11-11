@@ -245,49 +245,18 @@
         <cfreturn result_metadata />
     </cffunction>
 
-    <cffunction name="uploadVideoInit" access="public" returntype="struct" output="false">
-        <cfargument name="data" type="struct" required="true" />
-
-        <cfset var file_name = trim(arguments.data.file_name ?: "") />
-        <cfset var extension = lCase(listLast(file_name, ".")) />
-        <cfif !listFindNoCase("JPG,JPEG,PNG,GIF,WEBP,SVG,TIFF,BMP,HEIF,PDF,MOV,MP4,AVI,MKV,WEBM", extension)>
-            <cfset extension = "default" />
-        </cfif>
-        <cfset var safe_filename = application.lib.core.sanitize_s3_key(file_name) />
-        <cfset var new_path = "/moo_video/#dateFormat(now(),'yyyy-mm')#/#createUniqueId()#/#safe_filename#" />
-        <cfset var new_thumbnail = '/_static/icons/fa/#extension#.svg' />
-        <cfset var new_video = application.lib.db.save(
-            table_name = "moo_video",
-            data = {
-                name: file_name,
-                path: new_path,
-                thumbnail: new_thumbnail,
-                metadata: {
-                    stream_status: "uploading",
-                    stream_ready: false,
-                    stream_error: ""
-                }
-            },
-            returnFormat = "cfml"
-        ) />
-
-        <cfreturn {
-            video: buildVideoResponse(application.lib.db.read(table_name = "moo_video", id = new_video.id, returnFormat = "cfml")),
-            video_id: new_video.id,
-            presignedURL: application.lib.s3_client.presignedUrl(
-                store = application.lib.s3_client.defaultStore(),
-                objectKey = new_path,
-                method = "PUT",
-                expiresSeconds = 1200
-            )
-        } />
+    <cffunction name="describe" access="public" returntype="struct" output="false"
+        hint="A video as the browser is given it: { id, name, path, cloudflare_stream_id, stream_status, stream_ready, stream_error, video_iframe_url, video_thumbnail }.">
+        <cfargument name="video_id" type="string" required="true" />
+        <cfreturn buildVideoResponse(application.lib.db.read(table_name = "moo_video", id = getVideoId(arguments.video_id), returnFormat = "cfml")) />
     </cffunction>
 
-    <cffunction name="uploadVideoComplete" access="public" returntype="struct" output="false">
-        <cfargument name="data" type="struct" required="true" />
-        <cfargument name="source" type="string" required="false" default="rea_agent_tender_submission" />
+    <cffunction name="sendToStream" access="public" returntype="struct" output="false"
+        hint="Hands a video's stored file to Cloudflare Stream (a Stream copy from a short-lived signed GET of the object) and records the new Stream video on the row; returns describe(). Only for a file already checked: lib video_upload finish() calls it for a browser's upload, and a project may call it to give a stored video a Stream video of its own.">
+        <cfargument name="video_id" type="string" required="true" />
+        <cfargument name="source" type="string" required="true" hint="What the video is for, recorded in Stream's metadata." />
 
-        <cfset var video_id = getVideoId(arguments.data.video_id ?: arguments.data.id ?: arguments.data.video ?: "") />
+        <cfset var video_id = getVideoId(arguments.video_id) />
         <cfset var video_record = application.lib.db.read(table_name = "moo_video", id = video_id, returnFormat = "cfml") />
         <cfset var metadata = getVideoMetadata(video_record) />
         <cfset var presigned_get = application.lib.s3_client.presignedUrl(
@@ -484,9 +453,9 @@
         <cfreturn { success: true, video_id: video_record.id } />
     </cffunction>
 
-    <cffunction name="handleVideoAction" access="public" returntype="any" output="false">
+    <cffunction name="handleVideoAction" access="public" returntype="any" output="false"
+        hint="A video endpoint's poll ({ video_ids }: each video's state from Stream) or delete ({ delete: true, video_id }). Uploads go through lib video_upload, which ties each to its owner.">
         <cfargument name="data" type="struct" required="true" />
-        <cfargument name="source" type="string" required="false" default="rea_agent_tender_submission" />
 
         <cfif isArray(arguments.data.video_ids ?: "")>
             <cfreturn pollVideoStatuses(arguments.data.video_ids) />
@@ -496,11 +465,7 @@
             <cfreturn deleteVideo(arguments.data.video_id ?: "") />
         </cfif>
 
-        <cfif len(trim(arguments.data.file_name ?: ""))>
-            <cfreturn uploadVideoInit(arguments.data) />
-        </cfif>
-
-        <cfreturn uploadVideoComplete(arguments.data, arguments.source) />
+        <cfthrow type="moo_video.invalid" message="handleVideoAction polls (video_ids) and deletes (delete, video_id); a browser's upload starts and finishes through lib video_upload" />
     </cffunction>
 
 

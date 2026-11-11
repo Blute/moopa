@@ -28,7 +28,7 @@
                     "signatures": [ "255044462d" ]                  // %PDF-
                 },
                 "video": {
-                    "types": { "mp4": "video/mp4", "mov": "video/quicktime", "webm": "video/webm", "mkv": "video/x-matroska", "avi": "video/x-msvideo" },
+                    "types": { "mp4": "video/mp4", "m4v": "video/x-m4v", "mov": "video/quicktime", "webm": "video/webm", "mkv": "video/x-matroska", "avi": "video/x-msvideo" },
                     "signatures": [
                         "????????66747970",                         // ftyp (MP4, MOV)
                         // older QuickTime opens with another atom: moov, wide, mdat, free, skip
@@ -36,11 +36,15 @@
                         "1a45dfa3",                                 // EBML (WebM, Matroska)
                         "52494646????????41564920"                  // RIFF....AVI
                     ]
+                },
+                "zip": {
+                    "types": { "zip": "application/zip" },
+                    "signatures": [ "504b0304", "504b0506" ]        // PK, a zip with entries or an empty one
                 }
             };
             // The file-type icon a moo_file shows until it has a thumbnail of its own: /_static/icons/fa/<name>.svg,
             // named for its extension except where two extensions share one.
-            variables.ICONS = { "heic": "heif", "tif": "tiff" };
+            variables.ICONS = { "heic": "heif", "tif": "tiff", "m4v": "mp4", "zip": "default" };
         </cfscript>
         <!--- How long the presigned URL works, and how long an upload may stay unfinished before sweep() takes it. --->
         <cfset variables.UPLOAD_SECONDS = 300 />
@@ -64,7 +68,7 @@
         <cfargument name="file_name" type="string" required="true" hint="The file's own name, as the browser has it." />
         <cfargument name="file_size" type="any" required="true" hint="Its size in bytes, as the browser has it: the URL is signed for exactly this many." />
         <cfargument name="owner" type="string" required="true" hint="Who the upload belongs to, as the caller vouches: finish() and discard() need the same." />
-        <cfargument name="kinds" type="string" required="true" hint="The kinds of file accepted: a list of image, pdf and video." />
+        <cfargument name="kinds" type="string" required="true" hint="The kinds of file accepted: a list of image, pdf, video and zip." />
         <cfargument name="max_bytes" type="numeric" required="true" hint="The largest file accepted, in bytes." />
 
         <cfset assertOwner(arguments.owner) />
@@ -159,16 +163,10 @@
             <cfreturn refusal("unknown_upload") />
         </cfif>
 
-        <cfset var store = application.lib.s3_client.defaultStore() />
-        <cfset var held = application.lib.s3_client.headObject(store, upload.path) />
-        <cfif NOT held.exists>
+        <cfset var fault = storedFault(upload.path, upload.size, upload.content_type) />
+        <cfif len(fault)>
             <cfset remove(upload) />
-            <cfreturn refusal("not_uploaded") />
-        </cfif>
-        <cfif held.size NEQ upload.size OR compareNoCase(trim(listFirst(held.contentType, ";")), upload.content_type) NEQ 0
-              OR NOT startsAsKind(application.lib.s3_client.readObjectStart(store, upload.path, variables.SIGNATURE_BYTES), kindOf(upload.content_type))>
-            <cfset remove(upload) />
-            <cfreturn refusal("file_content") />
+            <cfreturn refusal(fault) />
         </cfif>
 
         <cfquery>
@@ -240,6 +238,35 @@
     </cffunction>
 
 
+    <cffunction name="storedFault" access="public" returntype="string" output="false"
+        hint="What is wrong with the object the default store holds at path, against what its upload URL was signed for: not_uploaded when there is none, file_content when its size or type differs or its first bytes aren't a file of the type's kind, and an empty string when it is right. lib video_upload checks its uploads with this too.">
+        <cfargument name="path" type="string" required="true" />
+        <cfargument name="size" type="numeric" required="true" />
+        <cfargument name="content_type" type="string" required="true" />
+
+        <cfset var store = application.lib.s3_client.defaultStore() />
+        <cfset var held = application.lib.s3_client.headObject(store, arguments.path) />
+        <cfif NOT held.exists>
+            <cfreturn "not_uploaded" />
+        </cfif>
+        <cfif held.size NEQ arguments.size OR compareNoCase(trim(listFirst(held.contentType, ";")), arguments.content_type) NEQ 0
+              OR NOT startsAsKind(application.lib.s3_client.readObjectStart(store, arguments.path, variables.SIGNATURE_BYTES), kindOf(arguments.content_type))>
+            <cfreturn "file_content" />
+        </cfif>
+        <cfreturn "" />
+    </cffunction>
+
+
+    <cffunction name="refusalMessage" access="public" returntype="string" output="false"
+        hint="The words a refusal with this error code is given: lib video_upload's refusals read the same.">
+        <cfargument name="code" type="string" required="true" />
+        <cfif NOT structKeyExists(variables.MESSAGES, arguments.code)>
+            <cfthrow type="file_upload.invalid" message="'#arguments.code#' isn't a refusal (#structKeyList(variables.MESSAGES)#)" />
+        </cfif>
+        <cfreturn variables.MESSAGES[arguments.code] />
+    </cffunction>
+
+
     <cffunction name="kinds" access="public" returntype="struct" output="false"
         hint="Each kind's extensions and the Content-Type each is stored as: { image: { jpg: 'image/jpeg', ... }, ... }.">
         <cfset var result = {} />
@@ -251,7 +278,7 @@
 
 
     <cffunction name="startsAsKind" access="public" returntype="boolean" output="false"
-        hint="Whether these first bytes of a file are a signature of the kind (image, pdf or video).">
+        hint="Whether these first bytes of a file are a signature of the kind (image, pdf, video or zip).">
         <cfargument name="bytes" type="binary" required="true" />
         <cfargument name="kind" type="string" required="true" />
 
