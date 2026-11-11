@@ -1,7 +1,8 @@
 <!---
     moopa_layout — Moopa's page shell: the System pages render in it, and a project page may opt in.
     Everything it loads is Moopa's own (moopa.css, moopa.js, Alpine, Font Awesome Free), served from
-    code/moopa/static at /_moopa/static/; nothing comes from another origin.
+    code/moopa/static (system.staticUrl(): /_moopa/static/, or the project's anonymous static path);
+    nothing comes from another origin.
 
     <cf_moopa_layout title="Orders">…</cf_moopa_layout>
 

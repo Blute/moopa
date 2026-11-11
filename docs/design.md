@@ -11,7 +11,7 @@ Every Moopa page, the System pages and a project's own, shares one design: one h
 | `tags/moopa_layout.cfm` | The page shell that loads all of the above |
 | `lib/system.cfc` | `stylesheets()` (the `<link>`s every page loads), `staticUrl()`, `navHtml()` and `currentRoute()` (the sidebar's menus), `solidIcon()`, `avatarUrl()` |
 
-Moopa serves `static/` itself at `/_moopa/static/…`, answered before the session or database is touched. `application.lib.system.staticUrl(path)` gives a file's URL versioned by the content of `moopa.css` and `moopa.js`, and versioned URLs and the `vendor/` folders are cached for a year. Only files under `static/` with a known extension are served.
+Moopa serves `static/` itself, answered before the session or database is touched: see [Serving the static files](#serving-the-static-files).
 
 ## The layout
 
@@ -160,6 +160,32 @@ The class list is the stylesheet's own sections; read them before writing markup
 Their behaviour (search a combobox, upload a file, drag to sort) is in `moopa.js` too: `comboSingle`, `comboMany`, `fileUpload`, `sortList` and the rest, which a page binds to its own inline markup. **System → Components** (`/sysadmin/components`) shows each one live with the markup to copy; the `moopa-components` skill is the same contract for agents. Behaviour a second project could use belongs there, not in a project's script.
 
 A dialog driven by an Alpine flag follows it with `x-effect="open ? ($el.open || $el.showModal()) : ($el.open && $el.close())" @close="open = false"`, so Esc and the backdrop keep the flag in step.
+
+## Serving the static files
+
+`application.lib.system.staticUrl(path)` gives the URL of a file under `static/`, such as `staticUrl('moopa.js')`. A path that isn't a file Moopa serves throws `moopa.static.notFound`. Only files with a known extension are served (`css`, `js`, `woff2`, `svg`, `png`, `txt`).
+
+By default a file is at `/_moopa/static/{path}`, with `?v=` from the content of `moopa.css` and `moopa.js`. Versioned URLs and the `vendor/` folders are cached for a year.
+
+### Anonymous static files
+
+A project whose pages shouldn't say what framework serves them sets a path for Moopa's static files in its `Application.cfc` pseudo-constructor:
+
+```cfml
+<cfset this.moopa_anonymous_static_path = "/_ui" />
+```
+
+Each file is then at `{path}/{hash}.{extension}`, named by the start of its content's SHA-256: `/_ui/3f9a1c2b7e4d0a51.css`. A changed file has a new name, so every URL is cached for a year. A stylesheet's relative `url()`s (Font Awesome's fonts) are rewritten to the names of the files they point at, and a relative `url()` that isn't a file Moopa serves stops the file's URL being given, with `moopa.static.unresolvedUrl`. `/_moopa/static/` isn't served at all.
+
+The setting is read at start. A value that isn't a path of plain segments (`/_ui`, `/assets/ui`, no trailing slash), or that names a folder of the web root, which the web server would answer first, stops the app starting with `moopa.config.invalidAnonymousStaticPath`. Choose a path no route uses either. In development the names are worked out again whenever a file under `static/` changes.
+
+The files themselves don't name the framework either: nothing under `static/` says "moopa", and `moopa.js` keeps its browser storage under `filters:v1:` and `admin-list:` keys. `scripts/test_static_files.sh` checks both. What still shows is the markup itself: Moopa's class names (`moo-shell`…) and the System pages' routes.
+
+### Upgrading
+
+- Nothing to do to keep serving at `/_moopa/static/`.
+- `staticUrl()` now throws for a file `static/` doesn't have, where it used to give a URL that answered 404: a layout that names a file Moopa doesn't ship fails loudly.
+- `moopa.js` keeps saved filters (`loadFilters`/`saveFilters`) and `adminList`'s remembered state under new keys, so each browser starts once from the defaults again.
 
 ## Updating a vendored library
 

@@ -37,11 +37,16 @@
     </cfcatch>
 </cftry>
 
-<!--- The theme, if it can be read; Moopa's stylesheet on its own if not --->
+<!--- The theme, if it can be read; Moopa's stylesheet on its own if not, and no stylesheet if even that can't be --->
 <cftry>
     <cfset bareStyles = application.lib.system.stylesheets() />
     <cfcatch>
-        <cfset bareStyles = '<link rel="stylesheet" href="/_moopa/static/moopa.css">' />
+        <cftry>
+            <cfset bareStyles = '<link rel="stylesheet" href="' & application.lib.system.staticUrl("moopa.css") & '">' />
+            <cfcatch>
+                <cfset bareStyles = "" />
+            </cfcatch>
+        </cftry>
     </cfcatch>
 </cftry>
 
