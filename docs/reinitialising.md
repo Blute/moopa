@@ -12,6 +12,8 @@ Stopping the application empties its scope, including under requests that are st
 
 If any are still running after 30 seconds, the application is **not** stopped. `?init` answers **503** naming each one and how long it has run, and new requests go through again. Try again once they finish.
 
+Only one `?init` restarts at a time. Another that arrives alongside it is told a restart is already under way: a POST gets **409**, and a GET goes to `/restarting/` as every other request then does. If the wait itself fails, the error is answered and requests go through again.
+
 Moopa counts a request as running from `OnRequestStart` until it leaves by one of the three ways a request ends: `OnRequestEnd`, `onAbort` (a `cfabort` or `cflocation`, which every endpoint ends with) or `OnError`. So a project's `Application.cfc`:
 
 - overriding `OnRequestStart`, `OnRequestEnd` or `onAbort` calls `super`;

@@ -255,16 +255,32 @@
             <cfabort />
         </cfif>
 
-        <!--- Requests arriving from here on are sent to /restarting/ (OnRequestStart) --->
+        <!--- Requests arriving from here on are sent to /restarting/ (OnRequestStart). Only the
+              first ?init to set the flag restarts the application: another that got in alongside
+              it is told a restart is under way, and ends, so the first isn't left waiting for it. --->
+        <cfset var restarting = false />
         <cflock name="#_requestsLockName()#" type="exclusive" timeout="5">
-            <cfset application.about_to_initialize = true />
+            <cfif NOT (application.about_to_initialize ?: false)>
+                <cfset application.about_to_initialize = true />
+                <cfset restarting = true />
+            </cfif>
         </cflock>
+        <cfif NOT restarting>
+            <cfset _answerAlreadyRestarting(isFetch) />
+        </cfif>
 
-        <cfset var running = _waitForRequests(variables.REINIT_WAIT_SECONDS) />
+        <cfset var running = [] />
+        <cftry>
+            <cfset running = _waitForRequests(variables.REINIT_WAIT_SECONDS) />
+
+            <cfcatch>
+                <!--- The application is still running: stop sending requests to /restarting/ --->
+                <cfset _stopRestarting() />
+                <cfrethrow />
+            </cfcatch>
+        </cftry>
         <cfif arrayLen(running)>
-            <cflock name="#_requestsLockName()#" type="exclusive" timeout="5">
-                <cfset application.about_to_initialize = false />
-            </cflock>
+            <cfset _stopRestarting() />
             <cfset _refuseReinit(running, isFetch) />
         </cfif>
 
@@ -273,10 +289,15 @@
 
             <cfcatch>
                 <!--- The application is still running: stop sending requests to /restarting/ --->
-                <cfset application.about_to_initialize = false />
+                <cfset _stopRestarting() />
                 <cfrethrow />
             </cfcatch>
         </cftry>
+
+        <!--- The application this request was counted in is gone. Nothing is left to mark it
+              finished in, and on Lucee touching the application scope from here on would register
+              an empty one that never runs onApplicationStart, so onAbort must find nothing to do. --->
+        <cfset structDelete(request, "moopa_request_id") />
 
         <cfif cgi.request_method EQ "POST">
             <cfheader name="Cache-Control" value="no-store" />
@@ -350,6 +371,27 @@
             </cfif>
             <cfsleep time="100" />
         </cfloop>
+    </cffunction>
+
+
+    <cffunction name="_stopRestarting" access="private" returntype="void" output="false" hint="Lets requests through again after an ?init that didn't stop the application.">
+        <cflock name="#_requestsLockName()#" type="exclusive" timeout="5">
+            <cfset application.about_to_initialize = false />
+        </cflock>
+    </cffunction>
+
+
+    <cffunction name="_answerAlreadyRestarting" access="private" returntype="void" output="true" hint="Answers an ?init that arrived while another was already restarting the application: a GET goes to /restarting/ as any request then does; a POST gets 409 JSON saying a restart is under way.">
+        <cfargument name="isFetch" type="boolean" required="true" />
+
+        <cfif arguments.isFetch OR cgi.request_method EQ "POST">
+            <cfheader statuscode="409" statustext="Conflict" />
+            <cfheader name="Cache-Control" value="no-store" />
+            <cfcontent type="application/json" reset="true" />
+            <cfoutput>#serializeJSON({ "success": false, "error": "The application is already restarting.", "status": 409 })#</cfoutput>
+            <cfabort />
+        </cfif>
+        <cflocation url="/restarting/index.html?redirect=#encodeForURL(_localPath(url.route ?: '/'))#" addtoken="false" />
     </cffunction>
 
 
