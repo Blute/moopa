@@ -1,5 +1,5 @@
 /* =====================================================================
-   moopa.css — the design every Moopa page shares: the System pages and a project's own pages.
+   The design every page of the framework shares: the System pages and a project's own pages.
    Vanilla CSS, no build step. Three layers:
      1. Tokens      — custom properties; a project themes by overriding them in its theme.css
                       (docs/design.md), never by overriding rules
@@ -155,7 +155,7 @@
 
   /* shell */
   --sb-w: 264px;
-  --shell-logo-h: 3.25rem;          /* the brand logo's height in the sidebar (application.moopa_theme.logo) */
+  --shell-logo-h: 3.25rem;          /* the brand logo's height in the sidebar (the theme's logo) */
   --shell-logo-h-mobile: 2rem;      /* and in the mobile bar */
   --sb-w-collapsed: 72px;
   --t: 200ms;
@@ -541,7 +541,7 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 @keyframes skeleton-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
 
-/* a page of its own (tags/moopa_bare.cfm): the status pages (404, 403, 500) and sign-in. Its body is a column at
+/* a page of its own (the bare layout): the status pages (404, 403, 500) and sign-in. Its body is a column at
    least one viewport tall: a project banner above it keeps its own height and the page fills the rest, growing and
    scrolling past the window only when its content needs to. */
 body:has(> .status-page, > .auth) { display: flex; flex-direction: column; min-height: 100dvh; }
@@ -556,7 +556,7 @@ body:has(> .status-page, > .auth) > :not(.status-page, .auth) { flex: none; }
 .status-actions { justify-content: center; margin-top: var(--sp-3); }
 .status-account { margin-top: var(--sp-2); color: var(--ink-mute); font-size: var(--text-sm); }
 .status-detail { width: 100%; max-width: 64rem; text-align: left; }
-/* moopa_bare's split layout (welcome=): a brand panel in the project's shell colours beside the page.
+/* the bare layout's split (welcome=): a brand panel in the project's shell colours beside the page.
    The sign-in pages (lib/signin.cfc) use it. On a phone the panel is a header, the step's head sits on
    the same colour and its body is a sheet below. */
 .auth { --auth-brand: linear-gradient(160deg, var(--shell-bg), color-mix(in oklab, var(--shell-bg) 62%, black));
@@ -719,7 +719,7 @@ button.list-row { width: 100%; text-align: left; }
 @media (prefers-reduced-motion: reduce) { .tab-count.is-attention { animation: none; } }
 
 /* ---------------------------------------------------------------------
-   Toasts (window.toast in moopa.js)
+   Toasts (window.toast in the script)
    --------------------------------------------------------------------- */
 .toasts { position: fixed; right: 1rem; bottom: 1rem; z-index: var(--z-toast); display: flex; flex-direction: column; gap: var(--sp-2); width: min(24rem, calc(100vw - 2rem)); pointer-events: none; }
 .toast { display: flex; align-items: flex-start; gap: var(--sp-3); padding: 0.75rem 0.875rem; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-2); font-size: var(--text-sm); line-height: 1.4; pointer-events: auto; animation: toast-in 180ms var(--ease); }
@@ -739,7 +739,7 @@ button.list-row { width: 100%; text-align: left; }
 /* ---------------------------------------------------------------------
    Components — combobox, sortable list, dropzone and file list, drawer, sections, metrics, steppers,
    row lists and cards, and small helpers. Behaviour lives in the project's scripts (Alpine); these are
-   the looks every Moopa project shares.
+   the looks every project shares.
    --------------------------------------------------------------------- */
 .kv + .kv { margin-top: var(--sp-3); }
 .kv > .kv-value { margin-top: 0.125rem; font-size: var(--text-base); }
@@ -1002,7 +1002,7 @@ body:has(> .moo-shell-root) > :not(.moo-shell-root) { flex: none; }
 .moo-shell-nav-row:hover .moo-shell-nav-icon { color: var(--ink); }
 .moo-shell-label { display: inline-block; flex: 1 1 auto; min-width: 0; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 160ms var(--ease) 80ms, max-width var(--t) var(--ease); }
 
-/* Moopa's System group follows the app's menus, below a line */
+/* The System group follows the app's menus, below a line */
 .moo-shell-nav-system { padding-top: var(--sp-1); }
 .moo-shell-sub-nav { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 180ms var(--ease); }
 .moo-shell-sub-nav > .moo-shell-sub-inner { overflow: hidden; min-height: 0; position: relative; }
@@ -1047,7 +1047,7 @@ html.moo-shell-collapsed .moo-shell-chevron { opacity: 0; }
 html.moo-shell-collapsed .moo-shell-brand-text { opacity: 0; max-width: 0; flex: 0 0 0; }
 html.moo-shell-collapsed .moo-shell-brand-row .moo-shell-nav-row-wrap { left: 17px; right: auto; }
 
-/* tooltip portal (moopa.js) for the collapsed rail */
+/* tooltip portal (the script) for the collapsed rail */
 .moo-shell-nav-tooltip { display: none; }
 .moo-shell-nav-tooltip-portal { position: fixed; z-index: var(--z-tooltip); pointer-events: none; background: var(--ink); color: var(--surface); font-size: 12.5px; padding: 6px 10px; border-radius: 7px; white-space: nowrap; box-shadow: var(--shadow-2); opacity: 0; translate: 0 -50%; transform: translateX(-4px) scale(.96); transform-origin: left center; transition: opacity 120ms var(--ease), transform 160ms var(--ease); }
 .moo-shell-nav-tooltip-portal.show { opacity: 1; transform: translateX(0) scale(1); }

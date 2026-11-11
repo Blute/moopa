@@ -13,15 +13,9 @@
     </cffunction>
 
 
-    <cffunction name="staticUrl" access="public" returntype="string" output="false" hint="The URL Moopa serves a file of its static/ folder at, versioned by the content of moopa.css and moopa.js so browsers keep it until Moopa changes it.">
+    <cffunction name="staticUrl" access="public" returntype="string" output="false" hint="The URL Moopa serves a file of its static/ folder at: /_moopa/static/{path}, versioned by the content of moopa.css and moopa.js so browsers keep it until Moopa changes it, or, with this.moopa_anonymous_static_path, a name made from the file's own content (docs/design.md: Serving the static files). Throws moopa.static.notFound for a path that isn't a file Moopa serves.">
         <cfargument name="path" type="string" required="true" hint="Under static/, e.g. moopa.css" />
-
-        <!--- Worked out once per start, as the files change only with a deploy; in development, on every
-              call, so an edit to moopa.css or moopa.js reaches the browser without a restart --->
-        <cfif NOT structKeyExists(variables, "staticVersion") OR (server.system.environment.APP_ENVIRONMENT ?: "") EQ "development">
-            <cfset variables.staticVersion = left(lCase(hash(fileRead(expandPath("/moopa/static/moopa.css")) & fileRead(expandPath("/moopa/static/moopa.js")), "MD5")), 12) />
-        </cfif>
-        <cfreturn "/_moopa/static/#arguments.path#?v=#variables.staticVersion#" />
+        <cfreturn application.moopa_static.urlFor(arguments.path) />
     </cffunction>
 
 
@@ -74,7 +68,7 @@
 
 
     <!--- A project file's URL with ?v= from its content, so browsers keep it until it changes. Worked out once per
-          start, and on every call in development, like staticUrl(). A URL that is not a local file is returned as is. --->
+          start, and on every call in development, as Moopa's own static files are. A URL that is not a local file is returned as is. --->
     <cffunction name="versioned" access="private" returntype="string" output="false">
         <cfargument name="path" type="string" required="true" />
         <cfset var file = "" />

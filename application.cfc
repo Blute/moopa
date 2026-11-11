@@ -53,6 +53,12 @@
         <cfset _errorDetailsAudience() />
         <!--- Whether a validated session without a login may open open_to="validated" routes; refuses to start on a non-boolean (docs/route-access.md) --->
         <cfset application.moopa_validated_without_login = _validatedWithoutLogin() />
+        <!--- Where Moopa's static files are served, and under which names; refuses to start on a bad path (docs/design.md) --->
+        <cfset application.moopa_static = createObject("component", "/moopa/internal/static/static_files").init(
+            root = expandPath("/moopa/static"),
+            anonymous_path = _anonymousStaticPath(),
+            development = (server.system.environment.APP_ENVIRONMENT ?: "") EQ "development"
+        ) />
         <!--- Hub always serves Moopa's own System routes and menu (/sysadmin) from the framework; no other app does, and no project may define them. --->
         <cfset application.system_routes = (application.app_name EQ "hub") />
         <cfset application.moopa_packages = _getMoopaPackages() />
@@ -284,6 +290,21 @@
     </cffunction>
 
 
+    <cffunction name="_anonymousStaticPath" access="private" returntype="string" output="false" hint="The path Moopa serves its static files at under content-hash names, from this.moopa_anonymous_static_path (/_ui), or empty when unset, which serves them at /_moopa/static/ under their own names. Throws moopa.config.invalidAnonymousStaticPath when the setting isn't a path of plain segments, or names a folder of the web root (which the web server would answer instead); onApplicationStart calls it so a bad setting stops the app starting.">
+        <cfset var setting = this.moopa_anonymous_static_path ?: "" />
+
+        <cfif NOT isSimpleValue(setting) OR (len(setting) AND NOT reFind("^(/[A-Za-z0-9_-]+)+$", setting))>
+            <cfthrow type="moopa.config.invalidAnonymousStaticPath"
+                message="this.moopa_anonymous_static_path must be a path of plain segments with no trailing slash, such as /_ui." />
+        </cfif>
+        <cfif len(setting) AND directoryExists(expandPath(setting))>
+            <cfthrow type="moopa.config.invalidAnonymousStaticPath"
+                message="this.moopa_anonymous_static_path is #setting#, a folder of the web root, which the web server answers before Moopa sees the request. Choose a path nothing else uses." />
+        </cfif>
+        <cfreturn setting />
+    </cffunction>
+
+
     <cffunction name="_validatedWithoutLogin" access="private" returntype="boolean" output="false" hint="Whether open_to=validated routes are open to a session that is validated (application.lib.auth.isValidated()) with a profile in this app but isn't logged in, from this.moopa_validated_without_login. No setting is false. Throws moopa.config.invalidValidatedWithoutLogin when the setting isn't true or false; onApplicationStart calls it so a bad setting stops the app starting.">
         <cfset var setting = this.moopa_validated_without_login ?: false />
 
@@ -406,8 +427,8 @@
     <cffunction name="_moopa" access="private" returntype="void" output="true" hint="THIS IS THE MOOPA FRAMEWORK">
 
         <!--- Moopa's own CSS, JS and fonts (static/), served before anything touches the session or the database --->
-        <cfif left(url.route, 15) EQ "/_moopa/static/">
-            <cfset _serveStatic(mid(url.route, 16, len(url.route))) />
+        <cfif structKeyExists(application, "moopa_static") AND application.moopa_static.owns(url.route)>
+            <cfset _serveStatic(application.moopa_static.lookup(url.route, len(url.v ?: "") GT 0)) />
             <cfreturn />
         </cfif>
 
@@ -563,23 +584,10 @@
     </cffunction>
 
 
-    <cffunction name="_serveStatic" access="private" returntype="void" output="true" hint="Serves a file from Moopa's static/ folder at /_moopa/static/{path}: the System pages' stylesheet, script and vendored libraries. Versioned URLs (?v=, or a versioned vendor/ folder) are cached for a year.">
-        <cfargument name="path" type="string" required="true" hint="The path under static/, e.g. moopa.css" />
+    <cffunction name="_serveStatic" access="private" returntype="void" output="true" hint="Answers a request for one of Moopa's static files (application.moopa_static: the System pages' stylesheet, script and vendored libraries) with the file, or a 404. A URL whose content never changes (immutable) is cached for a year.">
+        <cfargument name="found" type="struct" required="true" hint="application.moopa_static.lookup(): empty when there is no such file." />
 
-        <cfset var types = {
-            "css": "text/css; charset=utf-8",
-            "js": "text/javascript; charset=utf-8",
-            "woff2": "font/woff2",
-            "svg": "image/svg+xml",
-            "png": "image/png",
-            "txt": "text/plain; charset=utf-8"
-        } />
-        <cfset var extension = lCase(listLast(arguments.path, ".")) />
-        <cfset var file = expandPath("/moopa/static/") & arguments.path />
-
-        <cfif NOT reFind("^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*(/[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*)*$", arguments.path)
-            OR NOT structKeyExists(types, extension)
-            OR NOT fileExists(file)>
+        <cfif structIsEmpty(arguments.found)>
             <cfheader statuscode="404" statustext="Not Found" />
             <cfheader name="Cache-Control" value="no-store" />
             <cfcontent type="text/plain" reset="true" />
@@ -587,13 +595,13 @@
             <cfreturn />
         </cfif>
 
-        <cfif len(url.v ?: "") OR left(arguments.path, 7) EQ "vendor/">
-            <cfheader name="Cache-Control" value="public, max-age=31536000, immutable" />
-        <cfelse>
-            <cfheader name="Cache-Control" value="public, max-age=300" />
-        </cfif>
+        <cfheader name="Cache-Control" value="#arguments.found.immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=300'#" />
         <cfheader name="X-Content-Type-Options" value="nosniff" />
-        <cfcontent type="#types[extension]#" file="#file#" reset="true" />
+        <cfif structKeyExists(arguments.found, "bytes")>
+            <cfcontent type="#arguments.found.type#" variable="#arguments.found.bytes#" reset="true" />
+        <cfelse>
+            <cfcontent type="#arguments.found.type#" file="#arguments.found.file#" reset="true" />
+        </cfif>
     </cffunction>
 
 

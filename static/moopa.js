@@ -1,15 +1,15 @@
 /*
-  moopa.js — the behaviour behind moopa.css, loaded by <cf_moopa_layout> before Alpine:
+  The behaviour behind the stylesheet, loaded by the layout before Alpine:
 
     req({...})        call a route's endpoint (the same contract as the starter's app.js)
     loadFilters / saveFilters / clearFilters, getInitials, prettyDate, prettyDateTitle
     window.toast({})  a notification: { type: 'success'|'error'|'warning'|'info', title?, message|description, duration? }
     the shell         sidebar collapse (Ctrl+.), mobile drawer, profile menu, tooltips on the collapsed rail
     components        Alpine.data() behaviour for inline form markup: numberInput, comboSingle, fileUpload…
-                      (the moopa-components skill; live on System > Components)
+                      (the components skill; live on System > Components)
 
   No dependencies. The components register on Alpine's alpine:init, so this file loads before
-  Alpine. A project page on the Moopa layout may load its own scripts after this one; a later
+  Alpine. A project page on the layout may load its own scripts after this one; a later
   `function req()` of its own replaces this one.
 */
 
@@ -171,7 +171,7 @@ async function req({ method, route, endpoint, x_signed_route, x_signature, q, ex
 // ---------------------------------------------------------------------------------------------
 
 // A page's filters, remembered for this tab per route: loadFilters(defaults) / saveFilters(f) / clearFilters()
-function filterStorageKey() { return 'moopa:filters:v1:' + window.location.pathname; }
+function filterStorageKey() { return 'filters:v1:' + window.location.pathname; }
 async function loadFilters(defaults = {}) {
   try {
     const saved = JSON.parse(window.sessionStorage.getItem(filterStorageKey()) || 'null');
@@ -226,9 +226,9 @@ function autosize(el) { el.style.height = 'auto'; el.style.height = el.scrollHei
 
 // ---------------------------------------------------------------------------------------------
 // Components: behaviour only. Each Alpine.data() component owns state and logic (search,
-// formatting, selection, upload); the page writes the markup with moopa.css's classes and binds
+// formatting, selection, upload); the page writes the markup with the stylesheet's classes and binds
 // to it. Bind a component's value to the page's model with x-modelable + x-model. The markup
-// contract for each one is in the moopa-components skill and live on System > Components.
+// contract for each one is in the components skill and live on System > Components.
 //
 // Server contracts (an `endpoint` is an endpoint name on the current route, or the object
 // application.lib.auth.signedEndpoint() returns, for another route):
@@ -564,7 +564,7 @@ document.addEventListener('alpine:init', () => {
   // Alpine.data('people', () => ({ ...adminList({ ... }), extra() {} })).
   const adminList = ({ endpoints = {}, filters: defaultFilters = () => ({ term: '' }), blank = null, persist = null } = {}) => {
     const ep = { load: 'load', new: 'new', read: null, save: 'save', delete: 'delete', ...endpoints };
-    const storageKey = persist ? 'moopa:admin:' + persist : null;
+    const storageKey = persist ? 'admin-list:' + persist : null;
     const saved = () => { try { return JSON.parse(sessionStorage.getItem(storageKey) || 'null'); } catch { return null; } };
     return {
       records: [], current_record: {}, action_status: '', error: '', _load: 0,
@@ -772,7 +772,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  // Scroll-edge fade: the edge the sidebar can still scroll towards fades out (moopa.css masks on
+  // Scroll-edge fade: the edge the sidebar can still scroll towards fades out (the stylesheet masks on
   // .moo-shell-has-top / -has-bottom), and the scrollbar shows briefly while it scrolls.
   if (nav) {
     const updateMask = () => {
