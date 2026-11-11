@@ -86,7 +86,7 @@
 
 
     <cffunction name="finish" access="public" returntype="struct" output="false"
-        hint="Finishes a video upload once the browser's PUT is done: checks the store holds the video at the size and type its URL was signed for and that its first bytes are a video, then hands it to Stream (moo_video sendToStream()). Returns { success: true, video } (the video as describe() gives it), and the upload is no longer under way. An upload this owner has no such upload of is { success: false, error_code: unknown_upload, error } and changes nothing. A file the store doesn't hold, or holds as something else, is removed with its video and upload: { success: false, error_code (not_uploaded or file_content), error }, and Stream is never asked.">
+        hint="Finishes a video upload once the browser's PUT is done: checks the store holds the video at the size and type its URL was signed for and that its first bytes are a video, then hands it to Stream (moo_video sendToStream()). Returns { success: true, video } (the video as describe() gives it), and the upload is no longer under way. An upload this owner has no such upload of is { success: false, error_code: unknown_upload, error } and changes nothing. A file the store doesn't hold, or holds as something else, is removed with its video and upload: { success: false, error_code (not_uploaded or file_content), error }, and Stream is never asked. A Stream copy that fails throws moo_video.streamFailed and leaves the upload under way, to finish again or be swept.">
         <cfargument name="video_id" type="string" required="true" />
         <cfargument name="owner" type="string" required="true" />
         <cfargument name="source" type="string" required="true" hint="What the video is for, recorded in Stream's metadata." />
@@ -110,10 +110,36 @@
             <cfreturn refusal(fault) />
         </cfif>
 
-        <cfquery>
-            DELETE FROM moo_video_upload WHERE video_id = <cfqueryparam cfsqltype="other" value="#upload.video_id#" />
+        <!--- Claimed in one statement, so of two finishes at once only one goes on to Stream; the other finds no
+              upload. A Stream copy that fails puts the upload back as it was, so it can be finished again or swept. --->
+        <cfquery name="local.qClaimed" returntype="array">
+            DELETE FROM moo_video_upload
+            WHERE video_id = <cfqueryparam cfsqltype="other" value="#upload.video_id#" />
+              AND owner = <cfqueryparam cfsqltype="varchar" value="#arguments.owner#" />
+            RETURNING id::text AS id, created_at::text AS created_at, created_by::text AS created_by
         </cfquery>
-        <cfreturn { "success": true, "video": application.lib.db.getService(table_name = "moo_video").sendToStream(upload.video_id, arguments.source) } />
+        <cfif NOT arrayLen(local.qClaimed)>
+            <cfreturn refusal("unknown_upload") />
+        </cfif>
+        <cftry>
+            <cfset var video = application.lib.db.getService(table_name = "moo_video").sendToStream(upload.video_id, arguments.source) />
+            <cfcatch>
+                <cfquery>
+                    INSERT INTO moo_video_upload (id, video_id, owner, content_type, size, created_at, created_by)
+                    VALUES (
+                        <cfqueryparam cfsqltype="other" value="#local.qClaimed[1].id#" />,
+                        <cfqueryparam cfsqltype="other" value="#upload.video_id#" />,
+                        <cfqueryparam cfsqltype="varchar" value="#upload.owner#" />,
+                        <cfqueryparam cfsqltype="varchar" value="#upload.content_type#" />,
+                        <cfqueryparam cfsqltype="bigint" value="#upload.size#" />,
+                        <cfqueryparam cfsqltype="varchar" value="#local.qClaimed[1].created_at#" />::timestamptz,
+                        <cfqueryparam cfsqltype="other" value="#local.qClaimed[1].created_by ?: ''#" null="#NOT len(local.qClaimed[1].created_by ?: '')#" />
+                    )
+                </cfquery>
+                <cfrethrow />
+            </cfcatch>
+        </cftry>
+        <cfreturn { "success": true, "video": video } />
     </cffunction>
 
 

@@ -252,7 +252,7 @@
     </cffunction>
 
     <cffunction name="sendToStream" access="public" returntype="struct" output="false"
-        hint="Hands a video's stored file to Cloudflare Stream (a Stream copy from a short-lived signed GET of the object) and records the new Stream video on the row; returns describe(). Only for a file already checked: lib video_upload finish() calls it for a browser's upload, and a project may call it to give a stored video a Stream video of its own.">
+        hint="Hands a video's stored file to Cloudflare Stream (a Stream copy from a short-lived signed GET of the object) and records the new Stream video on the row; returns describe(). Throws moo_video.streamFailed, changing nothing, when Stream makes no video. Only for a file already checked: lib video_upload finish() calls it for a browser's upload, and a project may call it to give a stored video a Stream video of its own.">
         <cfargument name="video_id" type="string" required="true" />
         <cfargument name="source" type="string" required="true" hint="What the video is for, recorded in Stream's metadata." />
 
@@ -280,6 +280,10 @@
         <cfset var stream_data = cloudflare_copy.result ?: {} />
         <cfset var stream_status_data = isStruct(stream_data.status ?: "") ? stream_data.status : {} />
         <cfset var stream_id = trim(stream_data.uid ?: "") />
+        <!--- Stream made no video: say so, and leave the row as it was. --->
+        <cfif cloudflare_copy.status_code LT 200 OR cloudflare_copy.status_code GTE 300 OR NOT len(stream_id)>
+            <cfthrow type="moo_video.streamFailed" message="Cloudflare Stream didn't take video #video_id# (HTTP #cloudflare_copy.status_code#)" detail="#serializeJSON(cloudflare_copy.details.errors ?: cloudflare_copy.details)#" />
+        </cfif>
 
         <cfset metadata.stream_status = lCase(trim(stream_status_data.state ?: "inprogress")) />
         <cfset metadata.stream_ready = (stream_data.readyToStream ?: false) OR metadata.stream_status EQ "ready" />
