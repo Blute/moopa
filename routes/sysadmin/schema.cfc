@@ -5,7 +5,7 @@
         <cfset statements = application.lib.schemaSync.compareDatabaseSchema(application.lib.db.codeSchema) />
 
         <!--- The page hides destructive statements by default, so it cannot show one it cannot classify:
-              the project's schemaSync marks each one (docs/schema.md). --->
+              lib schemaSync marks each one (docs/schema.md). --->
         <cfloop array="#statements#" item="local.statement">
             <cfif NOT structKeyExists(local.statement, "destructive") OR NOT isBoolean(local.statement.destructive)>
                 <cfthrow type="moopa.schema.destructiveMissing" message="schemaSync statement '#local.statement.title ?: local.statement.statement ?: '(untitled)'#' has no boolean destructive. Every statement compareDatabaseSchema returns must set destructive true or false; see moopa/docs/schema.md." />

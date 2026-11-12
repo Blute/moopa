@@ -1015,7 +1015,7 @@
         <cfset _loadCfcDirectory(application.lib, "lib", "library", "db") />
 
         <cfif len(server.system.environment.deploy_key?:"") AND len(url.deploy?:"") AND url.deploy EQ server.system.environment.deploy_key>
-            <cfif (application.app_name ?: "") NEQ "hub" OR NOT structKeyExists(application.lib, "schemaSync")>
+            <cfif (application.app_name ?: "") NEQ "hub">
                 <cfthrow type="moopa.schemaSync.unavailable" message="Schema deployment is only available from the Hub app." />
             </cfif>
 
