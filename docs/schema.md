@@ -2,7 +2,7 @@
 
 System → Schema (`/sysadmin/schema/`, Hub only) lists the SQL that would bring the database in line with the table definitions. Moopa never runs it: a sysadmin selects statements, reviews them and copies the script.
 
-The statements come from the project's own Hub library, `application.lib.schemaSync.compareDatabaseSchema(application.lib.db.codeSchema)`. It returns an array of structs, in the order they must run:
+The statements come from Moopa's own library, `application.lib.schemaSync.compareDatabaseSchema(application.lib.db.codeSchema)` (`lib/schemaSync.cfc`). It reads the database's catalogue and builds SQL text; it never changes the database. It returns an array of structs, in the order they must run:
 
 | Key | Required | Meaning |
 |---|---|---|
@@ -21,6 +21,10 @@ The page hides destructive statements until the sysadmin turns on **Show destruc
 
 The page refuses to render when a statement has no boolean `destructive`, naming the statement, rather than guessing which statements are safe.
 
+## Comparing expressions
+
+A column default or a generated column's expression is compared after both sides go through `normalizeExpression()`: Postgres stores an expression rewritten (casts and parentheses added, a function or column named by a keyword double-quoted, so `left(...)` comes back as `"left"(...)`, and `TRIM(x)` as `TRIM(BOTH FROM x)`), so casts, parentheses, double quotes and whitespace are removed from both, and `TRIM(BOTH FROM` reads as `TRIM(`. A generated column whose expression still differs is dropped and added back, because Postgres cannot alter one in place. An expression the page keeps proposing after it has been run is a difference this normalising misses: fix it here, with a check in `scripts/schema_sync_test/run.cfm`.
+
 ## Upgrading an existing app
 
-A Moopa from before `destructive` existed did not need it. A project's `schemaSync.compareDatabaseSchema` must now set `"destructive": true` or `"destructive": false` on every statement it returns, by the rule above; until it does, the Schema page fails with `moopa.schema.destructiveMissing`.
+`schemaSync` used to be each project's own Hub library (`code/apps/hub/lib/schemaSync.cfc`). It is Moopa's now, so **delete the project's copy** when moving to this Moopa: two libraries of one name stop the app starting (`Duplicate library 'schemaSync'`). Nothing that calls `application.lib.schemaSync` changes.
