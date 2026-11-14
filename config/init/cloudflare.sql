@@ -200,6 +200,8 @@ BEGIN
         WHEN 'image' THEN 'i'
         WHEN 'm' THEN 'm'
         WHEN 'markdown' THEN 'm'
+        WHEN 'p' THEN 'p'
+        WHEN 'page' THEN 'p'
         WHEN 'v' THEN 'v'
         WHEN 'video' THEN 'v'
         ELSE 'a'

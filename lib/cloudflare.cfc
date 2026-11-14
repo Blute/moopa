@@ -18,7 +18,7 @@
     month, etc.), so every URL signed within the same window is identical —
     page refreshes reuse browser/edge cache instead of generating new URLs.
     Worker route prefixes: /a/* raw asset, /i/* image transform, /m/* PDF-to-
-    markdown, /v/* Cloudflare Stream redirect.
+    markdown, /p/* a page of a PDF as an image, /v/* Cloudflare Stream redirect.
 
     KEY VERSIONING (kid)
     Signed URLs carry a kid=<id> param identifying which key signed them. The
@@ -59,6 +59,9 @@
        - Worker Settings > Bindings:
            ASSETS_BUCKET  -> R2 bucket binding (the bucket above)
            AI             -> Workers AI binding (only needed for /m/* PDF-to-markdown)
+           PDF_PAGES      -> Service binding to the PDF pages Worker
+                             (config/init/cloudflare-pdf-pages-worker.js; only needed
+                             for /p/* PDF pages, docs/object-storage.md)
        - Worker Settings > Variables and Secrets:
            SIGNING_KEYS_JSON      (type: Secret) -> {"v1": "<key from step 1>"}
            SIGNING_KEY_B64        (type: Secret) -> same key from step 1; verifies
@@ -69,8 +72,9 @@
                                                     (Stream > copy your customer subdomain;
                                                     only needed for /v/*)
            MAX_MARKDOWN_PDF_BYTES (type: Var, optional) -> /m/* size cap, default 25 MiB
+           MAX_PDF_PAGE_BYTES     (type: Var, optional) -> /p/* size cap, default 25 MiB
        - Images > Transformations: enable for the zone serving the Worker
-         (required for /i/* resizing).
+         (required for /i/* resizing, and for /p/* unless render= is asked for).
 
     4. Verify:
          SELECT signed_asset_url('some/key.jpg', 'EOD', 'i', 'width=100');
@@ -93,6 +97,7 @@
 
     USAGE
       application.lib.cloudflare.signed_asset_url(path, 'EOD', 'i', 'width=500')
+      application.lib.cloudflare.signed_asset_url(pdf_path, 'EOW', 'p', 'page=1&width=120&height=120&fit=cover')
     Expiry guidance: NEVER for public/persisted URLs (logos, agent photos,
     stored thumbnails), EOM for URLs embedded in emails, EOD for private
     in-session content. In SELECT queries, call the SQL function directly

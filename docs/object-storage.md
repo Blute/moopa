@@ -86,7 +86,30 @@ An endpoint answers a refusal with `refused(result)`, a 422 marked `X-Refusal` t
 
 ## Serving uploaded files
 
-The signed assets Worker (`config/init/cloudflare-signed-assets-worker.js`) answers every request `X-Content-Type-Options: nosniff`, and opens only images, video, audio and PDFs in the browser. Anything else a raw asset (`/a/`) is stored as, SVG and HTML included, is a download (`Content-Disposition: attachment`), so a signed link can never show a page on the asset hostname. `node scripts/test_assets_worker.mjs` checks it.
+The signed assets Worker (`config/init/cloudflare-signed-assets-worker.js`) answers every request `X-Content-Type-Options: nosniff`, and opens only images, video, audio and PDFs in the browser. Anything else a raw asset (`/a/`) is stored as, SVG and HTML included, is a download (`Content-Disposition: attachment`), so a signed link can never show a page on the asset hostname. `node scripts/test_assets_worker.mjs` checks it, and what `/p/` asks of the PDF pages Worker.
+
+### A page of a PDF as an image
+
+`/p/` answers one page of a stored PDF as an image, so a PDF gets a thumbnail or a page preview without anything being made or stored when it is uploaded. Sign it like any other asset, with kind `p` (or `page`):
+
+```sql
+SELECT signed_asset_url(moo_file.path, 'EOW', 'p', 'page=1&width=120&height=120&fit=cover') AS thumbnail
+```
+
+- `page` counts from 1 and is 1 when not given. A page the PDF doesn't have is a 404.
+- `width`, `height`, `fit` and `quality` resize the page exactly as `/i/` resizes an image, in the format the browser takes. With none of them the page comes 1600 pixels wide.
+- `render=<width>` (16 to 2000) answers the page as a PNG that many pixels wide without image resizing, for a zone that doesn't have Images Transformations.
+- A file that isn't a PDF is a 415, one that can't be opened (damaged, or needing a password) a 422, and one over 25 MiB (`MAX_PDF_PAGE_BYTES` on the Worker) a 413.
+
+The rendering is done by a second Worker, the **PDF pages Worker** (`config/init/cloudflare-pdf-pages-worker.js`), which the signed assets Worker reaches through a service binding named `PDF_PAGES`. It holds no files and no keys, so one of it serves every app: the signed assets Worker checks the signature, reads the PDF from its own bucket and sends it over. Its file says how to deploy it: three modules (itself and two files of the npm package `@hyzyla/pdfium`), and no address of its own. Without the binding `/p/` answers 500 `Missing PDF_PAGES binding`.
+
+A page is rendered each time an address is first asked for, then kept in the edge cache until the address expires, so sign with a period-aligned expiry (`EOW`, `EOM`) as for thumbnails.
+
+### Upgrading to PDF pages
+
+1. **Run `config/init/cloudflare.sql` again**: `signed_asset_url()` learns kind `p`. Until then it signs a `p` as a raw asset (`/a/`).
+2. **Deploy the PDF pages Worker** once, from `config/init/cloudflare-pdf-pages-worker.js`.
+3. **Redeploy the signed assets Worker** from `config/init/cloudflare-signed-assets-worker.js`, with the `PDF_PAGES` service binding.
 
 ## Upgrading to checked uploads
 
