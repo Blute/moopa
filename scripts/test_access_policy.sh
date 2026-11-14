@@ -6,7 +6,7 @@
 # _validatedWithoutLogin, _validatedSessionCheck, _checkValidatedSession; docs/route-access.md).
 #
 # Runs CFML cases on RustCFML with a stub application.lib.auth, a stub project lib for the session
-# check, and a session built per case. The stay-signed-in device test (_deviceStillThere) is
+# check, and a session built per case. The stay-signed-in device (application.lib.signin_device) is
 # stubbed too, and no case reaches the moo_route_permission query, so no database is needed.
 #
 # The run passes only when RustCFML exits cleanly, every case passes, and exactly EXPECTED_CASES
@@ -32,8 +32,7 @@ trap 'rm -rf "$tmpdir"' EXIT
 # Moopa's components by their dotted paths (moopa.application, moopa.internal.routing.access_policy)
 ln -s "$PWD" "$tmpdir/moopa"
 
-# application.cfc with its startup checks and the session check reachable, and the device test
-# answering from request.device_present instead of the database
+# application.cfc with its startup checks and the session check reachable
 cat > "$tmpdir/probe_app.cfc" <<'CFML'
 <cfcomponent extends="moopa.application" output="false">
     <cffunction name="validatedWithoutLogin" access="public" returntype="boolean" output="false">
@@ -45,10 +44,20 @@ cat > "$tmpdir/probe_app.cfc" <<'CFML'
     <cffunction name="checkValidatedSession" access="public" returntype="void" output="false">
         <cfset _checkValidatedSession() />
     </cffunction>
-    <cffunction name="_deviceStillThere" access="private" returntype="boolean" output="false">
+</cfcomponent>
+CFML
+
+# application.lib.signin_device, the two methods the session check uses: isLive answers from
+# request.device_present instead of the database, and clearCookie counts its calls
+cat > "$tmpdir/device_stub.cfc" <<'CFML'
+<cfcomponent output="false">
+    <cffunction name="isLive" access="public" returntype="boolean" output="false">
         <cfargument name="device_id" type="string" required="true" />
         <cfset request.device_checks += 1 />
         <cfreturn request.device_present />
+    </cffunction>
+    <cffunction name="clearCookie" access="public" returntype="void" output="false">
+        <cfset request.cookies_cleared += 1 />
     </cffunction>
 </cfcomponent>
 CFML
@@ -79,7 +88,11 @@ CFML
 cat > "$tmpdir/cases.cfm" <<'CFML'
 <cfscript>
     application.app_name = "hub";
-    application.lib = { auth: createObject("component", "auth_stub"), backing: createObject("component", "backing_stub") };
+    application.lib = {
+        auth: createObject("component", "auth_stub"),
+        backing: createObject("component", "backing_stub"),
+        signin_device: createObject("component", "device_stub")
+    };
     policy = createObject("component", "moopa.internal.routing.access_policy").init();
     app = createObject("component", "probe_app");
     cases = 0;
@@ -156,7 +169,8 @@ cat > "$tmpdir/cases.cfm" <<'CFML'
     // The once-a-minute check of a validated session without a login
     // check(setting, hook, device_id, checked_ago, backing_valid, device_present): runs the check
     // on a validated session (not logged in, profile in this app) last checked checked_ago seconds
-    // ago (-1: never), then leaves request.hook_calls, request.device_checks and the session.
+    // ago (-1: never), then leaves request.hook_calls, request.device_checks, request.cookies_cleared
+    // and the session.
     function check(required boolean setting, required string hook, required string device_id, required numeric checked_ago,
                    any backing_valid = true, boolean device_present = true) {
         application.moopa_validated_without_login = arguments.setting;
@@ -165,6 +179,7 @@ cat > "$tmpdir/cases.cfm" <<'CFML'
         request.device_present = arguments.device_present;
         request.hook_calls = 0;
         request.device_checks = 0;
+        request.cookies_cleared = 0;
         if (arguments.checked_ago GTE 0) {
             session.auth.validated_checked_at = dateAdd("s", -arguments.checked_ago, now());
         }
@@ -182,7 +197,7 @@ cat > "$tmpdir/cases.cfm" <<'CFML'
     check(true, "backing.check", "", 30, false);
     expect("hook: revoked within the minute, not yet checked, still opens", "0 true", request.hook_calls & " " & opens("validated"));
     check(true, "backing.check", "", 61, false);
-    expect("hook: revoked, the next check ends the session's auth", "1 false", request.hook_calls & " " & structKeyExists(session, "auth"));
+    expect("hook: revoked, the next check ends the session's auth, no device cookie to clear", "1 0 false", request.hook_calls & " " & request.cookies_cleared & " " & structKeyExists(session, "auth"));
     expect("hook: revoked, validated routes no longer open", false, opens("validated"));
 
     signIn(false, true, "hub");
@@ -193,9 +208,9 @@ cat > "$tmpdir/cases.cfm" <<'CFML'
     // A session with a stay-signed-in device is checked by its device, not the hook
     signIn(false, true, "hub");
     check(true, "backing.check", "device-1", 61, false, true);
-    expect("device: a device still there keeps the session, hook not asked", "1 0 true", request.device_checks & " " & request.hook_calls & " " & opens("validated"));
+    expect("device: a device still there keeps the session and its cookie, hook not asked", "1 0 0 true", request.device_checks & " " & request.hook_calls & " " & request.cookies_cleared & " " & opens("validated"));
     check(true, "backing.check", "device-1", 61, true, false);
-    expect("device: a device signed out ends the session's auth", "1 0 false", request.device_checks & " " & request.hook_calls & " " & structKeyExists(session, "auth"));
+    expect("device: a device signed out ends the session's auth and clears its cookie", "1 0 1 false", request.device_checks & " " & request.hook_calls & " " & request.cookies_cleared & " " & structKeyExists(session, "auth"));
 
     // Neither a device nor a hook: the project owns the session's lifetime
     signIn(false, true, "hub");

@@ -102,13 +102,7 @@
     <cffunction name="logout" access="public" returntype="void" output="false"
         hint="Sign this browser out, ending its stay-signed-in device too, then go home.">
 
-        <cfif len(cookie.deviceid ?: "")>
-            <cfquery>
-            DELETE FROM moo_profile_extended_session
-            WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#cookie.deviceid#" />
-            </cfquery>
-            <cfcookie name="deviceid" value="" path="/" expires="0" httponly="true" secure="true" samesite="Lax">
-        </cfif>
+        <cfset application.lib.signin_device.forget() />
         <cfset structDelete(session, "auth") />
         <cfset structDelete(session, "signin") />
         <cflocation url="/" addtoken="false" />
@@ -124,9 +118,7 @@
         <cfquery>
             DELETE FROM moo_signin_request WHERE created_at < now() - interval '90 days'
         </cfquery>
-        <cfquery>
-            DELETE FROM moo_profile_extended_session WHERE expiration < now()
-        </cfquery>
+        <cfset application.lib.signin_device.prune() />
     </cffunction>
 
 

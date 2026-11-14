@@ -196,25 +196,8 @@
 
         <cfif !arguments.auto_login AND arguments.stay_logged_in>
 
-            <cfset var new_device_id = createUUID() />
-            <cfset var expireTime = dateAdd("d", 30, now())>
-            <cfset application.lib.db.save(
-                table_name = "moo_profile_extended_session",
-                data = {
-                    profile_id = "#auth.profile.id#",
-                    device_id = "#new_device_id#",
-                    expiration = "#expireTime#",
-                    user_agent = left(cgi.http_user_agent ?: "", 500),
-                    place = left(arguments.place, 120)
-                },
-                returnFormat="cfml"
-            ) />
-
-            <cfcookie name="deviceid" value="#new_device_id#" expires="#expireTime#" httponly="true" secure="true" samesite="Lax">
-
-
             <cfset auth.stay_logged_in = true />
-            <cfset auth.device_id = new_device_id />
+            <cfset auth.device_id = application.lib.signin_device.issue(profile_id = auth.profile.id, place = arguments.place) />
 
         </cfif>
 

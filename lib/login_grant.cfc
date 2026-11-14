@@ -83,13 +83,7 @@
               expires, auto-login silently switches the browser back to them
               mid-flow. A granted session ending (explicitly or by expiry) should
               land signed out. --->
-        <cfif len(cookie.deviceid ?: '')>
-            <cfquery>
-            DELETE FROM moo_profile_extended_session
-            WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#cookie.deviceid#" />
-            </cfquery>
-            <cfcookie name="deviceid" value="" path="/" expires="0" httponly="true" secure="true" samesite="Lax">
-        </cfif>
+        <cfset application.lib.signin_device.forget() />
 
         <!--- stay_logged_in=false: closing the browser (or private window) ends the session --->
         <cfset application.lib.db.getService("moo_profile").login(

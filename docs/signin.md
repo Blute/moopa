@@ -64,8 +64,28 @@ Everything else (the emailed link, the approve page, the waiting page's polling)
 - **At most 5 requests per email address and 20 per IP address in 15 minutes.**
 - **Signing out ends the 30-day device too.**
 - **A stay ends at its expiry, to the second.** Returning on a device after its 30 days signs nobody in: the device and its cookie are removed and the person signs in again. Signing in from the cookie and the once-a-minute check of an open session make the same test (`expiration > now()`, by the database's clock).
+- **A stay is never extended.** It lasts 30 days from the sign-in that made it; using the app does not renew it.
+- **A device cookie that names no device is cleared.** A device signed out elsewhere or pruned leaves its cookie behind on that browser; the next request there removes it.
 
 A request someone else started still needs the account owner to approve it: the approve page shows the device, roughly where it is (with `TRUSTED_PROXY=cloudflare` and Cloudflare's visitor location headers on) and when it asked, so a request that isn't theirs stands out.
+
+## The stay-signed-in device
+
+A stay is a row in `moo_profile_extended_session` (a random device id, the profile, an expiry, and the browser and place it signed in from) and a `deviceid` cookie holding that id. `lib/signin_device.cfc` (`application.lib.signin_device`) is the only code that makes, reads or removes either:
+
+| Method | What it does |
+|---|---|
+| `issue(profile_id, place)` | Makes a device and gives this browser its cookie. Returns the device id, which the session keeps. |
+| `resume()` | The live device this browser's cookie names, as `{ profile_id, device_id }`, or an empty struct. An expired or missing device is removed and its cookie cleared. |
+| `forget()` | Ends this browser's stay: removes its device and clears the cookie. |
+| `clearCookie()` | Clears the cookie, for a session whose device is already gone. |
+| `isLive(device_id)` | Whether the device exists and hasn't expired. |
+| `belongsTo(device_id, profile_id)` | Whether the device is that profile's. |
+| `devicesFor(profile_id)` | The profile's live devices, for Sign-in activity. |
+| `signOut(id, profile_id)`, `signOutOthers(profile_id, keep_device_id)` | Remove one device, or all but one. |
+| `prune()` | Removes every expired device. |
+
+`application.cfc` owns the session's side: it signs a browser back in from `resume()`, and checks at most once a minute that an open session's device `isLive()`. A project that signs people out its own way calls `application.lib.signin_device.forget()` rather than deleting the row or writing the cookie itself.
 
 ## Inviting someone
 
