@@ -203,6 +203,8 @@ A uuid foreign key, a `many_to_many` list and a `relation` pull in records of an
 - `condensed`: `{id, label}`, or `id` plus the linked table's fields marked `condensed: true` when it marks any.
 - `expanded`: every field of the linked table except its `sensitive` ones. A uuid link inside an expanded read leaves out the linked table's own `many_to_many` lists.
 
+A linked table may have any number of fields: Postgres takes at most 100 arguments in a function call, so past 50 fields Moopa builds the link's object in parts and joins them.
+
 Three options narrow that, all opt-in:
 
 | Option | Where | Effect |

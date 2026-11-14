@@ -156,6 +156,42 @@
     read = projection.select(tableDef = schema.booking, sql_type = "expanded");
     check("expand condensed: an expanded read of the linking table uses it", has(read, "json_build_object('id',id,'email',email)") AND has(read, "'date_of_birth', date_of_birth"), squash(read));
 
+    // 5b. A linked table with more than 50 fields: Postgres takes at most 100 arguments in a function
+    // call, so the link's object is built 50 pairs at a time and joined with ||.
+    definitions = fixture();
+    for (i = 1; i LTE 60; i++) {
+        definitions.person.fields["extra_#i#"] = { "type": "varchar" };
+    }
+    schema = normalized(definitions);
+    fk = squash(schema.booking.fields.person_id.sql_select_expanded);
+    m2m = squash(schema.team.fields.members.sql_select_expanded);
+    function widestCall(required string sql) {
+        // the most 'key', value pairs any one build_object call is given
+        var widest = 0;
+        var calls = reMatchNoCase("jsonb?_build_object\([^)]*\)", arguments.sql);
+        for (var call in calls) {
+            widest = max(widest, arrayLen(reMatch("'[a-z_0-9]+',", call)));
+        }
+        return widest;
+    }
+    check("wide table: a uuid link passes no call more than 50 pairs", widestCall(fk) GT 0 AND widestCall(fk) LTE 50, fk);
+    check("wide table: a uuid link joins its parts as jsonb", has(fk, ") || jsonb_build_object(") AND !has(fk, "json_build_object(") , fk);
+    check("wide table: a uuid link still carries every field", has(fk, "'extra_1', extra_1") AND has(fk, "'extra_60', extra_60") AND has(fk, "'date_of_birth', date_of_birth") AND !has(fk, "tax_file_number"), fk);
+    check("wide table: a many_to_many link passes no call more than 50 pairs", widestCall(m2m) GT 0 AND widestCall(m2m) LTE 50, m2m);
+    check("wide table: a many_to_many link aggregates the joined object", has(m2m, "jsonb_agg( (jsonb_build_object(") AND has(m2m, ") || jsonb_build_object("), m2m);
+    check("wide table: a many_to_many link still carries every field", has(m2m, "'extra_1', person.extra_1") AND has(m2m, "'extra_60', person.extra_60"), m2m);
+    check("wide table: a condensed link is the single call it was", has(schema.booking.fields.person_id.sql_select_condensed, "json_build_object('id',id,'email',email)"), squash(schema.booking.fields.person_id.sql_select_condensed));
+    // exactly 50 pairs is still one call
+    definitions = fixture();
+    definitions.person.expand_fields = "id";
+    for (i = 1; i LTE 49; i++) {
+        definitions.person.fields["extra_#i#"] = { "type": "varchar" };
+        definitions.person.expand_fields = listAppend(definitions.person.expand_fields, "extra_#i#");
+    }
+    schema = normalized(definitions);
+    fk = squash(schema.booking.fields.person_id.sql_select_expanded);
+    check("wide table: 50 fields is still one json_build_object call", widestCall(fk) EQ 50 AND has(fk, "SELECT json_build_object(") AND !has(fk, "||"), fk);
+
     // 6. expand is checked at startup.
     message = normalizeError(fixture({}, { "expand": "expanded" }));
     check("expand: a value other than condensed fails", message EQ "Table booking field person_id expand must be ""condensed""", message);
