@@ -15,6 +15,14 @@
           (memcached is never written) and logins never stick. --->
     <cfset this.sessionManagement = true />
 
+    <!--- Modern local mode: a variable a function assigns without a scope belongs to that call. Moopa is
+          written for it. Its libraries, table services and routing objects are single instances every
+          request shares, and in classic mode (the engine's default) each unscoped assignment in them lands
+          in the component's variables scope, where two requests running the same function overwrite each
+          other's values. A project must not set this.localMode itself; OnApplicationStart refuses to start
+          in any other mode (_assertModernLocalMode). --->
+    <cfset this.localMode = "modern" />
+
     <cfset this.sessioncookie = {
         secure: true,
         httponly: true,
@@ -55,6 +63,8 @@
         <cfif NOT len(application.app_name)>
             <cfthrow message="APP_NAME is required. Set APP_NAME to the app directory name under code/apps/ (or set this.moopa_app_name in Application.cfc for host-resolved multi-app runtimes)." />
         </cfif>
+        <!--- Refuse to start in classic local mode (docs/local-mode.md) --->
+        <cfset _assertModernLocalMode() />
         <!--- Refuse to start with a malformed this.moopa_error_details (docs/errors.md) --->
         <cfset _errorDetailsAudience() />
         <!--- Whether a validated session without a login may open open_to="validated" routes; refuses to start on a non-boolean (docs/route-access.md) --->
@@ -441,6 +451,23 @@
         <cfreturn application.lib.auth.isLoggedIn()
             AND (session.auth.profile.app_name ?: "") EQ application.app_name
             AND application.lib.auth.isSysAdmin() />
+    </cffunction>
+
+
+    <cffunction name="_assertModernLocalMode" access="private" returntype="void" output="false" hint="Checks what the engine does, not what was configured: runs a function that assigns a variable without a scope, and throws moopa.config.classicLocalMode when that variable reached this component's variables scope. OnApplicationStart calls it so the app does not start in classic local mode.">
+        <cfset _localModeProbe() />
+
+        <cfif structKeyExists(variables, "moopa_local_mode_probe")>
+            <cfset structDelete(variables, "moopa_local_mode_probe") />
+            <cfthrow type="moopa.config.classicLocalMode"
+                message="Moopa needs modern local mode, and this application is running in classic local mode."
+                detail="moopa.application sets this.localMode to modern. Remove any this.localMode from the project's Application.cfc, and run an engine that supports it." />
+        </cfif>
+    </cffunction>
+
+
+    <cffunction name="_localModeProbe" access="private" returntype="void" output="false" hint="Assigns one variable without a scope, for _assertModernLocalMode to look for. The missing scope is the point: do not add one.">
+        <cfset moopa_local_mode_probe = true />
     </cffunction>
 
 

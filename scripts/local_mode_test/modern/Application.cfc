@@ -1,0 +1,5 @@
+<cfcomponent output="false" hint="Standalone application for the local mode harness, running in modern local mode: maps /moopa to this checkout.">
+    <cfset this.name = "moopa_local_mode_test_modern" />
+    <cfset this.mappings["/moopa"] = getDirectoryFromPath(getCurrentTemplatePath()) & "../../../" />
+    <cfset this.localMode = "modern" />
+</cfcomponent>
