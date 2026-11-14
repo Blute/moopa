@@ -635,8 +635,9 @@
             <cfif qCheckDevice.recordcount EQ 1>
 
                 <cfif dateDiff('d', now(), qCheckDevice.expiration) GTE 0>
-                    <!--- AUTO LOGIN --->
-                    <cfset application.lib.db.getService("moo_profile").login(profile_id="#qCheckDevice.profile_id#", auto_login=true, device_id=qCheckDevice.device_id) />
+                    <!--- AUTO LOGIN. Each column is passed as its text ("#...#"): a bare query column is the whole
+                          column, an array, which the session would then hold as its device and fail to check. --->
+                    <cfset application.lib.db.getService("moo_profile").login(profile_id="#qCheckDevice.profile_id#", auto_login=true, device_id="#qCheckDevice.device_id#") />
 
                 <cfelse>
                     <cfquery name="qCleanupExtendedSession">
