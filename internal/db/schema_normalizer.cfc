@@ -769,6 +769,23 @@
             </cfloop>
     </cffunction>
 
+    <cffunction name="linkObjectSql" access="private" returntype="string" output="false" hint="SQL for the one JSON object a link carries, from its 'key', value pairs. Postgres takes at most 100 arguments in a function call (50 pairs), so a linked table with more fields than that is built 50 pairs at a time as jsonb objects joined with ||. Up to 50 pairs it is the single call it always was.">
+        <cfargument name="pairs" type="array" required="true" />
+        <cfargument name="builder" type="string" required="true" hint="json_build_object or jsonb_build_object: the single call's function" />
+
+        <cfset var chunks = [] />
+        <cfset var start = 0 />
+
+        <cfif arrayLen(arguments.pairs) LTE 50>
+            <cfreturn "#arguments.builder#(#arrayToList(arguments.pairs)#)" />
+        </cfif>
+        <!--- || joins jsonb, not json; every caller casts its result to jsonb anyway --->
+        <cfloop from="1" to="#arrayLen(arguments.pairs)#" step="50" index="start">
+            <cfset arrayAppend(chunks, "jsonb_build_object(" & arrayToList(arraySlice(arguments.pairs, start, min(50, arrayLen(arguments.pairs) - start + 1))) & ")") />
+        </cfloop>
+        <cfreturn "(" & arrayToList(chunks, " || ") & ")" />
+    </cffunction>
+
     <cffunction name="addRelationshipProjectionMetadata" access="private" returntype="void" output="false" hint="Populate expanded and condensed SQL projections that require all tables to be normalized.">
         <cfargument name="codeSchemaInput" type="struct" required="true">
 
@@ -799,7 +816,7 @@
                             json_build_object('id', #field.foreign_key_table#.id)
                         )
                      --->
-                    <cfset json_build_object_field_list = "" />
+                    <cfset var expanded_pairs = [] />
                     <cfloop collection="#arguments.codeSchemaInput[field.foreign_key_table].fields#" item="foreign_table_field" index="foreign_table_field_name">
                         <cfif len(foreign_table_field['sql_select_simple'])>
                             <!--- Skip sensitive fields, and fields outside the linked table's expand_fields --->
@@ -807,14 +824,14 @@
                                 <cfcontinue />
                             </cfif>
                             <cfset json_build_object_field_sql_select_simple = rereplace(foreign_table_field['sql_select_simple'], "(?i)\bas\b.*", "", "ALL") /> <!--- Strip the "as fieldname" from the end of the sql_select_simple --->
-                            <cfset json_build_object_field_list = listAppend(json_build_object_field_list, "'#foreign_table_field_name#', #json_build_object_field_sql_select_simple#") />
+                            <cfset arrayAppend(expanded_pairs, "'#foreign_table_field_name#', #json_build_object_field_sql_select_simple#") />
                         </cfif>
                     </cfloop>
                     <cfsavecontent variable="field.sql_select_expanded">
                     <cfoutput>
                         coalesce((
                             SELECT jsonb_agg(
-                                jsonb_build_object(#json_build_object_field_list#)
+                                #linkObjectSql(expanded_pairs, "jsonb_build_object")#
                                 ORDER BY #field.bridgingTableName#.sequence
                             )
                             FROM #field.bridgingTableName#
@@ -825,15 +842,15 @@
                     </cfoutput>
                     </cfsavecontent>
                     <!--- Condensed pairs from the linked table's condensed fields (id,label by default), within its expand_fields --->
-                    <cfset condensed_pairs = "" />
+                    <cfset var condensed_pairs = [] />
                     <cfloop list="#linkCondensedFields(arguments.codeSchemaInput[field.foreign_key_table])#" item="cf">
-                        <cfset condensed_pairs = listAppend(condensed_pairs, "'#cf#',#cf#") />
+                        <cfset arrayAppend(condensed_pairs, "'#cf#',#cf#") />
                     </cfloop>
                     <cfsavecontent variable="field.sql_select_condensed">
                     <cfoutput>
                         coalesce((
                             SELECT jsonb_agg(
-                                jsonb_build_object(#condensed_pairs#)
+                                #linkObjectSql(condensed_pairs, "jsonb_build_object")#
                                 ORDER BY #field.bridgingTableName#.sequence
                             )
                             FROM #field.bridgingTableName#
@@ -860,7 +877,7 @@
 
                      <cfif len(field.foreign_key_table?:'')>
                         <cftry>
-                        <cfset json_build_object_field_list = "" />
+                        <cfset var expanded_pairs = [] />
                         <cfloop collection="#arguments.codeSchemaInput[field.foreign_key_table].fields#" item="foreign_table_field" index="foreign_table_field_name">
 
                             <cfif len(foreign_table_field['sql_select_simple'])>
@@ -882,28 +899,28 @@
                                 <cfset json_build_object_field_sql_select_simple = foreign_table_field['sql_select_simple'] />
                                 <cfset json_build_object_field_sql_select_simple = rereplace(json_build_object_field_sql_select_simple, "(?i)\bas\b.*", "", "ALL") /> <!--- Strip the "as fieldname" from the end of the sql_select_simple --->
                                 <cfset json_build_object_field_sql_select_simple = replaceNoCase(json_build_object_field_sql_select_simple, "#field.foreign_key_table#.", "", "ALL") /> <!--- Strip the "[table_name]." from the beginning of the sql_select_simple. We need to do this in case we are related to iteslf --->
-                                <cfset json_build_object_field_list = listAppend(json_build_object_field_list, "'#foreign_table_field_name#', #json_build_object_field_sql_select_simple#") />
+                                <cfset arrayAppend(expanded_pairs, "'#foreign_table_field_name#', #json_build_object_field_sql_select_simple#") />
 
                             </cfif>
                         </cfloop>
                         <cfsavecontent variable="field.sql_select_expanded">
                         <cfoutput>
                             coalesce((
-                                SELECT json_build_object(#json_build_object_field_list#)
+                                SELECT #linkObjectSql(expanded_pairs, "json_build_object")#
                                 FROM #field.foreign_key_table# as sub
                                 WHERE sub.id = #table.table_name#.#field.name#
                             ),'{}')::jsonb AS #field.name#
                         </cfoutput>
                         </cfsavecontent>
                         <!--- Condensed pairs from the linked table's condensed fields (id,label by default), within its expand_fields --->
-                        <cfset condensed_pairs = "" />
+                        <cfset var condensed_pairs = [] />
                         <cfloop list="#linkCondensedFields(arguments.codeSchemaInput[field.foreign_key_table])#" item="cf">
-                            <cfset condensed_pairs = listAppend(condensed_pairs, "'#cf#',#cf#") />
+                            <cfset arrayAppend(condensed_pairs, "'#cf#',#cf#") />
                         </cfloop>
                         <cfsavecontent variable="field.sql_select_condensed">
                         <cfoutput>
                             coalesce((
-                                SELECT json_build_object(#condensed_pairs#)
+                                SELECT #linkObjectSql(condensed_pairs, "json_build_object")#
                                 FROM #field.foreign_key_table# as sub
                                 WHERE sub.id = #table.table_name#.#field.name#
                             ),'{}')::jsonb AS #field.name#
