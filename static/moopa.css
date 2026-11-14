@@ -152,6 +152,7 @@
   --shell-danger:        oklch(75% 0.140 22);
   --brand-bg:            var(--shell-bg);    /* behind the brand logo outside the sidebar: the status pages, System → Theme */
   --brand-ink:           var(--shell-ink);   /* the project's name there, when it has no logo */
+  --auth-brand-align:    space-between;      /* the sign-in page's dark panel: the logo at the top and the welcome at the foot; center groups them mid-panel */
 
   /* shell */
   --sb-w: 264px;
@@ -561,7 +562,7 @@ body:has(> .status-page, > .auth) > :not(.status-page, .auth) { flex: none; }
    the same colour and its body is a sheet below. */
 .auth { --auth-brand: linear-gradient(160deg, var(--shell-bg), color-mix(in oklab, var(--shell-bg) 62%, black));
   flex: 1 0 auto; display: grid; grid-template-columns: minmax(20rem, 0.8fr) 1fr; background: var(--surface); }
-.auth-brand { position: relative; overflow: hidden; isolation: isolate; display: flex; flex-direction: column; gap: var(--sp-8);
+.auth-brand { position: relative; overflow: hidden; isolation: isolate; display: flex; flex-direction: column; justify-content: var(--auth-brand-align); gap: var(--sp-8);
   padding: var(--sp-8) clamp(var(--sp-6), 4vw, 3.5rem); background: var(--auth-brand); color: var(--shell-ink); }
 .auth-brand::before, .auth-brand::after { content: ""; position: absolute; z-index: -1; border-radius: 50%;
   border: 1px solid color-mix(in oklab, var(--signal) 22%, transparent); pointer-events: none; }
@@ -569,7 +570,7 @@ body:has(> .status-page, > .auth) > :not(.status-page, .auth) { flex: none; }
 .auth-brand::after { width: 24rem; height: 24rem; right: -14rem; top: -5rem; }
 .auth-logo { align-self: flex-start; color: var(--shell-ink); font-weight: 600; font-size: var(--text-lg); text-decoration: none; }
 .auth-logo img { display: block; height: calc(var(--shell-logo-h) * 1.15); width: auto; }
-.auth-welcome { margin-top: auto; max-width: 24rem; }
+.auth-welcome { max-width: 24rem; }
 .auth-welcome h2 { color: var(--shell-ink); font-size: clamp(2.25rem, 3.2vw, 2.75rem); font-weight: 600; line-height: 1.05; }
 .auth-welcome p { margin-top: var(--sp-4); color: var(--shell-ink-mute); line-height: 1.55; text-wrap: pretty; }
 .auth-main { display: flex; align-items: center; justify-content: center; padding: var(--sp-8) var(--sp-6); }
