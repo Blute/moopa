@@ -5,6 +5,7 @@
 
         <cfset this.codeSchema = {} />
         <cfset this.searchable_tables = {} />
+        <cfset variables.serviceCache = {} />
 
         <cfset variables.returnFormatter = CreateObject("component", "/moopa/internal/db/return_formatter").init() />
         <cfset variables.schemaLoader = CreateObject("component", "/moopa/internal/db/schema_loader").init() />
@@ -86,10 +87,16 @@ Delete - delete
     </cffunction>
 
 
-    <cffunction name="getService" hint="Returns an instatiated table component">
+    <cffunction name="getService" hint="Returns the shared instance of a table component">
         <cfargument name="table_name" type="string" />
 
-        <cfreturn CreateObject('component', this.codeSchema[arguments.table_name].path).init() />
+        <!--- Table services must hold no per-call state outside init(): every caller
+              shares one instance for the lifetime of the application scope. --->
+        <cfif NOT structKeyExists(variables.serviceCache, arguments.table_name)>
+            <cfset variables.serviceCache[arguments.table_name] = CreateObject('component', this.codeSchema[arguments.table_name].path).init() />
+        </cfif>
+
+        <cfreturn variables.serviceCache[arguments.table_name] />
     </cffunction>
 
     <cffunction name="getTableDef" hint="Returns the sanitized code that defines the table">
