@@ -63,6 +63,7 @@ Everything else (the emailed link, the approve page, the waiting page's polling)
 - **Nothing says whether an email has an account.** An unknown address waits like any other; no email is sent. An email that fails to send is logged and looks the same.
 - **At most 5 requests per email address and 20 per IP address in 15 minutes.**
 - **Signing out ends the 30-day device too.**
+- **A stay ends at its expiry, to the second.** Returning on a device after its 30 days signs nobody in: the device and its cookie are removed and the person signs in again. Signing in from the cookie and the once-a-minute check of an open session make the same test (`expiration > now()`, by the database's clock).
 
 A request someone else started still needs the account owner to approve it: the approve page shows the device, roughly where it is (with `TRUSTED_PROXY=cloudflare` and Cloudflare's visitor location headers on) and when it asked, so a request that isn't theirs stands out.
 
