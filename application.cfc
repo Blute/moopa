@@ -618,6 +618,13 @@
         </cfif>
 
 
+        <!--- A session signed in automatically before that sign-in read the device id from its row holds the id
+              as a one-element array (see AUTO LOGIN below). Sessions outlive a restart, so one written by the
+              older code is put right here, before anything reads its device. --->
+        <cfif isArray(session.auth.device_id ?: "")>
+            <cfset session.auth.device_id = arrayLen(session.auth.device_id) ? session.auth.device_id[1] : "" />
+        </cfif>
+
         <!--- --------------------------------- --->
         <!--- LETS SEE IF WE NEED TO AUTO LOGIN --->
         <!--- --------------------------------- --->
