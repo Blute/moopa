@@ -92,6 +92,10 @@ async function handleRequest(request, env, ctx) {
       return handleMarkdownTransform({ env, objectKey, method, url, ctx });
     }
 
+    if (kind === "p") {
+      return handlePdfPage({ request, env, objectKey, method, url, ctx });
+    }
+
     return handleVideoStream({ env, objectKey, method, url });
   } catch (error) {
     const message = normalizeErrorMessage(error, "Unhandled worker error");
@@ -103,6 +107,7 @@ function getKind(pathname) {
   if (pathname.startsWith("/a/")) return "a";
   if (pathname.startsWith("/i/")) return "i";
   if (pathname.startsWith("/m/")) return "m";
+  if (pathname.startsWith("/p/")) return "p";
   if (pathname.startsWith("/v/")) return "v";
   return "";
 }
@@ -211,13 +216,28 @@ async function handleAssetProxy({ request, env, objectKey, method, url }) {
   return new Response(obj.body, { status, headers });
 }
 
-async function handleImageTransform({
+function handleImageTransform({ request, env, objectKey, method, url, ctx }) {
+  return transformImage({
+    request,
+    env,
+    method,
+    url,
+    ctx,
+    sourcePath: `/a/${objectKey.replace(/^\/+/, "")}`,
+    sourceParams: {},
+  });
+}
+
+// Answers the image at sourcePath (an address of this Worker's own, signed here for a minute) resized as the
+// request's width, height, fit and quality ask, through Cloudflare's image resizing.
+async function transformImage({
   request,
   env,
-  objectKey,
   method,
   url,
   ctx,
+  sourcePath,
+  sourceParams,
 }) {
   const width = toPositiveInt(url.searchParams.get("width"));
   const height = toPositiveInt(url.searchParams.get("height"));
@@ -231,11 +251,10 @@ async function handleImageTransform({
   const internalExp = Number.isFinite(outerExp)
     ? Math.min(outerExp, now + 60)
     : now + 60;
-  const sourcePath = `/a/${objectKey.replace(/^\/+/, "")}`;
   const source = await buildSignedUrl({
     origin: url.origin,
     pathname: sourcePath,
-    params: { exp: String(internalExp) },
+    params: { ...sourceParams, exp: String(internalExp) },
     signingKeyB64: env.SIGNING_KEY_B64,
   });
 
@@ -400,6 +419,144 @@ async function handleMarkdownTransform({ env, objectKey, method, url, ctx }) {
   });
 
   if (cacheKey && response.status === 200) {
+    ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
+  }
+
+  return response;
+}
+
+// The widths a PDF page is rendered at for resizing: a resized page (/p/ with width or height) is cut from the
+// smallest of these that has the pixels for it.
+const PDF_PAGE_RENDER_WIDTHS = [400, 800, 1200, 1600, 2000];
+
+// /p/<key>?page=1: one page of a PDF as an image (page counts from 1, and is 1 when not given).
+//   render=<width>             the page as a PNG that many pixels wide (16 to 4000), straight from the PDF service
+//                              (the PDF_PAGES binding; docs/object-storage.md says what that service answers).
+//   width, height, fit, quality  the page resized as /i/ resizes an image, from this Worker's own rendering of it.
+//   neither                    the page 1600 pixels wide, through image resizing (so in the format the browser takes).
+async function handlePdfPage({ request, env, objectKey, method, url, ctx }) {
+  if (!env.PDF_PAGES || typeof env.PDF_PAGES.fetch !== "function") {
+    return new Response("Missing PDF_PAGES binding", { status: 500 });
+  }
+
+  const pageParam = url.searchParams.get("page");
+  const page = pageParam == null ? 1 : toPositiveInt(pageParam);
+  if (!page) {
+    return new Response("Bad page", { status: 400 });
+  }
+
+  const renderParam = url.searchParams.get("render");
+  if (renderParam != null) {
+    const renderWidth = toPositiveInt(renderParam);
+    if (!renderWidth || renderWidth < 16 || renderWidth > 4000) {
+      return new Response("Bad render", { status: 400 });
+    }
+    return handlePdfPageRender({ env, objectKey, method, url, ctx, page, renderWidth });
+  }
+
+  // A page's shape isn't known until it is rendered, and a wide page cut to a tall thumbnail needs more pixels across
+  // than the thumbnail has: half as many again as the longer side asked for covers pages up to 3:2.
+  const longest = Math.max(
+    toPositiveInt(url.searchParams.get("width")) || 0,
+    toPositiveInt(url.searchParams.get("height")) || 0,
+  );
+  const wanted = longest ? Math.ceil(longest * 1.5) : 1600;
+  const renderWidth =
+    PDF_PAGE_RENDER_WIDTHS.find((w) => w >= wanted) ||
+    PDF_PAGE_RENDER_WIDTHS[PDF_PAGE_RENDER_WIDTHS.length - 1];
+
+  return transformImage({
+    request,
+    env,
+    method,
+    url,
+    ctx,
+    sourcePath: `/p/${objectKey.replace(/^\/+/, "")}`,
+    sourceParams: { page: String(page), render: String(renderWidth) },
+  });
+}
+
+// The page from the PDF service. This Worker does not read the PDF: it checks the file is one, then gives the
+// service an address of its own to read it from (/a/, signed here for five minutes), so a PDF of any size the
+// service takes can be rendered.
+async function handlePdfPageRender({ env, objectKey, method, url, ctx, page, renderWidth }) {
+  const maxPdfBytes = toPositiveInt(env.MAX_PDF_PAGE_BYTES);
+  const ttl = getSignedTtlSeconds(url);
+  const canEdgeCache = method === "GET" && ttl > 0;
+  const cacheKey = canEdgeCache
+    ? new Request(url.toString(), { method: "GET" })
+    : null;
+
+  if (cacheKey) {
+    const cached = await caches.default.match(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  let obj;
+  try {
+    obj = await env.ASSETS_BUCKET.head(objectKey);
+  } catch (_error) {
+    return new Response("Upstream error", { status: 502 });
+  }
+
+  if (!obj) {
+    return new Response("Not found", { status: 404 });
+  }
+
+  const contentType =
+    obj.httpMetadata?.contentType ||
+    guessContentType(objectKey) ||
+    "application/octet-stream";
+  if (!isPdfSource({ objectKey, contentType })) {
+    return new Response("Unsupported media type", { status: 415 });
+  }
+
+  if (maxPdfBytes && typeof obj.size === "number" && obj.size > maxPdfBytes) {
+    return new Response("PDF too large", { status: 413 });
+  }
+
+  const headers = new Headers({ "Content-Type": "image/png" });
+  applySignedExpiryCaching(headers, url);
+
+  if (method === "HEAD") {
+    return new Response(null, { status: 200, headers });
+  }
+
+  const source = await buildSignedUrl({
+    origin: url.origin,
+    pathname: `/a/${objectKey.replace(/^\/+/, "")}`,
+    params: { exp: String(Math.floor(Date.now() / 1000) + 300) },
+    signingKeyB64: env.SIGNING_KEY_B64,
+  });
+
+  let rendered;
+  try {
+    rendered = await env.PDF_PAGES.fetch("https://pdf-pages/page", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source, page, width: renderWidth }),
+    });
+  } catch (error) {
+    return new Response(
+      `PDF rendering failed: ${normalizeErrorMessage(error, "the PDF service did not answer")}`,
+      { status: 502 },
+    );
+  }
+
+  // The PDF service's own refusals are the asker's to see: no such page (404), too large (413), not a PDF it can
+  // open (422).
+  if (rendered.status === 404 || rendered.status === 413 || rendered.status === 422) {
+    return new Response(await rendered.text(), { status: rendered.status });
+  }
+  if (rendered.status !== 200) {
+    return new Response("PDF rendering failed", { status: 502 });
+  }
+
+  const response = new Response(rendered.body, { status: 200, headers });
+
+  if (cacheKey) {
     ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
   }
 
