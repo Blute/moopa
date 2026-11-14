@@ -543,7 +543,7 @@
     </cffunction>
 
 
-    <cffunction name="_deviceStillThere" access="private" returntype="boolean" output="false" hint="Whether a stay-signed-in device (moo_profile_extended_session) still exists and hasn't expired: false once it is signed out from Sign-in activity or runs out.">
+    <cffunction name="_deviceStillThere" access="private" returntype="boolean" output="false" hint="Whether a stay-signed-in device (moo_profile_extended_session) still exists and hasn't expired: false once it is signed out from Sign-in activity or runs out. Signing in again from the device's cookie makes the same test (expiration > now()).">
         <cfargument name="device_id" type="string" required="true" />
 
         <cfquery name="local.qDevice" returntype="array">
@@ -657,24 +657,29 @@
         <!--- --------------------------------- --->
         <cfif !application.lib.auth.isLoggedIn() AND (len(cookie.deviceid?:''))>
 
+            <!--- "live" is the test _deviceStillThere() makes, by the database's clock: a device is good until
+                  its expiration and not a second after. Counting whole days here instead let a device that
+                  had expired within the last day sign in, only for the device check below to end that
+                  session in the same request. --->
             <cfquery name="qCheckDevice">
             SELECT id::text as id,
             profile_id::text as profile_id,
             device_id,
-            expiration
+            expiration > now() AS live
             FROM moo_profile_extended_session
             WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#cookie.deviceid#" />
             </cfquery>
 
             <cfif qCheckDevice.recordcount EQ 1>
 
-                <cfif dateDiff('d', now(), qCheckDevice.expiration) GTE 0>
+                <cfif qCheckDevice.live[1]>
                     <!--- AUTO LOGIN. The device id is read from its row ([1]): the session keeps it, and a query
                           column kept in the session, bare or as "#column#", comes back on the next request as an
                           array, which the device check below cannot take. --->
                     <cfset application.lib.db.getService("moo_profile").login(profile_id=qCheckDevice.profile_id[1], auto_login=true, device_id=qCheckDevice.device_id[1]) />
 
                 <cfelse>
+                    <!--- Expired: nobody is signed in, and the device and its cookie go --->
                     <cfquery name="qCleanupExtendedSession">
                     DELETE FROM moo_profile_extended_session
                     WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#cookie.deviceid#" />
