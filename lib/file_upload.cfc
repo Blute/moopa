@@ -68,7 +68,9 @@
             };
             // The file-type icon a moo_file shows until it has a thumbnail of its own: /_static/icons/fa/<name>.svg,
             // named for its extension except where two extensions share one.
-            variables.ICONS = { "heic": "heif", "tif": "tiff", "m4v": "mp4", "zip": "default" };
+            variables.ICONS = { "heic": "heif", "tif": "tiff", "m4v": "mp4", "zip": "default",
+                                "docx": "default", "xlsx": "default", "pptx": "default",
+                                "step": "default", "stp": "default", "dwg": "default", "dxf": "default" };
         </cfscript>
         <!--- How long the presigned URL works, and how long an upload may stay unfinished before sweep() takes it. --->
         <cfset variables.UPLOAD_SECONDS = 300 />
