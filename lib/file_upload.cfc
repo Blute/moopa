@@ -40,11 +40,37 @@
                 "zip": {
                     "types": { "zip": "application/zip" },
                     "signatures": [ "504b0304", "504b0506" ]        // PK, a zip with entries or an empty one
+                },
+                // Word, Excel and PowerPoint's current formats, each a zip of XML. The older .doc, .xls and .ppt are
+                // not here: they are another format, and the usual carrier of macros.
+                "office": {
+                    "types": { "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                               "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                               "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation" },
+                    "signatures": [ "504b0304" ]                    // PK, a zip with entries
+                },
+                // Drawings and models as a workshop exchanges them: STEP, DWG and DXF.
+                "drawing": {
+                    "types": { "step": "model/step", "stp": "model/step", "dwg": "application/acad", "dxf": "application/dxf" },
+                    "signatures": [
+                        "49534f2d31303330332d3231",                 // ISO-10303-21 (STEP)
+                        "41433130",                                 // AC10.. (DWG, every version since R13)
+                        // A text DXF opens with group code 0 and SECTION, the code bare or padded to three
+                        // characters, on Unix or Windows lines...
+                        "300a53454354494f4e", "300d0a53454354494f4e",
+                        "20300a53454354494f4e", "20300d0a53454354494f4e",
+                        "2020300a53454354494f4e", "2020300d0a53454354494f4e",
+                        // ...or with a comment (group code 999) before it
+                        "3939390a", "3939390d0a",
+                        "4175746f4341442042696e61"                  // AutoCAD Bina(ry DXF)
+                    ]
                 }
             };
             // The file-type icon a moo_file shows until it has a thumbnail of its own: /_static/icons/fa/<name>.svg,
             // named for its extension except where two extensions share one.
-            variables.ICONS = { "heic": "heif", "tif": "tiff", "m4v": "mp4", "zip": "default" };
+            variables.ICONS = { "heic": "heif", "tif": "tiff", "m4v": "mp4", "zip": "default",
+                                "docx": "default", "xlsx": "default", "pptx": "default",
+                                "step": "default", "stp": "default", "dwg": "default", "dxf": "default" };
         </cfscript>
         <!--- How long the presigned URL works, and how long an upload may stay unfinished before sweep() takes it. --->
         <cfset variables.UPLOAD_SECONDS = 300 />
@@ -68,7 +94,7 @@
         <cfargument name="file_name" type="string" required="true" hint="The file's own name, as the browser has it." />
         <cfargument name="file_size" type="any" required="true" hint="Its size in bytes, as the browser has it: the URL is signed for exactly this many." />
         <cfargument name="owner" type="string" required="true" hint="Who the upload belongs to, as the caller vouches: finish() and discard() need the same." />
-        <cfargument name="kinds" type="string" required="true" hint="The kinds of file accepted: a list of image, pdf, video and zip." />
+        <cfargument name="kinds" type="string" required="true" hint="The kinds of file accepted: a list of image, pdf, video, zip, office and drawing." />
         <cfargument name="max_bytes" type="numeric" required="true" hint="The largest file accepted, in bytes." />
 
         <cfset assertOwner(arguments.owner) />
@@ -278,7 +304,7 @@
 
 
     <cffunction name="startsAsKind" access="public" returntype="boolean" output="false"
-        hint="Whether these first bytes of a file are a signature of the kind (image, pdf, video or zip).">
+        hint="Whether these first bytes of a file are a signature of the kind (image, pdf, video, zip, office or drawing).">
         <cfargument name="bytes" type="binary" required="true" />
         <cfargument name="kind" type="string" required="true" />
 
