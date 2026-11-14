@@ -635,9 +635,10 @@
             <cfif qCheckDevice.recordcount EQ 1>
 
                 <cfif dateDiff('d', now(), qCheckDevice.expiration) GTE 0>
-                    <!--- AUTO LOGIN. Each column is passed as its text ("#...#"): a bare query column is the whole
-                          column, an array, which the session would then hold as its device and fail to check. --->
-                    <cfset application.lib.db.getService("moo_profile").login(profile_id="#qCheckDevice.profile_id#", auto_login=true, device_id="#qCheckDevice.device_id#") />
+                    <!--- AUTO LOGIN. The device id is read from its row ([1]): the session keeps it, and a query
+                          column kept in the session, bare or as "#column#", comes back on the next request as an
+                          array, which the device check below cannot take. --->
+                    <cfset application.lib.db.getService("moo_profile").login(profile_id=qCheckDevice.profile_id[1], auto_login=true, device_id=qCheckDevice.device_id[1]) />
 
                 <cfelse>
                     <cfquery name="qCleanupExtendedSession">
