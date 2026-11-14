@@ -66,7 +66,7 @@ A browser uploads a file straight to the store through `application.lib.file_upl
 2. **PUT**: the browser sends the file to `presignedURL` with exactly `headers`. Its Content-Length is the browser's own, from the file.
 3. **Finish** (`finish(file_id, owner)`): checks the store holds the file at its signed size and type, and that its first bytes are a file of its kind (a page named `.jpg` is not an image). Returns `{ success: true, file }`, with an image's thumbnail now its own picture. A file that never arrived, or isn't what its name says, is removed: `{ success: false, error_code }`, `not_uploaded` or `file_content`.
 
-`kinds` is a list of `image` (JPEG, PNG, GIF, WebP, HEIC/HEIF, TIFF, BMP), `pdf`, `video` (MP4, M4V, MOV, WebM, Matroska, AVI) and `zip`. SVG is no kind: it is a document that can run script.
+`kinds` is a list of `image` (JPEG, PNG, GIF, WebP, HEIC/HEIF, TIFF, BMP), `pdf`, `video` (MP4, M4V, MOV, WebM, Matroska, AVI), `zip`, `office` (DOCX, XLSX, PPTX) and `drawing` (STEP, DWG, DXF). SVG is no kind: it is a document that can run script. Nor are the older `.doc`, `.xls` and `.ppt`, the usual carrier of macros. An office file or a drawing is never opened in the browser: the signed assets Worker serves it as a download.
 
 **An endpoint that only uploads** answers with `answer(data, owner, kinds, max_bytes)`: `finish()` when the request names a `file_id`, `start()` otherwise, and a refusal as a 422 marked `X-Refusal`, which `req()` shows. An endpoint that does more, such as attaching the file to a record or capping how many a record holds, calls `start()` and `finish()` itself.
 
