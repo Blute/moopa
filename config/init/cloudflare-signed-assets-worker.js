@@ -430,8 +430,8 @@ async function handleMarkdownTransform({ env, objectKey, method, url, ctx }) {
 const PDF_PAGE_RENDER_WIDTHS = [400, 800, 1200, 1600, 2000];
 
 // /p/<key>?page=1: one page of a PDF as an image (page counts from 1, and is 1 when not given).
-//   render=<width>             the page as a PNG that many pixels wide (16 to 2000), straight from the PDF pages
-//                              Worker (the PDF_PAGES binding, config/init/cloudflare-pdf-pages-worker.js).
+//   render=<width>             the page as a PNG that many pixels wide (16 to 4000), straight from the PDF service
+//                              (the PDF_PAGES binding; docs/object-storage.md says what that service answers).
 //   width, height, fit, quality  the page resized as /i/ resizes an image, from this Worker's own rendering of it.
 //   neither                    the page 1600 pixels wide, through image resizing (so in the format the browser takes).
 async function handlePdfPage({ request, env, objectKey, method, url, ctx }) {
@@ -448,7 +448,7 @@ async function handlePdfPage({ request, env, objectKey, method, url, ctx }) {
   const renderParam = url.searchParams.get("render");
   if (renderParam != null) {
     const renderWidth = toPositiveInt(renderParam);
-    if (!renderWidth || renderWidth < 16 || renderWidth > 2000) {
+    if (!renderWidth || renderWidth < 16 || renderWidth > 4000) {
       return new Response("Bad render", { status: 400 });
     }
     return handlePdfPageRender({ env, objectKey, method, url, ctx, page, renderWidth });
@@ -476,9 +476,11 @@ async function handlePdfPage({ request, env, objectKey, method, url, ctx }) {
   });
 }
 
+// The page from the PDF service. This Worker does not read the PDF: it checks the file is one, then gives the
+// service an address of its own to read it from (/a/, signed here for five minutes), so a PDF of any size the
+// service takes can be rendered.
 async function handlePdfPageRender({ env, objectKey, method, url, ctx, page, renderWidth }) {
-  // The PDF pages Worker takes at most 16 MiB (its memory), so a higher limit here only changes who refuses.
-  const maxPdfBytes = toPositiveInt(env.MAX_PDF_PAGE_BYTES) || 16 * 1024 * 1024;
+  const maxPdfBytes = toPositiveInt(env.MAX_PDF_PAGE_BYTES);
   const ttl = getSignedTtlSeconds(url);
   const canEdgeCache = method === "GET" && ttl > 0;
   const cacheKey = canEdgeCache
@@ -494,10 +496,7 @@ async function handlePdfPageRender({ env, objectKey, method, url, ctx, page, ren
 
   let obj;
   try {
-    obj =
-      method === "HEAD"
-        ? await env.ASSETS_BUCKET.head(objectKey)
-        : await env.ASSETS_BUCKET.get(objectKey);
+    obj = await env.ASSETS_BUCKET.head(objectKey);
   } catch (_error) {
     return new Response("Upstream error", { status: 502 });
   }
@@ -514,7 +513,7 @@ async function handlePdfPageRender({ env, objectKey, method, url, ctx, page, ren
     return new Response("Unsupported media type", { status: 415 });
   }
 
-  if (typeof obj.size === "number" && obj.size > maxPdfBytes) {
+  if (maxPdfBytes && typeof obj.size === "number" && obj.size > maxPdfBytes) {
     return new Response("PDF too large", { status: 413 });
   }
 
@@ -525,21 +524,29 @@ async function handlePdfPageRender({ env, objectKey, method, url, ctx, page, ren
     return new Response(null, { status: 200, headers });
   }
 
+  const source = await buildSignedUrl({
+    origin: url.origin,
+    pathname: `/a/${objectKey.replace(/^\/+/, "")}`,
+    params: { exp: String(Math.floor(Date.now() / 1000) + 300) },
+    signingKeyB64: env.SIGNING_KEY_B64,
+  });
+
   let rendered;
   try {
-    rendered = await env.PDF_PAGES.fetch(
-      `https://pdf-pages/?page=${page}&width=${renderWidth}`,
-      { method: "POST", body: await obj.arrayBuffer() },
-    );
+    rendered = await env.PDF_PAGES.fetch("https://pdf-pages/page", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source, page, width: renderWidth }),
+    });
   } catch (error) {
     return new Response(
-      `PDF rendering failed: ${normalizeErrorMessage(error, "the PDF pages Worker did not answer")}`,
+      `PDF rendering failed: ${normalizeErrorMessage(error, "the PDF service did not answer")}`,
       { status: 502 },
     );
   }
 
-  // The PDF pages Worker's own refusals are the asker's to see: no such page (404), too large (413), not a PDF it
-  // can open (422).
+  // The PDF service's own refusals are the asker's to see: no such page (404), too large (413), not a PDF it can
+  // open (422).
   if (rendered.status === 404 || rendered.status === 413 || rendered.status === 422) {
     return new Response(await rendered.text(), { status: rendered.status });
   }

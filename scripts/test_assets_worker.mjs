@@ -1,5 +1,5 @@
 // Regression harness for the signed assets Worker (config/init/cloudflare-signed-assets-worker.js): what a raw
-// asset (/a/) answers, by the type it was stored with, and what a page of a PDF (/p/) asks of the PDF pages Worker. Media and PDFs open in the browser; anything else, an SVG
+// asset (/a/) answers, by the type it was stored with, and what a page of a PDF (/p/) asks of the PDF service. Media and PDFs open in the browser; anything else, an SVG
 // included, is a download, so a signed link can never show a page on the asset hostname; and every answer is
 // nosniff. Runs the Worker's own fetch() against an in-memory bucket and a test signing key, on Node 20 or later.
 //
@@ -30,7 +30,7 @@ const env = {
     },
     async head(key) {
       const object = objects.get(key);
-      return object ? { size: object.body.length } : null;
+      return object ? { size: object.body.length, httpMetadata: { contentType: object.contentType } } : null;
     },
   },
 };
@@ -95,15 +95,15 @@ for (const [key, type, disposition] of downloads) {
   check(`${type} is nosniff`, response.headers.get("X-Content-Type-Options"), "nosniff");
 }
 
-// A page of a PDF as an image (/p/). The PDF pages Worker (the PDF_PAGES binding) is a stand-in that records what it
+// A page of a PDF as an image (/p/). The PDF service (the PDF_PAGES binding) is a stand-in that records what it
 // was asked for; nothing is in the edge cache.
 globalThis.caches = { default: { async match() {}, async put() {} } };
 const rendered = [];
 const pdfPages = {
   async fetch(url, init) {
-    const asked = new URL(url);
-    rendered.push({ page: asked.searchParams.get("page"), width: asked.searchParams.get("width"), method: init.method, bytes: init.body.byteLength });
-    if (asked.searchParams.get("page") === "9") return new Response("No such page", { status: 404 });
+    const asked = JSON.parse(init.body);
+    rendered.push({ path: new URL(url).pathname, method: init.method, ...asked });
+    if (asked.page === 9) return new Response("No such page", { status: 404 });
     return new Response("PNG", { status: 200, headers: { "Content-Type": "image/png" } });
   },
 };
@@ -126,10 +126,14 @@ const page = await worker.fetch(new Request(await signedPageUrl("docs/contract.p
 check("/p/ with render answers the page", page.status, 200);
 check("...as a PNG", page.headers.get("Content-Type"), "image/png");
 check("...and is nosniff", page.headers.get("X-Content-Type-Options"), "nosniff");
-check("...having sent the PDF pages Worker the page, the width and the PDF", JSON.stringify(rendered.at(-1)), JSON.stringify({ page: "2", width: "400", method: "POST", bytes: 19 }));
+check("...having asked the PDF service for the page at that width", JSON.stringify({ path: rendered.at(-1).path, method: rendered.at(-1).method, page: rendered.at(-1).page, width: rendered.at(-1).width }), JSON.stringify({ path: "/page", method: "POST", page: 2, width: 400 }));
+// The address the service is given to read the PDF from is this Worker's own, signed: asked for, it answers the file.
+const source = await worker.fetch(new Request(rendered.at(-1).source), env, { waitUntil() {} });
+check("...and given it an address that answers the PDF", `${source.status} ${await source.text()}`, "200 %PDF-1.7 a contract");
+check("...an address of the raw asset", new URL(rendered.at(-1).source).pathname, "/a/docs/contract.pdf");
 
 const firstPage = await worker.fetch(new Request(await signedPageUrl("docs/contract.pdf", { render: "400" })), pdfEnv, { waitUntil() {} });
-check("/p/ without a page is page 1", firstPage.status === 200 && rendered.at(-1).page, "1");
+check("/p/ without a page is page 1", firstPage.status === 200 && rendered.at(-1).page, 1);
 
 const noSuchPage = await worker.fetch(new Request(await signedPageUrl("docs/contract.pdf", { page: "9", render: "400" })), pdfEnv, { waitUntil() {} });
 check("a page the PDF doesn't have is not found", noSuchPage.status, 404);
@@ -162,7 +166,7 @@ check("a resized /p/ answers", thumb.status, 200);
 check("...resized as asked", JSON.stringify(resizes[0].image), JSON.stringify({ fit: "cover", width: 120, height: 120 }));
 check("...from its own rendering of that page", `${resizes[0].source.pathname} page=${resizes[0].source.searchParams.get("page")}`, "/p/docs/contract.pdf page=3");
 check("...wide enough to cut the size from", resizes[0].source.searchParams.get("render"), "400");
-check("...which the PDF pages Worker rendered", JSON.stringify({ page: rendered.at(-1).page, width: rendered.at(-1).width }), JSON.stringify({ page: "3", width: "400" }));
+check("...which the PDF service rendered", JSON.stringify({ page: rendered.at(-1).page, width: rendered.at(-1).width }), JSON.stringify({ page: 3, width: 400 }));
 
 // A thumbnail (/i/) or a PDF's text (/m/) already in the edge cache: the Workers runtime hands back a cached answer
 // whose headers can't be changed, so the Worker must still add its own without throwing.

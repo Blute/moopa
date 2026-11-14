@@ -59,9 +59,8 @@
        - Worker Settings > Bindings:
            ASSETS_BUCKET  -> R2 bucket binding (the bucket above)
            AI             -> Workers AI binding (only needed for /m/* PDF-to-markdown)
-           PDF_PAGES      -> Service binding to the PDF pages Worker
-                             (config/init/cloudflare-pdf-pages-worker.js; only needed
-                             for /p/* PDF pages, docs/object-storage.md)
+           PDF_PAGES      -> Service binding to a PDF service (only needed for /p/*
+                             PDF pages; docs/object-storage.md says what it answers)
        - Worker Settings > Variables and Secrets:
            SIGNING_KEYS_JSON      (type: Secret) -> {"v1": "<key from step 1>"}
            SIGNING_KEY_B64        (type: Secret) -> same key from step 1; verifies
@@ -72,7 +71,7 @@
                                                     (Stream > copy your customer subdomain;
                                                     only needed for /v/*)
            MAX_MARKDOWN_PDF_BYTES (type: Var, optional) -> /m/* size cap, default 25 MiB
-           MAX_PDF_PAGE_BYTES     (type: Var, optional) -> /p/* size cap, default and most 16 MiB
+           MAX_PDF_PAGE_BYTES     (type: Var, optional) -> /p/* size cap, none by default
        - Images > Transformations: enable for the zone serving the Worker
          (required for /i/* resizing, and for /p/* unless render= is asked for).
 
