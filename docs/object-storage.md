@@ -99,7 +99,7 @@ SELECT signed_asset_url(moo_file.path, 'EOW', 'p', 'page=1&width=120&height=120&
 - `page` counts from 1 and is 1 when not given. A page the PDF doesn't have is a 404.
 - `width`, `height`, `fit` and `quality` resize the page exactly as `/i/` resizes an image, in the format the browser takes. With none of them the page comes 1600 pixels wide.
 - `render=<width>` (16 to 2000) answers the page as a PNG that many pixels wide without image resizing, for a zone that doesn't have Images Transformations.
-- A file that isn't a PDF is a 415, one that can't be opened (damaged, or needing a password) a 422, and one over 25 MiB (`MAX_PDF_PAGE_BYTES` on the Worker) a 413.
+- A file that isn't a PDF is a 415, one that can't be opened (damaged, or needing a password) a 422, and one over 16 MiB a 413 (the limit is the PDF pages Worker's memory; `MAX_PDF_PAGE_BYTES` on the signed assets Worker lowers it).
 
 The rendering is done by a second Worker, the **PDF pages Worker** (`config/init/cloudflare-pdf-pages-worker.js`), which the signed assets Worker reaches through a service binding named `PDF_PAGES`. It holds no files and no keys, so one of it serves every app: the signed assets Worker checks the signature, reads the PDF from its own bucket and sends it over. Its file says how to deploy it: three modules (itself and two files of the npm package `@hyzyla/pdfium`), and no address of its own. Without the binding `/p/` answers 500 `Missing PDF_PAGES binding`.
 

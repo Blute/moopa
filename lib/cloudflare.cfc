@@ -72,7 +72,7 @@
                                                     (Stream > copy your customer subdomain;
                                                     only needed for /v/*)
            MAX_MARKDOWN_PDF_BYTES (type: Var, optional) -> /m/* size cap, default 25 MiB
-           MAX_PDF_PAGE_BYTES     (type: Var, optional) -> /p/* size cap, default 25 MiB
+           MAX_PDF_PAGE_BYTES     (type: Var, optional) -> /p/* size cap, default and most 16 MiB
        - Images > Transformations: enable for the zone serving the Worker
          (required for /i/* resizing, and for /p/* unless render= is asked for).
 

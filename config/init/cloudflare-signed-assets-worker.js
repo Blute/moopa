@@ -477,7 +477,8 @@ async function handlePdfPage({ request, env, objectKey, method, url, ctx }) {
 }
 
 async function handlePdfPageRender({ env, objectKey, method, url, ctx, page, renderWidth }) {
-  const maxPdfBytes = toPositiveInt(env.MAX_PDF_PAGE_BYTES) || 25 * 1024 * 1024;
+  // The PDF pages Worker takes at most 16 MiB (its memory), so a higher limit here only changes who refuses.
+  const maxPdfBytes = toPositiveInt(env.MAX_PDF_PAGE_BYTES) || 16 * 1024 * 1024;
   const ttl = getSignedTtlSeconds(url);
   const canEdgeCache = method === "GET" && ttl > 0;
   const cacheKey = canEdgeCache
@@ -537,8 +538,9 @@ async function handlePdfPageRender({ env, objectKey, method, url, ctx, page, ren
     );
   }
 
-  // The PDF pages Worker's own refusals are the asker's to see: no such page (404), not a PDF it can open (422).
-  if (rendered.status === 404 || rendered.status === 422) {
+  // The PDF pages Worker's own refusals are the asker's to see: no such page (404), too large (413), not a PDF it
+  // can open (422).
+  if (rendered.status === 404 || rendered.status === 413 || rendered.status === 422) {
     return new Response(await rendered.text(), { status: rendered.status });
   }
   if (rendered.status !== 200) {

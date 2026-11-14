@@ -3,7 +3,7 @@
 // in the request and the picture goes back in the answer, so one Worker serves every app.
 //
 //   POST /?page=1&width=400   body: the PDF   ->   200 image/png, that many pixels wide (16 to 2000)
-//   404 no such page; 413 a PDF over 32 MiB; 422 not a PDF it can open (damaged, or needing a password).
+//   404 no such page; 413 a PDF over 16 MiB; 422 not a PDF it can open (damaged, or needing a password).
 //
 // Deploy it with no address of its own (no route, no workers.dev): only a service binding reaches it. It is three
 // modules, the last two from the npm package @hyzyla/pdfium, version 3.0.0, taken as they are (the package is MIT;
@@ -14,11 +14,14 @@
 import { PDFiumLibrary } from "./pdfium.js";
 import pdfiumWasm from "./pdfium.wasm";
 
-const MAX_PDF_BYTES = 32 * 1024 * 1024;
+// Both limits keep a rendering inside a Worker's 128 MB: the PDF is held twice while it is opened (the request's
+// bytes and PDFium's copy), then the page's bitmap (4 bytes a pixel) beside PDFium's own working memory.
+const MAX_PDF_BYTES = 16 * 1024 * 1024;
+// An A4 page 2000 pixels wide is 5.7 million. A page far taller than it is wide (a till receipt) is rendered
+// narrower than asked rather than past this.
+const MAX_PIXELS = 6_000_000;
 const MIN_WIDTH = 16;
 const MAX_WIDTH = 2000;
-// A page far taller than it is wide (a till receipt) is rendered narrower than asked rather than past this.
-const MAX_PIXELS = 8_000_000;
 
 // PDFium starts once per isolate. Workers can't compile WebAssembly from bytes, so it is given the module the
 // runtime already compiled.
@@ -55,7 +58,7 @@ export default {
     if (Number.isFinite(declared) && declared > MAX_PDF_BYTES) {
       return new Response("PDF too large", { status: 413 });
     }
-    const pdf = new Uint8Array(await request.arrayBuffer());
+    let pdf = new Uint8Array(await request.arrayBuffer());
     if (pdf.byteLength > MAX_PDF_BYTES) {
       return new Response("PDF too large", { status: 413 });
     }
@@ -68,6 +71,8 @@ export default {
     } catch (_error) {
       return new Response("Not a PDF that can be opened", { status: 422 });
     }
+    // PDFium has its own copy now: let go of the request's before the page is rendered.
+    pdf = null;
 
     try {
       if (page > doc.getPageCount()) {
@@ -99,25 +104,36 @@ function toPositiveInt(value) {
 }
 
 // An RGBA bitmap as a PNG without its alpha (a rendered page has none): 8-bit RGB, every row unfiltered, the
-// pixels deflated by the runtime.
+// pixels deflated by the runtime a band of rows at a time, so the page is never held a second time whole.
 async function encodePng(width, height, rgba) {
-  const rows = new Uint8Array((width * 3 + 1) * height);
-  let out = 0;
+  const BAND_ROWS = 64;
+  let y = 0;
   let at = 0;
-  for (let y = 0; y < height; y++) {
-    rows[out++] = 0;
-    for (let x = 0; x < width; x++) {
-      rows[out++] = rgba[at];
-      rows[out++] = rgba[at + 1];
-      rows[out++] = rgba[at + 2];
-      at += 4;
-    }
-  }
+  const rows = new ReadableStream({
+    pull(controller) {
+      if (y >= height) {
+        controller.close();
+        return;
+      }
+      const count = Math.min(BAND_ROWS, height - y);
+      const band = new Uint8Array((width * 3 + 1) * count);
+      let out = 0;
+      for (let row = 0; row < count; row++) {
+        band[out++] = 0;
+        for (let x = 0; x < width; x++) {
+          band[out++] = rgba[at];
+          band[out++] = rgba[at + 1];
+          band[out++] = rgba[at + 2];
+          at += 4;
+        }
+      }
+      y += count;
+      controller.enqueue(band);
+    },
+  });
 
   const deflated = new Uint8Array(
-    await new Response(
-      new Blob([rows]).stream().pipeThrough(new CompressionStream("deflate")),
-    ).arrayBuffer(),
+    await new Response(rows.pipeThrough(new CompressionStream("deflate"))).arrayBuffer(),
   );
 
   const header = new Uint8Array(13);
