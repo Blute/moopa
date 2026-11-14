@@ -543,19 +543,6 @@
     </cffunction>
 
 
-    <cffunction name="_deviceStillThere" access="private" returntype="boolean" output="false" hint="Whether a stay-signed-in device (moo_profile_extended_session) still exists and hasn't expired: false once it is signed out from Sign-in activity or runs out. Signing in again from the device's cookie makes the same test (expiration > now()).">
-        <cfargument name="device_id" type="string" required="true" />
-
-        <cfquery name="local.qDevice" returntype="array">
-            SELECT 1 AS present
-            FROM moo_profile_extended_session
-            WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#arguments.device_id#" />
-              AND expiration > now()
-        </cfquery>
-        <cfreturn arrayLen(local.qDevice) GT 0 />
-    </cffunction>
-
-
     <cffunction name="_checkValidatedSession" access="private" returntype="void" output="true" hint="With this.moopa_validated_without_login on, checks at most once a minute that a session validated without a login (isValidated(), a profile in this app, not logged in) is still valid: by its stay-signed-in device when it has one, else by the project's this.moopa_validated_session_check. A failed check ends the session's auth, as a failed device check ends a login. With neither a device nor a check, the session is kept: the project owns its lifetime.">
         <cfset var check = application.moopa_validated_session_check ?: "" />
         <cfset var by_device = len(session.auth.device_id ?: "") GT 0 />
@@ -571,7 +558,7 @@
         </cfif>
 
         <cfif by_device>
-            <cfset still_valid = _deviceStillThere(session.auth.device_id) />
+            <cfset still_valid = application.lib.signin_device.isLive(session.auth.device_id) />
         <cfelseif len(check)>
             <cfset still_valid = invoke(application.lib[listFirst(check, ".")], listLast(check, "."), { auth: session.auth }) />
             <cfif isNull(still_valid) OR NOT isBoolean(still_valid)>
@@ -585,7 +572,7 @@
         <cfelse>
             <cfset structDelete(session, "auth") />
             <cfif by_device>
-                <cfcookie name="deviceid" value="" path="/" expires="0" httponly="true" secure="true" samesite="Lax">
+                <cfset application.lib.signin_device.clearCookie() />
             </cfif>
         </cfif>
     </cffunction>
@@ -645,65 +632,30 @@
         </cfif>
 
 
-        <!--- A session signed in automatically before that sign-in read the device id from its row holds the id
-              as a one-element array (see AUTO LOGIN below). Sessions outlive a restart, so one written by the
-              older code is put right here, before anything reads its device. --->
+        <!--- A session signed in automatically by older code holds its device id as a one-element array (it kept
+              a query column, which a session hands back as an array). Sessions outlive a restart, so such a
+              session is put right here, before anything reads its device. --->
         <cfif isArray(session.auth.device_id ?: "")>
             <cfset session.auth.device_id = arrayLen(session.auth.device_id) ? session.auth.device_id[1] : "" />
         </cfif>
 
-        <!--- --------------------------------- --->
-        <!--- LETS SEE IF WE NEED TO AUTO LOGIN --->
-        <!--- --------------------------------- --->
-        <cfif !application.lib.auth.isLoggedIn() AND (len(cookie.deviceid?:''))>
-
-            <!--- "live" is the test _deviceStillThere() makes, by the database's clock: a device is good until
-                  its expiration and not a second after. Counting whole days here instead let a device that
-                  had expired within the last day sign in, only for the device check below to end that
-                  session in the same request. --->
-            <cfquery name="qCheckDevice">
-            SELECT id::text as id,
-            profile_id::text as profile_id,
-            device_id,
-            expiration > now() AS live
-            FROM moo_profile_extended_session
-            WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#cookie.deviceid#" />
-            </cfquery>
-
-            <cfif qCheckDevice.recordcount EQ 1>
-
-                <cfif qCheckDevice.live[1]>
-                    <!--- AUTO LOGIN. The device id is read from its row ([1]): the session keeps it, and a query
-                          column kept in the session, bare or as "#column#", comes back on the next request as an
-                          array, which the device check below cannot take. --->
-                    <cfset application.lib.db.getService("moo_profile").login(profile_id=qCheckDevice.profile_id[1], auto_login=true, device_id=qCheckDevice.device_id[1]) />
-
-                <cfelse>
-                    <!--- Expired: nobody is signed in, and the device and its cookie go --->
-                    <cfquery name="qCleanupExtendedSession">
-                    DELETE FROM moo_profile_extended_session
-                    WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#cookie.deviceid#" />
-                    </cfquery>
-                    <cfcookie name="deviceid" value="" expires="0" httponly="true" secure="true" samesite="Lax">
-
-                </cfif>
+        <!--- Not signed in, with a stay-signed-in device: sign this browser back in. An expired or missing
+              device signs nobody in (application.lib.signin_device.resume, docs/signin.md). --->
+        <cfif NOT application.lib.auth.isLoggedIn()>
+            <cfset local.device = application.lib.signin_device.resume() />
+            <cfif NOT structIsEmpty(local.device)>
+                <cfset application.lib.db.getService("moo_profile").login(profile_id=local.device.profile_id, auto_login=true, device_id=local.device.device_id) />
             </cfif>
         </cfif>
 
 
         <!--- A session signed in before sessions knew their device: take the stay-signed-in cookie's device as its
               own, once, when that device is this person's --->
-        <cfif application.lib.auth.isLoggedIn() AND NOT len(session.auth.device_id ?: "") AND len(cookie.deviceid ?: "")
+        <cfif application.lib.auth.isLoggedIn() AND NOT len(session.auth.device_id ?: "") AND len(application.lib.signin_device.cookieValue())
               AND NOT (session.auth.device_adopted ?: false)>
             <cfset session.auth.device_adopted = true />
-            <cfquery name="local.qOwnDevice" returntype="array">
-                SELECT 1 AS present
-                FROM moo_profile_extended_session
-                WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#cookie.deviceid#" />
-                  AND profile_id = <cfqueryparam cfsqltype="other" value="#session.auth.profile.id#" />
-            </cfquery>
-            <cfif arrayLen(local.qOwnDevice)>
-                <cfset session.auth.device_id = cookie.deviceid />
+            <cfif application.lib.signin_device.belongsTo(application.lib.signin_device.cookieValue(), session.auth.profile.id)>
+                <cfset session.auth.device_id = application.lib.signin_device.cookieValue() />
             </cfif>
         </cfif>
 
@@ -711,11 +663,11 @@
               session from a stay-signed-in device checks, at most once a minute, that the device is still there --->
         <cfif application.lib.auth.isLoggedIn() AND len(session.auth.device_id ?: "")
               AND dateDiff("s", session.auth.device_checked_at ?: createDateTime(2000, 1, 1, 0, 0, 0), now()) GTE 60>
-            <cfif _deviceStillThere(session.auth.device_id)>
+            <cfif application.lib.signin_device.isLive(session.auth.device_id)>
                 <cfset session.auth.device_checked_at = now() />
             <cfelse>
                 <cfset structDelete(session, "auth") />
-                <cfcookie name="deviceid" value="" path="/" expires="0" httponly="true" secure="true" samesite="Lax">
+                <cfset application.lib.signin_device.clearCookie() />
             </cfif>
         </cfif>
 

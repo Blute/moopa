@@ -10,7 +10,7 @@
     <cffunction name="get">
         <cfset var who = target(url.profile ?: "") />
         <cfset var own = who.id EQ session.auth.profile.id />
-        <cfset var devices = devicesFor(who.id) />
+        <cfset var devices = application.lib.signin_device.devicesFor(who.id) />
         <cfset var requests = requestsFor(who) />
         <cfset var thisDevice = own ? (session.auth.device_id ?: "") : "" />
         <cfset var signin = application.lib.signin />
@@ -119,11 +119,7 @@
 
     <cffunction name="sign_out_device" hint="Remove one of the profile's signed-in devices. Its session ends within a minute.">
         <cfset var who = target(request.data.profile ?: "") />
-        <cfquery>
-            DELETE FROM moo_profile_extended_session
-            WHERE id = <cfqueryparam cfsqltype="other" value="#request.data.id ?: ''#" />
-              AND profile_id = <cfqueryparam cfsqltype="other" value="#who.id#" />
-        </cfquery>
+        <cfset application.lib.signin_device.signOut(id = request.data.id ?: "", profile_id = who.id) />
         <cfreturn { "ok": true } />
     </cffunction>
 
@@ -131,12 +127,8 @@
     <cffunction name="sign_out_others" hint="Remove every signed-in device of the profile but this one (all of them, for someone else's).">
         <cfset var who = target(request.data.profile ?: "") />
         <!--- This device: the session's own, else (a session older than that) its stay-signed-in cookie's --->
-        <cfset var keep = who.id EQ session.auth.profile.id ? (len(session.auth.device_id ?: "") ? session.auth.device_id : (cookie.deviceid ?: "")) : "" />
-        <cfquery>
-            DELETE FROM moo_profile_extended_session
-            WHERE profile_id = <cfqueryparam cfsqltype="other" value="#who.id#" />
-              AND device_id <> <cfqueryparam cfsqltype="varchar" value="#keep#" />
-        </cfquery>
+        <cfset var keep = who.id EQ session.auth.profile.id ? (len(session.auth.device_id ?: "") ? session.auth.device_id : application.lib.signin_device.cookieValue()) : "" />
+        <cfset application.lib.signin_device.signOutOthers(profile_id = who.id, keep_device_id = keep) />
         <cfreturn { "ok": true } />
     </cffunction>
 
@@ -164,19 +156,7 @@
     </cffunction>
 
 
-    <cffunction name="devicesFor" access="private" returntype="array" output="false">
-        <cfargument name="profileId" type="string" required="true" />
-        <cfquery name="local.qDevices" returntype="array">
-            SELECT id::text AS id, device_id, user_agent, place,
-                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
-                   to_char(expiration AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS expiration
-            FROM moo_profile_extended_session
-            WHERE profile_id = <cfqueryparam cfsqltype="other" value="#arguments.profileId#" />
-              AND expiration > now()
-            ORDER BY created_at DESC
-        </cfquery>
-        <cfreturn local.qDevices />
-    </cffunction>
+
 
 
     <cffunction name="requestsFor" access="private" returntype="array" output="false"
