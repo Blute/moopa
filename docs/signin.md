@@ -48,7 +48,7 @@ Everything else (the emailed link, the approve page, the waiting page's polling)
 
 | Variable | |
 | --- | --- |
-| `BASE_URL` | The app's address. The emailed link is built on it, never on the request's `Host` header, which the person asking controls. Required. |
+| `BASE_URL` | The app's address. The emailed link is built on it, never on the request's `Host` header, which the person asking controls. Required. A project that serves several apps from one runtime sets each app's address in `application.app_base_urls` (keyed by app name, from its own configuration, never from the request): sign-in for an app is then built on that app's address, and `BASE_URL` is used only for an app the struct does not name. |
 | `SYSADMIN_EMAIL` | The hub's sysadmins. One without a usable hub profile still gets the link; approving it creates their profile, or enables it, so a new project's first sign-in needs no setup. Nothing changes until the link is approved. |
 | `TRUSTED_PROXY` | `cloudflare` (or `digitalocean`) when every request reaches the app through that proxy, which then sets the client headers itself. Only then does sign-in use its client address (for the per-IP limit) and, for Cloudflare with visitor location headers on, show roughly where a request came from. Unset: the connection's address and no location, as a client can send any header. |
 | Email | Sent with `lib/email.cfc` ([email.md](email.md)). Outside production every message goes to `SYSADMIN_EMAIL`. |
