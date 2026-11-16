@@ -996,7 +996,7 @@
 
 
     <cffunction name="approveUrl" access="private" returntype="string" output="false"
-        hint="The emailed link: on BASE_URL, never the request's Host header, which the asker controls.">
+        hint="The emailed link: on this app's address (baseUrl()), never the request's Host header, which the asker controls.">
         <cfargument name="token" type="string" required="true" />
 
         <cfreturn baseUrl() & variables.PATH & "?t=" & encodeForURL(arguments.token) />
@@ -1004,13 +1004,19 @@
 
 
     <cffunction name="baseUrl" access="private" returntype="string" output="false"
-        hint="BASE_URL without a trailing slash: links and return addresses are built on it, never on the request's Host header, which the asker controls.">
-        <cfset var base = trim(server.system.environment.BASE_URL ?: "") />
+        hint="This app's address without a trailing slash: links and return addresses are built on it, never on the request's Host header, which the asker controls. A project that serves several apps from one runtime gives each its address in application.app_base_urls (from its own configuration), and the app a request is for takes its own; otherwise it is BASE_URL.">
+        <cfset var base = "" />
+        <cfset var own = application.app_name ?: "" />
+        <cfif len(own) AND structKeyExists(application, "app_base_urls") AND isStruct(application.app_base_urls) AND isSimpleValue(application.app_base_urls[own] ?: {})>
+            <cfset base = trim(application.app_base_urls[own]) />
+        </cfif>
+        <cfif NOT len(base)>
+            <cfset base = trim(server.system.environment.BASE_URL ?: "") />
+        </cfif>
         <cfif NOT len(base)>
             <cfthrow type="moopa.signin.config" message="BASE_URL must be set for sign-in links." />
         </cfif>
-        <cfif right(base, 1) EQ "/"><cfset base = left(base, len(base) - 1) /></cfif>
-        <cfreturn base />
+        <cfreturn reReplace(base, "/+$", "") />
     </cffunction>
 
 
