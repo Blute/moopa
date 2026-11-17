@@ -1,12 +1,20 @@
-<cfcomponent displayname="Email" output="false" hint="Transactional email through Cloudflare Email Sending's REST API. Configured by CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_EMAIL_TOKEN and EMAIL_FROM. Outside production every message goes to SYSADMIN_EMAIL instead of its recipients.">
+<cfcomponent displayname="Email" output="false" hint="Transactional email through Cloudflare Email Sending's REST API, or Postmark's when EMAIL_TRANSPORT is postmark. Configured by EMAIL_FROM and the transport's own variables. Outside production every message goes to SYSADMIN_EMAIL instead of its recipients.">
 
     <!---
+        EMAIL_TRANSPORT picks the service: "cloudflare" (the default) or "postmark". Any other value stops the
+        application starting.
+
         Cloudflare Email Sending, REST: POST /accounts/{account_id}/email/sending/send.
+        Postmark, REST: POST https://api.postmarkapp.com/email.
 
         Environment:
-          CLOUDFLARE_ACCOUNT_ID   the Cloudflare account that owns the sending domain
-          CLOUDFLARE_EMAIL_TOKEN  an API token with the Email Sending Write permission
-          EMAIL_FROM              default From address; must be on an onboarded sending domain
+          EMAIL_TRANSPORT         "cloudflare" (default) or "postmark"
+          CLOUDFLARE_ACCOUNT_ID   cloudflare: the Cloudflare account that owns the sending domain
+          CLOUDFLARE_EMAIL_TOKEN  cloudflare: an API token with the Email Sending Write permission
+          POSTMARK_SERVER_TOKEN   postmark: the sending server's API token
+          POSTMARK_MESSAGE_STREAM postmark: the message stream; "outbound" when not set
+          EMAIL_FROM              default From address; must be one the transport may send from (an onboarded
+                                  sending domain, or a Postmark sender signature or verified domain)
           EMAIL_FROM_NAME         optional display name for EMAIL_FROM
           APP_ENVIRONMENT         anything but "production" redirects every message (below)
           SYSADMIN_EMAIL          where redirected messages go (comma-separated)
@@ -19,6 +27,18 @@
     --->
 
     <cffunction name="init" access="public" returntype="any" output="false">
+        <cfset variables.transport = lCase(trim(server.system.environment.EMAIL_TRANSPORT ?: "")) />
+        <cfif NOT len(variables.transport)>
+            <cfset variables.transport = "cloudflare" />
+        </cfif>
+        <cfif NOT listFind("cloudflare,postmark", variables.transport)>
+            <cfthrow type="moopa.email.unknownTransport" message="EMAIL_TRANSPORT must be cloudflare or postmark." />
+        </cfif>
+        <cfset variables.postmarkToken = trim(server.system.environment.POSTMARK_SERVER_TOKEN ?: "") />
+        <cfset variables.postmarkStream = trim(server.system.environment.POSTMARK_MESSAGE_STREAM ?: "") />
+        <cfif NOT len(variables.postmarkStream)>
+            <cfset variables.postmarkStream = "outbound" />
+        </cfif>
         <cfset variables.accountId = trim(server.system.environment.CLOUDFLARE_ACCOUNT_ID ?: "") />
         <cfset variables.token = trim(server.system.environment.CLOUDFLARE_EMAIL_TOKEN ?: "") />
         <cfset variables.fromAddress = trim(server.system.environment.EMAIL_FROM ?: "") />
@@ -30,6 +50,9 @@
     </cffunction>
 
     <cffunction name="isConfigured" access="public" returntype="boolean" output="false">
+        <cfif variables.transport EQ "postmark">
+            <cfreturn len(variables.postmarkToken) AND len(variables.fromAddress) />
+        </cfif>
         <cfreturn len(variables.accountId) AND len(variables.token) AND len(variables.fromAddress) />
     </cffunction>
 
@@ -60,7 +83,7 @@
         <cfset var result = {} />
 
         <cfif NOT isConfigured()>
-            <cfthrow type="moopa.email.notConfigured" message="CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_EMAIL_TOKEN and EMAIL_FROM must be set to send email." />
+            <cfthrow type="moopa.email.notConfigured" message="#variables.transport EQ 'postmark' ? 'POSTMARK_SERVER_TOKEN and EMAIL_FROM' : 'CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_EMAIL_TOKEN and EMAIL_FROM'# must be set to send email." />
         </cfif>
         <cfif NOT arrayLen(recipients.to)>
             <cfthrow type="moopa.email.noRecipients" message="An email needs at least one recipient." />
@@ -70,7 +93,7 @@
         <cfif len(arguments.replyTo)><cfset payload["reply_to"] = arguments.replyTo /></cfif>
         <cfif arrayLen(arguments.attachments)><cfset payload["attachments"] = arguments.attachments /></cfif>
 
-        <cfset result = post(payload) />
+        <cfset result = variables.transport EQ "postmark" ? postPostmark(payload) : post(payload) />
         <cfset result.to = arrayToList(recipients.to) />
         <cfset result.cc = arrayToList(recipients.cc) />
         <cfset result.from = sender.address />
@@ -168,6 +191,60 @@
         <cfset text = reReplace(text, "[ \t]+", " ", "all") />
         <cfset text = reReplace(text, "(\r?\n ?){3,}", chr(10) & chr(10), "all") />
         <cfreturn trim(text) />
+    </cffunction>
+
+    <!--- Postmark takes its own field names; payload is send()'s, in Cloudflare's shape. Postmark answers only that
+          it accepted the message, so every recipient is reported as queued. --->
+    <cffunction name="postPostmark" access="private" returntype="struct" output="false">
+        <cfargument name="payload" type="struct" required="true" />
+        <cfset var http = {} />
+        <cfset var body = {} />
+        <cfset var accepted = false />
+        <cfset var queued = [] />
+        <cfset var message = {
+            "From": '"' & reReplace(arguments.payload.from.name, '["\\]', "", "all") & '" <' & arguments.payload.from.address & ">",
+            "To": arrayToList(arguments.payload.to),
+            "Subject": arguments.payload.subject,
+            "HtmlBody": arguments.payload.html,
+            "TextBody": arguments.payload.text,
+            "MessageStream": variables.postmarkStream
+        } />
+
+        <cfif structKeyExists(arguments.payload, "cc")><cfset message["Cc"] = arrayToList(arguments.payload.cc) /></cfif>
+        <cfif structKeyExists(arguments.payload, "bcc")><cfset message["Bcc"] = arrayToList(arguments.payload.bcc) /></cfif>
+        <cfif structKeyExists(arguments.payload, "reply_to")><cfset message["ReplyTo"] = arguments.payload.reply_to /></cfif>
+        <cfif structKeyExists(arguments.payload, "attachments")>
+            <cfset message["Attachments"] = [] />
+            <cfloop array="#arguments.payload.attachments#" item="local.file">
+                <cfset arrayAppend(message["Attachments"], { "Name": local.file.filename, "Content": local.file.content, "ContentType": local.file.type }) />
+            </cfloop>
+        </cfif>
+
+        <cfhttp url="https://api.postmarkapp.com/email" method="post" result="http" timeout="30">
+            <cfhttpparam type="header" name="X-Postmark-Server-Token" value="#variables.postmarkToken#" />
+            <cfhttpparam type="header" name="Accept" value="application/json" />
+            <cfhttpparam type="header" name="Content-Type" value="application/json" />
+            <cfhttpparam type="body" value="#serializeJSON(message)#" />
+        </cfhttp>
+
+        <cfif isJSON(http.filecontent ?: "")>
+            <cfset body = deserializeJSON(http.filecontent) />
+        </cfif>
+        <cfset accepted = val(http.status_code ?: 0) EQ 200 AND isStruct(body) AND isNumeric(body.ErrorCode ?: "") AND body.ErrorCode EQ 0 />
+        <cfif accepted>
+            <cfset queued = duplicate(arguments.payload.to) />
+            <cfif structKeyExists(arguments.payload, "cc")><cfset arrayAppend(queued, arguments.payload.cc, true) /></cfif>
+            <cfif structKeyExists(arguments.payload, "bcc")><cfset arrayAppend(queued, arguments.payload.bcc, true) /></cfif>
+        </cfif>
+
+        <cfreturn {
+            success: accepted,
+            status: val(http.status_code ?: 0),
+            errors: accepted ? [] : [{ "code": isStruct(body) ? (body.ErrorCode ?: 0) : 0, "message": isStruct(body) ? (body.Message ?: "") : "" }],
+            delivered: [],
+            queued: queued,
+            bounced: []
+        } />
     </cffunction>
 
     <cffunction name="post" access="private" returntype="struct" output="false">
