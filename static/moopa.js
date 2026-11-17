@@ -537,7 +537,13 @@ document.addEventListener('alpine:init', () => {
       this.sortable = new Sortable(this.$el, {
         animation: 150, handle, draggable: row, dataIdAttr: 'data-id',
         disabled: !enabled(),
-        onStart: () => { startOrder = this.sortable.toArray(); },
+        onStart: () => {
+          startOrder = this.sortable.toArray();
+          // A touch drag (Sortable's fallback) clones the row as a floating ghost. The clone carries the row's
+          // Alpine attributes but none of its scope, so Alpine must not initialise it: mark it ignored before
+          // Alpine's mutation observer sees it (Sortable appends the ghost and fires start in the same task).
+          if (Sortable.ghost) Sortable.ghost._x_ignore = true;
+        },
         onEnd: async (evt) => {
           if (onMove) {
             if (evt.oldIndex === evt.newIndex) return;
