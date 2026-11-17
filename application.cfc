@@ -88,11 +88,11 @@
 
         <cfset _setupLibs() />
         <!--- A schema preview (?deploy) is worked out here, before anything that reads a table the database may not
-              have yet, and the rest of starting is skipped: OnRequestStart answers it and stops the application,
-              so the next request starts it afresh. --->
+              have yet. Starting carries on as usual: OnRequestStart answers the preview once the application has
+              started, and OnError answers it when starting fails, so a Hub whose database is behind can still say
+              what it needs. --->
         <cfif _schemaPreviewRequested()>
             <cfset request.moopa_schema_preview = _schemaPreview() />
-            <cfreturn true />
         </cfif>
         <!--- The project's check that a validated session without a login is still valid; refuses to start on a bad name (docs/route-access.md) --->
         <cfset application.moopa_validated_session_check = _validatedSessionCheck() />
@@ -134,10 +134,9 @@
 		<cfset var bReturn = true />
 
 
-        <!--- The schema preview the request that started the application asked for (OnApplicationStart). The
-              application only loaded its libraries, so it is stopped again; this request was never counted. --->
+        <!--- The schema preview the request that started the application asked for (OnApplicationStart). This
+              request isn't counted yet, so ending it here leaves nothing for ?init to wait for. --->
         <cfif structKeyExists(request, "moopa_schema_preview")>
-            <cfset applicationStop() />
             <cfset _writeSchemaPreview(request.moopa_schema_preview) />
         </cfif>
 
@@ -235,6 +234,12 @@
                 <cfset _requestFinished() />
             </cffinally>
         </cftry>
+
+        <!--- The application failed to start on a request for the schema preview, which was worked out first: the
+              preview replaces Moopa's error page. The engine still answers 500, adding its own note of the failure. --->
+        <cfif structKeyExists(request, "moopa_schema_preview")>
+            <cfset _writeSchemaPreview(request.moopa_schema_preview) />
+        </cfif>
 
 	</cffunction>
 
@@ -1032,9 +1037,9 @@
     <!---
         SCHEMA PREVIEW (?deploy=<DEPLOY_KEY>, Hub only). The SQL the Schema page lists, as plain text, for an operator
         without a sysadmin sign-in, such as just after a deploy that changed the table definitions. Moopa never runs it.
-        The request that starts the application answers it as soon as the libraries are loaded, before anything reads a
-        table the database may not have yet, and the application starts on the next request; a running application
-        answers it too. See docs/schema.md.
+        The request that starts the application works it out as soon as the libraries are loaded, before anything reads
+        a table the database may not have yet, and answers it once starting ends, or in place of the error page when
+        starting fails. A running application answers it too. See docs/schema.md.
     --->
     <cffunction name="_schemaPreviewRequested" access="private" returntype="boolean" output="false" hint="Whether this request asks for the schema preview with the right key: ?deploy equal to DEPLOY_KEY, compared case-sensitively. Never true when DEPLOY_KEY is unset.">
         <cfset var key = server.system.environment.DEPLOY_KEY ?: "" />
