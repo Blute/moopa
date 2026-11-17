@@ -152,7 +152,7 @@
   --shell-danger:        oklch(75% 0.140 22);
   --brand-bg:            var(--shell-bg);    /* behind the brand logo outside the sidebar: the status pages, System → Theme */
   --brand-ink:           var(--shell-ink);   /* the project's name there, when it has no logo */
-  --auth-brand-align:    space-between;      /* the sign-in page's dark panel: the logo at the top and the welcome at the foot; center groups them mid-panel */
+  --auth-brand-align:    center;             /* the sign-in page's dark panel: the logo and the welcome grouped mid-panel; space-between puts the logo at the top and the welcome at the foot */
 
   /* shell */
   --sb-w: 264px;
