@@ -373,6 +373,11 @@
                 <cfloop collection="#arguments.requestHeaders#" item="extraName">
                     <cfhttpparam type="header" name="#extraName#" value="#arguments.requestHeaders[extraName]#" />
                 </cfloop>
+                <!--- A HEAD has no body to compress, and RustCFML's cfhttp fails reading one when the store says its
+                      answer is compressed, as R2 does for a missing object (docs/object-storage.md: Engines). --->
+                <cfif arguments.method EQ "HEAD">
+                    <cfhttpparam type="header" name="Accept-Encoding" value="identity" />
+                </cfif>
                 <cfif arguments.method EQ "PUT">
                     <cfhttpparam type="body" value="#arguments.body#" />
                 </cfif>
