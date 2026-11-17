@@ -19,11 +19,12 @@
     </cffunction>
 
 
-    <cffunction name="stylesheets" access="public" returntype="string" output="false" hint="The <link> tags every Moopa page loads, in order: the icon CSS, moopa.css, then the project's theme. A Moopa layout and a project's own layout both put this in their <head>, so the System pages and the project's pages share one design. docs/design.md: Theming.">
+    <cffunction name="stylesheets" access="public" returntype="string" output="false" hint="The <link> tags every Moopa page loads, in order: the icon CSS, moopa.css, the project's theme, then its favicon when it has one. A Moopa layout and a project's own layout both put this in their <head>, so the System pages and the project's pages share one design. docs/design.md: Theming.">
         <cfset var theme = application.moopa_theme ?: {} />
         <cfset var links = [] />
         <cfset var icons = theme.icons ?: "" />
         <cfset var css = [] />
+        <cfset var favicon = theme.favicon ?: "" />
 
         <!--- Icons: the project's (e.g. a Font Awesome Pro kit) or Moopa's vendored Font Awesome Free --->
         <cfif len(icons)>
@@ -50,6 +51,14 @@
         <cfloop array="#css#" index="local.path">
             <cfset arrayAppend(links, '<link rel="stylesheet" href="' & encodeForHTMLAttribute(versioned(local.path)) & '" />') />
         </cfloop>
+
+        <!--- The project's favicon: application.moopa_theme.favicon; unset, /_static/favicon.svg when it exists. --->
+        <cfif NOT len(favicon) AND fileExists(expandPath("/_static/favicon.svg"))>
+            <cfset favicon = "/_static/favicon.svg" />
+        </cfif>
+        <cfif len(favicon)>
+            <cfset arrayAppend(links, '<link rel="icon" href="' & encodeForHTMLAttribute(versioned(favicon)) & '"' & (right(lCase(favicon), 4) EQ ".svg" ? ' type="image/svg+xml"' : '') & ' />') />
+        </cfif>
 
         <cfreturn arrayToList(links, chr(10) & "    ") />
     </cffunction>

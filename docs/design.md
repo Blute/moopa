@@ -86,6 +86,7 @@ In the project's `Application.cfc`, `onApplicationStart` (it may differ per app,
     icons:  "https://kit.fontawesome.com/<kit>.css",
     css:    [ "/_static/theme.css", "/_static/theme-www.css" ],
     logo:   "/_static/images/logo.png",
+    favicon: "/_static/images/favicon.png",
     banner: "/shared/tags/environment_strip.cfm"
 } />
 ```
@@ -94,6 +95,7 @@ In the project's `Application.cfc`, `onApplicationStart` (it may differ per app,
 - **`logo`**: the project's logo for the dark sidebar and mobile bar, shown instead of its name (`moo-shell-logo`, 3.25rem tall). Pick the version made for dark backgrounds. A project's own shell layout shows the same file.
 - **`banner`**: a template (a path Lucee can include) rendered as the first thing in `<body>` on every Moopa page, `moopa_layout`'s and `moopa_bare`'s, for a strip each page carries, such as one naming a test environment. It sits above the shell or the status page, which fills the rest of the window. A page in a frame (`chrome="false"`) leaves it out, as the page around the frame shows it. It renders on the status pages too, which may be reporting a failed database or session, so it reads neither; one that fails there is left out rather than taking the status page down with it. `application.lib.system.banner()` returns it, for a project's own shell layout.
 - **`css`**: the theme files. Unset, Moopa loads `/_static/theme.css` and then `/_static/theme-<app>.css` (for example `theme-www.css`) when they exist, so a project with one theme needs no configuration at all. Each is versioned by its content, so browsers keep it until it changes.
+- **`favicon`**: the browser-tab icon, linked from every Moopa page (the app's, the System pages, sign-in and the status pages). Unset, Moopa links `/_static/favicon.svg` when it exists, so a project that names its icon that needs no configuration. An SVG scales to every size; pick one that reads on both light and dark tabs.
 
 ### What a theme sets
 
