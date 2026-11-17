@@ -13,6 +13,20 @@ The statements come from Moopa's own library, `application.lib.schemaSync.compar
 | `destructive` | yes | `true` or `false`; see below |
 | `mismatches` | no | `[{ param, db, code }]`, shown as a diff when the definition and the database disagree |
 
+## Without signing in: `?deploy`
+
+An operator can read the same statements without a sysadmin sign-in, such as straight after a deploy that changed the table definitions, by opening the Hub with the deploy key:
+
+```
+https://hub.example.com/?deploy=<DEPLOY_KEY>
+```
+
+The answer is plain text: each statement ended with a semicolon and a blank line, in the order they must run, or `NOTHING TO DEPLOY`. Like the page, it never changes the database. It needs `DEPLOY_KEY` set in the Hub's environment and matched exactly; a wrong key, or none set, is an ordinary request. Another app answers it with a 404.
+
+A running Hub answers it as it is. So does the request that starts the Hub (the first after a deploy or `?init`): it works the statements out as soon as the libraries are loaded, before anything reads a table the database may not have yet, and answers once starting ends. When starting fails, because the database is behind or for any other reason, the statements still come back, in place of Moopa's error page, so a Hub that can't start can still say what it needs. That answer is a 500, and the engine adds its own note of the failure after the statements. The preview itself logs nothing.
+
+The key travels in the query string, which lands in access logs, so it only grants this read-only preview. Pass it to curl from a config on standard input rather than on the command line.
+
 ## Destructive statements
 
 A statement is **destructive** when it drops a column the table definitions no longer declare, losing the data in it. Nothing else is: dropping an index, a foreign key or a default, and retyping a column, are not, and neither is dropping a generated column that the same script adds back to change its expression.

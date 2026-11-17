@@ -87,6 +87,13 @@
 
 
         <cfset _setupLibs() />
+        <!--- A schema preview (?deploy) is worked out here, before anything that reads a table the database may not
+              have yet. Starting carries on as usual: OnRequestStart answers the preview once the application has
+              started, and OnError answers it when starting fails, so a Hub whose database is behind can still say
+              what it needs. --->
+        <cfif _schemaPreviewRequested()>
+            <cfset request.moopa_schema_preview = _schemaPreview() />
+        </cfif>
         <!--- The project's check that a validated session without a login is still valid; refuses to start on a bad name (docs/route-access.md) --->
         <cfset application.moopa_validated_session_check = _validatedSessionCheck() />
         <cfset _setupControls() />
@@ -127,6 +134,11 @@
 		<cfset var bReturn = true />
 
 
+        <!--- The schema preview the request that started the application asked for (OnApplicationStart). This
+              request isn't counted yet, so ending it here leaves nothing for ?init to wait for. --->
+        <cfif structKeyExists(request, "moopa_schema_preview")>
+            <cfset _writeSchemaPreview(request.moopa_schema_preview) />
+        </cfif>
 
         <!--- While ?init waits to restart the application, new requests are sent to /restarting/ --->
         <cfif NOT _requestStarted()>
@@ -185,7 +197,7 @@
 	</cffunction>
 
 
-	<cffunction name="onAbort" access="public" returntype="void" output="true" hint="Fires when a request stops at a cfabort or cflocation, in place of OnRequestEnd.">
+	<cffunction name="onAbort" access="public" returntype="void" output="false" hint="Fires when a request stops at a cfabort or cflocation, in place of OnRequestEnd. It writes nothing, so a response ends where cfabort stopped it.">
 		<cfargument name="TargetPage" type="string" required="false" default="" />
 
         <cfset _requestFinished() />
@@ -222,6 +234,12 @@
                 <cfset _requestFinished() />
             </cffinally>
         </cftry>
+
+        <!--- The application failed to start on a request for the schema preview, which was worked out first: the
+              preview replaces Moopa's error page. The engine still answers 500, adding its own note of the failure. --->
+        <cfif structKeyExists(request, "moopa_schema_preview")>
+            <cfset _writeSchemaPreview(request.moopa_schema_preview) />
+        </cfif>
 
 	</cffunction>
 
@@ -631,6 +649,11 @@
             <cfset _reinitialize() />
         </cfif>
 
+        <!--- A schema preview (?deploy) on a running application --->
+        <cfif _schemaPreviewRequested()>
+            <cfset _writeSchemaPreview(_schemaPreview()) />
+        </cfif>
+
 
         <!--- A session signed in automatically by older code holds its device id as a one-element array (it kept
               a query column, which a session hands back as an array). Sessions outlive a restart, so such a
@@ -1007,23 +1030,48 @@
 
         <cfset _loadCfcDirectory(application.lib, "lib", "library", "db") />
 
-        <cfif len(server.system.environment.deploy_key?:"") AND len(url.deploy?:"") AND url.deploy EQ server.system.environment.deploy_key>
-            <cfif (application.app_name ?: "") NEQ "hub">
-                <cfthrow type="moopa.schemaSync.unavailable" message="Schema deployment is only available from the Hub app." />
-            </cfif>
+    </cffunction>
 
-            <cfset local.statements = application.lib.schemaSync.compareDatabaseSchema(application.lib.db.codeSchema) />
-            <cfif arrayLen(local.statements)>
-                <cfloop array="#local.statements#" item="local.statement">
-                    <div>#local.statement.statement#;</div>
-                </cfloop>
-                <cfabort>
-            <cfelse>
-                <cfoutput>NOTHING TO DEPLOY</cfoutput>
-                <cfabort>
-            </cfif>
+
+
+    <!---
+        SCHEMA PREVIEW (?deploy=<DEPLOY_KEY>, Hub only). The SQL the Schema page lists, as plain text, for an operator
+        without a sysadmin sign-in, such as just after a deploy that changed the table definitions. Moopa never runs it.
+        The request that starts the application works it out as soon as the libraries are loaded, before anything reads
+        a table the database may not have yet, and answers it once starting ends, or in place of the error page when
+        starting fails. A running application answers it too. See docs/schema.md.
+    --->
+    <cffunction name="_schemaPreviewRequested" access="private" returntype="boolean" output="false" hint="Whether this request asks for the schema preview with the right key: ?deploy equal to DEPLOY_KEY, compared case-sensitively. Never true when DEPLOY_KEY is unset.">
+        <cfset var key = server.system.environment.DEPLOY_KEY ?: "" />
+        <cfset var given = url.deploy ?: "" />
+        <cfreturn len(key) GT 0 AND isSimpleValue(given) AND compare(given, key) EQ 0 />
+    </cffunction>
+
+
+    <cffunction name="_schemaPreview" access="private" returntype="struct" output="false" hint="The schema preview's answer, { status, text }: compareDatabaseSchema's statements, each ended with a semicolon and a blank line, or NOTHING TO DEPLOY. Another app's is a 404, since only the Hub compares the schema.">
+        <cfif (application.app_name ?: "") NEQ "hub">
+            <cfreturn { "status": 404, "text": "The schema preview is only available from the Hub app." } />
         </cfif>
 
+        <cfset var statements = application.lib.schemaSync.compareDatabaseSchema(application.lib.db.codeSchema) />
+        <cfif NOT arrayLen(statements)>
+            <cfreturn { "status": 200, "text": "NOTHING TO DEPLOY" } />
+        </cfif>
+        <cfset var text = "" />
+        <cfloop array="#statements#" item="statement">
+            <cfset text &= reReplace(trim(statement.statement), ";$", "") & ";" & chr(10) & chr(10) />
+        </cfloop>
+        <cfreturn { "status": 200, "text": text } />
+    </cffunction>
+
+
+    <cffunction name="_writeSchemaPreview" access="private" returntype="void" output="true" hint="Answers the request with a schema preview (_schemaPreview), in plain text, and ends it.">
+        <cfargument name="preview" type="struct" required="true" />
+
+        <cfheader statuscode="#arguments.preview.status#" />
+        <cfheader name="Cache-Control" value="no-store" />
+        <!--- One line, so no whitespace from here on joins the text --->
+        <cfcontent type="text/plain; charset=utf-8" reset="true" /><cfoutput>#arguments.preview.text#</cfoutput><cfabort />
     </cffunction>
 
 
