@@ -77,7 +77,8 @@
 
 
     <!--- A project file's URL with ?v= from its content, so browsers keep it until it changes. Worked out once per
-          start, and on every call in development, as Moopa's own static files are. A URL that is not a local file is returned as is. --->
+          start, and on every call in development, as Moopa's own static files are. A URL that is not a local file is returned as is.
+          The file is read as bytes: a favicon may be a PNG or ICO, which is not text. --->
     <cffunction name="versioned" access="private" returntype="string" output="false">
         <cfargument name="path" type="string" required="true" />
         <cfset var file = "" />
@@ -86,7 +87,7 @@
         </cfif>
         <cfif NOT structKeyExists(variables.fileVersions, arguments.path)>
             <cfset file = left(arguments.path, 1) EQ "/" AND NOT find("//", arguments.path) ? expandPath(arguments.path) : "" />
-            <cfset variables.fileVersions[arguments.path] = len(file) AND fileExists(file) ? left(lCase(hash(fileRead(file), "MD5")), 12) : "" />
+            <cfset variables.fileVersions[arguments.path] = len(file) AND fileExists(file) ? left(lCase(hash(fileReadBinary(file), "MD5")), 12) : "" />
         </cfif>
         <cfif NOT len(variables.fileVersions[arguments.path])>
             <cfreturn arguments.path />
