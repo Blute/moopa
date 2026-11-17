@@ -230,7 +230,8 @@
         <cfif isJSON(http.filecontent ?: "")>
             <cfset body = deserializeJSON(http.filecontent) />
         </cfif>
-        <cfset accepted = val(http.status_code ?: 0) EQ 200 AND isStruct(body) AND isNumeric(body.ErrorCode ?: "") AND body.ErrorCode EQ 0 />
+        <!--- Accepted: HTTP 200 with ErrorCode 0. structKeyExists, because ?: could read a 0 as missing. --->
+        <cfset accepted = val(http.status_code ?: 0) EQ 200 AND isStruct(body) AND structKeyExists(body, "ErrorCode") AND isNumeric(body.ErrorCode) AND body.ErrorCode EQ 0 />
         <cfif accepted>
             <cfset queued = duplicate(arguments.payload.to) />
             <cfif structKeyExists(arguments.payload, "cc")><cfset arrayAppend(queued, arguments.payload.cc, true) /></cfif>
@@ -240,7 +241,10 @@
         <cfreturn {
             success: accepted,
             status: val(http.status_code ?: 0),
-            errors: accepted ? [] : [{ "code": isStruct(body) ? (body.ErrorCode ?: 0) : 0, "message": isStruct(body) ? (body.Message ?: "") : "" }],
+            errors: accepted ? [] : [{
+                "code": isStruct(body) AND structKeyExists(body, "ErrorCode") ? body.ErrorCode : 0,
+                "message": isStruct(body) AND structKeyExists(body, "Message") ? body.Message : ""
+            }],
             delivered: [],
             queued: queued,
             bounced: []
