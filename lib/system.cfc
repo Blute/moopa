@@ -19,11 +19,12 @@
     </cffunction>
 
 
-    <cffunction name="stylesheets" access="public" returntype="string" output="false" hint="The <link> tags every Moopa page loads, in order: the icon CSS, moopa.css, then the project's theme. A Moopa layout and a project's own layout both put this in their <head>, so the System pages and the project's pages share one design. docs/design.md: Theming.">
+    <cffunction name="stylesheets" access="public" returntype="string" output="false" hint="The <link> tags every Moopa page loads, in order: the icon CSS, moopa.css, the project's theme, then its favicon when it has one. A Moopa layout and a project's own layout both put this in their <head>, so the System pages and the project's pages share one design. docs/design.md: Theming.">
         <cfset var theme = application.moopa_theme ?: {} />
         <cfset var links = [] />
         <cfset var icons = theme.icons ?: "" />
         <cfset var css = [] />
+        <cfset var favicon = theme.favicon ?: "" />
 
         <!--- Icons: the project's (e.g. a Font Awesome Pro kit) or Moopa's vendored Font Awesome Free --->
         <cfif len(icons)>
@@ -51,6 +52,14 @@
             <cfset arrayAppend(links, '<link rel="stylesheet" href="' & encodeForHTMLAttribute(versioned(local.path)) & '" />') />
         </cfloop>
 
+        <!--- The project's favicon: application.moopa_theme.favicon; unset, /_static/favicon.svg when it exists. --->
+        <cfif NOT len(favicon) AND fileExists(expandPath("/_static/favicon.svg"))>
+            <cfset favicon = "/_static/favicon.svg" />
+        </cfif>
+        <cfif len(favicon)>
+            <cfset arrayAppend(links, '<link rel="icon" href="' & encodeForHTMLAttribute(versioned(favicon)) & '"' & (right(lCase(favicon), 4) EQ ".svg" ? ' type="image/svg+xml"' : '') & ' />') />
+        </cfif>
+
         <cfreturn arrayToList(links, chr(10) & "    ") />
     </cffunction>
 
@@ -68,7 +77,8 @@
 
 
     <!--- A project file's URL with ?v= from its content, so browsers keep it until it changes. Worked out once per
-          start, and on every call in development, as Moopa's own static files are. A URL that is not a local file is returned as is. --->
+          start, and on every call in development, as Moopa's own static files are. A URL that is not a local file is returned as is.
+          The file is read as bytes: a favicon may be a PNG or ICO, which is not text. --->
     <cffunction name="versioned" access="private" returntype="string" output="false">
         <cfargument name="path" type="string" required="true" />
         <cfset var file = "" />
@@ -77,7 +87,7 @@
         </cfif>
         <cfif NOT structKeyExists(variables.fileVersions, arguments.path)>
             <cfset file = left(arguments.path, 1) EQ "/" AND NOT find("//", arguments.path) ? expandPath(arguments.path) : "" />
-            <cfset variables.fileVersions[arguments.path] = len(file) AND fileExists(file) ? left(lCase(hash(fileRead(file), "MD5")), 12) : "" />
+            <cfset variables.fileVersions[arguments.path] = len(file) AND fileExists(file) ? left(lCase(hash(fileReadBinary(file), "MD5")), 12) : "" />
         </cfif>
         <cfif NOT len(variables.fileVersions[arguments.path])>
             <cfreturn arguments.path />
