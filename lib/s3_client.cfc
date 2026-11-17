@@ -1,6 +1,10 @@
 <cfcomponent displayname="S3 Client" hint="REST client for S3-compatible object stores (AWS S3, Cloudflare R2): read, write, stream to disk, check, delete and list objects, and presign URLs for a browser to upload or download directly. Every call takes a store from configure() or defaultStore(); credentials come from aws_credentials and signing from aws_sigv4, so the same client serves static-key and ECS task-role stores. Needs no Lucee S3 extension.">
 
+    <!--- Keeps the application's S3 settings (this.s3) as they are when the library is loaded, at application start.
+          defaultStore() reads this copy and not getApplicationSettings() at each call, so it answers the same in a
+          cfthread as in a request: on RustCFML 0.751.0 getApplicationSettings() inside a cfthread has no s3. --->
     <cffunction name="init" access="public" returntype="any" output="false">
+        <cfset variables.applicationS3 = duplicate(getApplicationSettings().s3 ?: {}) />
         <cfreturn this />
     </cffunction>
 
@@ -43,10 +47,11 @@
     <!--- The application's own store, the one Moopa's uploads (moo_file, moo_video) use. Its bucket is the S3_BUCKET
           environment variable; its endpoint, region and keys are the Application.cfc S3 settings, in Lucee's own names:
             this.s3 = { host: "<endpoint>", defaultLocation: "<region>", accessKeyId: "...", awsSecretKey: "..." };
-          defaultLocation is the signing region (R2: "auto"). Leave both keys empty to sign with the ECS task role. --->
+          defaultLocation is the signing region (R2: "auto"). Leave both keys empty to sign with the ECS task role.
+          The settings are the ones read at application start (init); a change to this.s3 takes a re-initialise. --->
     <cffunction name="defaultStore" access="public" returntype="struct" output="false">
         <cfreturn storeFromSettings(
-            settings = getApplicationSettings().s3 ?: {},
+            settings = variables.applicationS3,
             bucket = server.system.environment.S3_BUCKET ?: ""
         ) />
     </cffunction>

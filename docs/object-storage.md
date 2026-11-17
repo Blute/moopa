@@ -52,10 +52,11 @@ A failed request throws `s3.request.failed` with the store's status and answer i
 
 The client is plain CFML: no Java classes and no XPath, so it runs the same on Lucee and on RustCFML (verified against AWS's SigV4 and presigned-URL examples and live against R2, on RustCFML 0.653.14 and 0.751.0).
 
-Two RustCFML notes:
+Three RustCFML notes:
 
 - **Binary writes need 0.751.0 or later** (the version checked). Earlier engines send a binary `cfhttp` body as the text `<Binary>` ([RustCFML#490](https://github.com/RustCFML/RustCFML/pull/490)), so `writeObject` with bytes fails there (`XAmzContentSHA256Mismatch`). Text writes, reads, downloads, presigned URLs and Moopa's own uploads (which only presign) are unaffected.
 - **A HEAD asks for an uncompressed answer** (`Accept-Encoding: identity`). On RustCFML 0.751.0 `cfhttp` fails with `reading the response body failed: unexpected end of file` when a HEAD's answer says it is compressed, which R2 does for an object that isn't there. Without the header `objectExists()` and `headObject()` threw for a missing object instead of answering, and so `file_upload.finish()` threw instead of answering `not_uploaded`.
+- **`defaultStore()` uses the `this.s3` read at application start**, not `getApplicationSettings()` at each call. On RustCFML 0.751.0 `getApplicationSettings()` inside a `cfthread` has none of the application's own keys, `s3` among them, so a store asked for in a thread (a background job writing a file) threw `s3.config.missing`. A change to `this.s3` takes a re-initialise.
 
 ```cfml
 store = application.lib.s3_client.defaultStore();
