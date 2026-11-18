@@ -46,6 +46,34 @@
     </cffunction>
 
 
+    <cffunction name="peek" access="public" returntype="struct" output="false"
+        hint="Look at a grant without using it: { live, target_profile_id, impersonator_profile_id }, live only while the token is of this kind, unused and unexpired (the ids are empty when it isn't). A link's GET calls this and only a POST consumes, because link previews and mail scanners open links before the person does.">
+        <cfargument name="token" type="string" required="true" />
+        <cfargument name="kind" type="string" required="true" />
+
+        <cfset assertKind(arguments.kind) />
+
+        <cfquery name="local.qPeek" returntype="array">
+        SELECT target_profile_id::text AS target_profile_id,
+               COALESCE(impersonator_profile_id::text, '') AS impersonator_profile_id
+        FROM moo_login_grant
+        WHERE token = <cfqueryparam cfsqltype="varchar" value="#arguments.token#" />
+          AND kind = <cfqueryparam cfsqltype="varchar" value="#arguments.kind#" />
+          AND consumed_at IS NULL
+          AND expires_at > now()
+        </cfquery>
+
+        <cfif NOT arrayLen(local.qPeek)>
+            <cfreturn { live = false, target_profile_id = "", impersonator_profile_id = "" } />
+        </cfif>
+        <cfreturn {
+            live = true,
+            target_profile_id = local.qPeek[1].target_profile_id,
+            impersonator_profile_id = local.qPeek[1].impersonator_profile_id
+        } />
+    </cffunction>
+
+
     <cffunction name="consume" access="public" returntype="struct" output="false"
         hint="Use a grant of this kind and sign the browser in as its target. Throws loginGrant.unusable unless the token is of this kind, unused and unexpired. Returns { target_profile_id, impersonator_profile_id, app_name } with app_name the target's (empty when it has none).">
         <cfargument name="token" type="string" required="true" />
