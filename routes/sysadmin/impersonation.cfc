@@ -65,7 +65,7 @@
         </cfif>
 
         <cftry>
-            <cfset var result = application.lib.impersonate.createGrant(profileId) />
+            <cfset var result = application.lib.impersonation.createGrant(profileId) />
             <cfreturn result />
             <cfcatch>
                 <cfreturn { success = false, error = cfcatch.message } />
@@ -372,7 +372,7 @@
                     <div class="modal-header">
                         <div>
                             <h2 id="impersonation-target-title" class="card-title">Create an impersonation link</h2>
-                            <p class="card-sub">Find the person to impersonate. Hub profiles are allowed, except the configured sysadmins. The link is copied to your clipboard and expires in 5 minutes.</p>
+                            <p class="card-sub">Find the person to impersonate. Hub profiles are allowed, except the configured sysadmins. The link is copied to your clipboard. It works once, within 5 minutes, and opening it changes nothing until its button is pressed, so it can be sent by chat or email.</p>
                         </div>
                         <button type="button" class="btn btn-ghost btn-icon btn-sm" @click="$refs.targetModal.close()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
                     </div>
@@ -450,7 +450,7 @@
                                 this.target_search = '';
                                 this.targets = [];
                                 await this.load();
-                                window.toast?.({ type: 'success', title: 'Impersonation URL copied', description: 'Paste into an incognito/private window. Link expires in 5 minutes.', duration: 8000, icon: 'fa-mask' });
+                                window.toast?.({ type: 'success', title: 'Impersonation URL copied', description: 'Open it in a private window, or send it. It works once, within 5 minutes.', duration: 8000, icon: 'fa-mask' });
                             } else {
                                 window.toast?.({ type: 'error', title: 'Impersonation failed', description: result?.error || 'Unknown error', duration: 5000, icon: 'fa-triangle-exclamation' });
                             }

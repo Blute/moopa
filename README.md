@@ -12,6 +12,7 @@ Agents: read [AGENTS.md](AGENTS.md) first.
 - [Agent skills](docs/agent-skills.md): Moopa's skills for agents, and linking them into a project with `scripts/link-skills.sh`.
 - [Email](docs/email.md): transactional email through Cloudflare Email Sending (`application.lib.email`), and how framework email falls back to a project's Postmark library.
 - [Sign-in](docs/signin.md): passwordless sign-in by emailed link, Continue with Google, invitations and sign-in activity.
+- [Impersonation](docs/impersonation.md): links that sign a browser in as someone else, made on System → Impersonation and opened through the project's `/auth/impersonate/` route. **Apps upgrading must hand that route to `application.lib.impersonation` and delete their own `lib/impersonate.cfc`**; see its "Upgrading an existing app".
 - [Account pages](docs/account.md): the profile pages Moopa serves, and replacing one in a project.
 - [Errors](docs/errors.md): what Moopa does with an uncaught error, who sees its details (`this.moopa_error_details`), and replacing the error page.
 - [Search](docs/search.md): `db.search()`'s arguments, `sql_type` for linked records, and the order of text-search results (score, then primary key).
