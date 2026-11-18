@@ -83,7 +83,7 @@
                     <button type="submit" class="btn btn-primary btn-block" autofocus>Continue as #encodeForHTML(target)# <i class="fa-solid fa-arrow-right"></i></button>
                 </form>
             </div>
-            <!--- Send once: a second press would find the link used and show the expired page over the signed-in one --->
+            <!--- Send once: a second press would find the link used and show the expired page over the signed-in one. A page restored from the back-forward cache reloads, as sign-in's do. --->
             <script>
                 document.querySelectorAll('form[data-once]').forEach(function (form) {
                     form.addEventListener('submit', function (event) {
@@ -92,6 +92,8 @@
                         form.querySelector('button').setAttribute('aria-disabled', 'true');
                     });
                 });
+                // Back to a page the browser kept: show it fresh, not mid-send, so its button works (and says if the link is spent)
+                window.addEventListener('pageshow', function (event) { if (event.persisted) window.location.reload(); });
             </script>
         </cfoutput></cfsavecontent>
         <cfreturn page(
