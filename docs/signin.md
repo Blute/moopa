@@ -62,7 +62,7 @@ Everything else (the emailed link, the approve page, the waiting page's polling)
 - **One use, 15 minutes.** A request is approved or turned down once, signs in once, and is over after 15 minutes.
 - **Nothing says whether an email has an account.** An unknown address waits like any other; no email is sent. An email that fails to send is logged and looks the same.
 - **At most 5 requests per email address and 20 per IP address in 15 minutes.**
-- **Signing out ends the 30-day device too.**
+- **Signing out ends the 30-day device too**, and gives the browser a new session. A request still running when the sign-out finishes (a page's background fetch) saves its copy of the session as it ends, still signed in. With the new session it saves to the old one, which no browser holds, so it can't sign the browser back in.
 - **A stay ends at its expiry, to the second.** Returning on a device after its 30 days signs nobody in: the device and its cookie are removed and the person signs in again. Signing in from the cookie and the once-a-minute check of an open session make the same test (`expiration > now()`, by the database's clock).
 - **A stay is never extended.** It lasts 30 days from the sign-in that made it; using the app does not renew it.
 - **A device cookie that names no device is cleared.** A device signed out elsewhere or pruned leaves its cookie behind on that browser; the next request there removes it.

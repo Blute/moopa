@@ -105,6 +105,10 @@
         <cfset application.lib.signin_device.forget() />
         <cfset structDelete(session, "auth") />
         <cfset structDelete(session, "signin") />
+        <!--- A new session id for this browser. A request still running in the old session (a page's background
+              fetch) saves its copy of the session when it ends, signed in; it now saves to the old id, which no
+              browser holds, instead of signing this one back in. --->
+        <cfset sessionRotate() />
         <cflocation url="/" addtoken="false" />
     </cffunction>
 
