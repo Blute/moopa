@@ -168,6 +168,30 @@ check("...from its own rendering of that page", `${resizes[0].source.pathname} p
 check("...wide enough to cut the size from", resizes[0].source.searchParams.get("render"), "400");
 check("...which the PDF service rendered", JSON.stringify({ page: rendered.at(-1).page, width: rendered.at(-1).width }), JSON.stringify({ page: 3, width: 400 }));
 
+// A resized image (/i/) comes in the newest format the browser's Accept header takes, named to image resizing
+// (a Worker's resizing fetch doesn't choose one itself), and each format is cached at an address of its own.
+const formats = [];
+const cachedAt = [];
+globalThis.caches = { default: { async match() {}, async put(key) { cachedAt.push(new URL(key.url).searchParams.get("__format")); } } };
+globalThis.fetch = async (source, init) => {
+  formats.push(init.cf.image.format);
+  return new Response("resized", { status: 200, headers: { "Content-Type": "image/png" } });
+};
+for (const [accept, expected] of [
+  ["image/avif,image/webp,image/apng,image/*,*/*;q=0.8", "avif"],
+  ["image/webp,image/png,*/*;q=0.8", "webp"],
+  ["image/png,*/*", undefined],
+  [null, undefined],
+]) {
+  const headers = accept ? { Accept: accept } : {};
+  const resized = await worker.fetch(new Request(`${await signedUrl("photos/house.jpg", "i")}`, { headers }), env, { waitUntil() {} });
+  check(`a resized image for Accept "${accept}" answers`, resized.status, 200);
+  check("...in that format", formats.at(-1), expected);
+  check("...cached by that format", cachedAt.at(-1) ?? undefined, expected ?? undefined);
+  check("...and varies by Accept", resized.headers.get("Vary"), "Accept");
+}
+globalThis.fetch = realFetch;
+
 // A thumbnail (/i/) or a PDF's text (/m/) already in the edge cache: the Workers runtime hands back a cached answer
 // whose headers can't be changed, so the Worker must still add its own without throwing.
 class ImmutableHeaders extends Headers {
