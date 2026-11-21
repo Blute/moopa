@@ -40,9 +40,9 @@ Every call takes a store: `defaultStore()`, or one built with `configure(label, 
 | `downloadObject(store, objectKey, filePath)` | streams the object to a file, for anything large |
 | `writeObject(store, objectKey, value, contentType)` | writes text or bytes |
 | `objectExists(store, objectKey)` | asks the store (HEAD): true, false, or throws |
-| `headObject(store, objectKey)` | what the store holds (HEAD): `{ exists, size, contentType }` |
+| `headObject(store, objectKey)` | what the store holds (HEAD): `{ exists, size, contentType, etag, metadata }` (etag without quotes, user metadata by name) |
 | `readObjectStart(store, objectKey, bytes)` | the first `bytes` bytes (a ranged GET), to read a file's signature |
-| `copyObject(store, sourceKey, targetKey)` | copies it to another key inside the store (one CopyObject, up to 5 GB), keeping its Content-Type |
+| `copyObject(store, sourceKey, targetKey, metadata)` | copies it to another key inside the store (one CopyObject, up to 5 GB), keeping its Content-Type, with `metadata` (optional) in place of the source's; returns the copy's ETag |
 | `deleteObject(store, objectKey)` | deletes it |
 | `listObjects(store, prefix)` | `[{ key, etag, size, last_modified }]` under a prefix |
 | `presignedUrl(store, objectKey, method, expiresSeconds, signedHeaders)` | a URL a browser can GET or PUT without credentials; with `signedHeaders` (such as `{ "Content-Type": "image/jpeg", "Content-Length": 48213 }`) the browser must send each with exactly that value, or the store refuses it |
@@ -126,6 +126,8 @@ A page is rendered each time an address is first asked for, then kept in the edg
 
 A file can also be **published**: answered at a fixed, readable address on one of the project's own sites, without a signature, such as `https://www.example.com/datasheets/product.pdf`. Use it for what a public website shows search engines and links to (datasheets, brochures, product photos), where a signed link's address on the asset hostname, with its `?exp=…&sig=…` and an id that changes with every upload, is the wrong address to rank or share. Everything not published stays private and signed.
 
+Usually a table definition says which files are published (below, "Publishing a table's files"), and Moopa keeps them in step with their records. Underneath, and for anything else, are these calls:
+
 ```cfml
 application.lib.published_files.publish("www", "/datasheets/product.pdf", moo_file.path)   // copies it to public/www/datasheets/product.pdf
 application.lib.published_files.unpublish("www", "/datasheets/product.pdf")
@@ -133,11 +135,109 @@ application.lib.published_files.isPublished("www", "/datasheets/product.pdf")
 application.lib.published_files.list("www", "/datasheets/")                                 // [{ address, size, last_modified }]
 ```
 
-- **The bucket is the record.** `publish()` copies the stored file inside the store (`copyObject`, nothing passes through the app) to `public/<site>/<address>`. There is no table: what is under `public/` is what is published. A project keeps which file it published where in its own tables if it needs to.
+- **The bucket is the record** for these calls. `publish()` copies the stored file inside the store (`copyObject`, nothing passes through the app) to `public/<site>/<address>`, and keeps no record of its own: what is under `public/` is what is published.
 - **An address never changes.** Publishing again at the same address replaces the file there, so a new version of a datasheet keeps its address, and the links and search ranking that point at it.
 - **Addresses** start with `/` and are segments of letters, digits, dot, dash and underscore. Site names are lowercase letters, digits and dashes. Anything else throws `published_files.invalid`. Prefer lowercase, dash-separated addresses that say what the file is.
 - **Unpublishing** removes the copy, not the original. Browsers may keep their copy for up to five minutes more. Deleting the original does not unpublish it: the published copy is the project's to remove.
 - **Size:** a copy is one CopyObject, so a file over 5 GB can't be published.
+
+### Publishing a table's files
+
+A `many_to_many` field of `moo_file` can declare that its files are published, in its table definition:
+
+```cfml
+"is_published": { "type": "bool", "nullable": false, "default": "false" },
+"datasheet": { "type": "many_to_many", "foreign_key_table": "moo_file",
+    "publish": { "site": "www", "address": "/datasheets/{slug}.pdf", "when": "is_published" } },
+"images": { "type": "many_to_many", "foreign_key_table": "moo_file",
+    "publish": { "site": "www", "address": "/images/{slug}/{name}.{ext}", "when": "is_published" } }
+```
+
+- **`site`** is the site the files are published on, as the Worker's `PUBLIC_SITES` names it.
+- **`address`** is where each file goes:
+  - `{field}` is the record's value of that column, `{name}` the file's name without its extension, and `{ext}` its extension.
+  - `{field}` and `{name}` are made readable: lowercase letters and digits, with dashes between. So `Front View (2).JPG` gives `front-view-2` and `jpg`.
+  - The literal parts are lowercase too, so every address has one spelling.
+  - It starts with a literal folder (`/datasheets/`), so its copies can always be swept (below).
+  - `{name}` and `{ext}` are always the file's, even when the table has columns of those names.
+  - A placeholder must be a plain column, not a link, list, `jsonb` and so on.
+- **Without `{name}`**, a field publishes its first file only (in its order): one address, one file. With it, two files whose names come out the same get `-2`, `-3` before the extension, in the files' order. Removing the first shifts the numbers of the rest.
+- **`when`** (optional) names a `bool` column of the table: its files are published only while it is true. Without it, they always are.
+- **The table definition is checked at start.** The app stops with `moopa.publish.invalid`, naming the table and field, for:
+  - a field that isn't a `many_to_many` of `moo_file`;
+  - an unknown key in `publish` (a misspelt `when` would otherwise publish always);
+  - a `when` that isn't a `bool` column;
+  - an address no filled-in template could make: an empty, `.` or `..` segment, one over 200 characters, or a key over 1024 bytes;
+  - a template without a literal folder (`/{slug}.pdf`);
+  - two fields of a table publishing to the same addresses.
+
+**What follows a record.** `db.save` and `db.delete` keep a publishing table's files in step with each record, after it is written:
+- a file added, or replaced by another, is published;
+- a file removed, a changed address (the slug edited), `when` turning false, or the record deleted, unpublishes;
+- only what changed is copied.
+
+This is `application.lib.published_files.syncRecord(table_name, id)`. A project calls it itself after changing a record, its files or a `moo_file` by SQL rather than `db.save`.
+
+**One at a time, and never inside a transaction.** Every publishing operation (a record's sync, a repair, a stray's removal) runs in a short transaction of its own, read committed, holding one Postgres advisory lock. So only one runs at a time, across every instance of the app, and what it reads is what the last one committed.
+- **Saves wait in turn, holding little.** On each app instance a save's sync queues behind that instance's other saves on a named lock, holding no database connection. The one at the front waits in Postgres's own queue, in turn with the other instances and with `syncAll()`, so at most one connection per instance waits. A waiting save also holds its request.
+- **A save doesn't wait long.** A save's sync gives up after 5 seconds, logs a warning naming the record, and returns `deferred: 1`. The next save in that request then doesn't wait, until one gets the lock. `syncRecord(table_name, id, waitSeconds)` called directly waits the whole seconds it is given (0 to 3600; anything else throws `published_files.invalid`).
+- **The wait is for the lock alone.** Once a sync has the lock, a row it has to wait for is waited for as usual; a failure there is a failure, never a deferral.
+- **`syncAll()` waits longer.** It waits up to a minute for each step, and stops its run (`deferred: 1`) if the lock stays taken that long.
+- **The lock is held during store calls** (each up to two minutes when the store is slow). If an app instance loses its database connection part way, the lock goes with it while its store call may still finish. What that leaves is a copy out of step with its row, which `syncAll()` repairs.
+- **Failures are logged after the lock is released.**
+
+Inside a caller's `cftransaction`, nothing is published or unpublished, since the transaction could still roll back. `syncRecord` returns `deferred: 1`, and the record follows by its next save outside a transaction, by `syncRecord` after the commit, or by `syncAll()`.
+
+**Publishing and unpublishing are eventual.** A save returns once the record is written, whether its files followed it, were deferred, or failed. A file can stay public after its record is unpublished or deleted until the next sync that gets the lock and succeeds: the record's next save, or `syncAll()` on its schedule. Browsers and the edge may also keep a copy for up to five minutes after it is gone.
+
+So don't rely on unpublishing to withdraw a file at once. If that matters, check the record where the file is served, with a cache policy to match. Or call `syncRecord` after the save and act on both `deferred` and `failed`. Pages see an address stop being linked once the sync that unlinked it has committed.
+
+**One moment's state.** Outside a caller's transaction, `db.save` writes a publishing table's record and its files in one transaction. A sync reads the record and all its publishing files in one statement, so it never pairs one save's `when` with another's files.
+
+**Each address goes through its row in `moo_published_file`, whose `path` is its state:**
+- **Publishing:** claim the row, with an empty path, then copy, then set the path and the copy's `etag`.
+- **Unpublishing:** empty the path (pages stop linking it), delete the copy, then the row.
+
+Each address has its own savepoint, moved on past its claim or its unlink. So a failure part way, in the store or in a statement, undoes only what came after; the record's other addresses go on. What it leaves is at most:
+- a row with an empty path, which the next sync finishes;
+- a copy without a row, which the sweep removes;
+- a row without its copy, which the sweep repairs.
+
+**Failures.** A failure is logged (`core.logError`, or the engine's log if even that fails) and counted, never thrown at the save or delete. `syncRecord` returns `{ published, unpublished, kept, taken, skipped, failed, deferred }`: `skipped` counts files no address could be made for (a value that comes out empty).
+
+**Every copy is marked.** A copy a publishing field makes carries user metadata `moopa-published`. Its `Content-Type` is the stored file's; other HTTP metadata of the stored file (`Cache-Control`, `Content-Disposition`) is not carried, and Moopa's uploads set none.
+
+**`syncAll()`** is the repair job. Run it once when a table first publishes (that publishes its existing records), and on a schedule. In order:
+1. It unpublishes what a deleted record, or a field or table that no longer publishes, left behind. A record waiting for one of those addresses gets it in the same run.
+2. It syncs every record that publishes, or has published, something. A record that fails is logged and counted, and the rest go on.
+3. It compares the store with the rows, under each publishing field's literal prefix (`/datasheets/` for `/datasheets/{slug}.pdf`, `/docs/product-` for `/docs/product-{slug}.pdf`):
+   - a copy that is missing, or isn't the one recorded (its `etag`), is published again;
+   - a marked copy that no row accounts for is deleted.
+
+   Each repair and each removal is decided again under the lock. A record that published or unpublished the address since the sweep listed it is left as it now is, and a copy already put right is left alone.
+
+It returns the totals plus `repaired` and `removed`. Inside a transaction it does nothing (`deferred: 1`).
+
+**Before moving a field's folder** (changing `/datasheets/` to `/sheets/`, say), run `syncAll()` once more on the old setting: the sweep only covers the prefixes of the current settings, so a marked copy left without a row under the old one would stay.
+
+**Only marked copies are ever deleted by the sweep.** A file published by hand (`publish()`, which refuses to copy from a published copy, so it never carries the mark) is never touched, even under a publishing prefix. Still, don't publish by hand under a publishing field's prefix: a declared field publishing the same address replaces it.
+
+**One database per bucket.** Two environments with their own databases (a stage and production) need their own buckets, or publishing settings with prefixes that never meet: the sweep removes a marked copy that its own database has no row for, whichever environment made it.
+
+**`moo_published_file`** records what is published where: one row per address, with its `site`, `address` and `object_key`, the `table_name`, `record_id` and `field` that publish it, the `moo_file_id`, the `path` it was copied from, and its `etag`. Pages link a file at its own address once the row's path is set, and by its signed link until then:
+
+```sql
+SELECT COALESCE(published.address, signed_asset_url(moo_file.path, 'NEVER', 'a')) AS url
+FROM product_datasheet
+JOIN moo_file ON moo_file.id = product_datasheet.foreign_id
+LEFT JOIN moo_published_file AS published
+  ON published.table_name = 'product' AND published.record_id = product_datasheet.primary_id
+ AND published.field = 'datasheet' AND published.moo_file_id = moo_file.id
+ AND published.site = 'www' AND published.path <> ''
+```
+
+- **Only for projects that publish.** A project gets `moo_published_file` (a schema sync adds it) only when one of its fields declares `publish`. Without one there is no table, and `db.save` and `db.delete` work exactly as before. Until the table is in the database, publishing does nothing (the schema not synced yet).
+- **An address belongs to the first record that publishes it.** Another record wanting it is counted as `taken` and left alone, until the first lets go of it.
 
 ### How a published file is answered
 
@@ -155,13 +255,13 @@ The signed assets Worker answers published files when its **`PUBLIC_SITES`** set
 
 ### Upgrading to published files
 
-Nothing changes for a project that doesn't publish: the library is only called by a project's own code, it needs no table, and the Worker publishes nothing until `PUBLIC_SITES` is set. A project that publishes:
+Nothing changes for a project that doesn't publish: without a `publish` setting there is no table and `db.save` is as before, the library runs only when a project calls it, and the Worker publishes nothing until `PUBLIC_SITES` is set. A project that publishes:
 
 1. **Redeploy the signed assets Worker** from `config/init/cloudflare-signed-assets-worker.js`, with `PUBLIC_SITES` and `ASSETS_ORIGIN`.
 2. **Turn on Images Transformations** on the site's zone if images are resized (above).
 3. **Route the Worker on the site's hostname** for each prefix it publishes under (a Workers route, `www.example.com/datasheets/*`). The hostname must be proxied by Cloudflare in the same account as the Worker.
 4. **Check the bucket has nothing under `public/`** that wasn't published on purpose: once the Worker publishes a site, everything under `public/<site>/` is answered.
-5. **Publish** from the project's code (`published_files.publish()`), and link to the site's own addresses.
+5. **Publish**: declare `publish` on the file fields (then sync the schema, which adds `moo_published_file`, and run `published_files.syncAll()` once and on a schedule), or call `published_files.publish()` from the project's code, outside any publishing field's folder. Link to the site's own addresses.
 
 ### Upgrading to PDF pages
 
