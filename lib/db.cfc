@@ -307,8 +307,8 @@ Delete - delete
 
     <!--- Puts a record's published files in step with it (lib/published_files.cfc syncRecord). A failure is logged, never
           the save's or delete's: the record is written, and the next sync of it, or published_files.syncAll(), finishes
-          the job. (Inside a caller's cftransaction that later rolls back, the store isn't rolled back with it: syncAll
-          repairs that too.) --->
+          the job. Inside a caller's cftransaction nothing is published or unpublished (deferred): the next save outside
+          one, syncRecord after the commit, or syncAll does it. --->
     <cffunction name="publishRecord" access="private" returntype="void" output="false">
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="true" />
@@ -348,13 +348,25 @@ Delete - delete
             ) />
         </cfif>
 
-        <!--- A record whose fields publish files: they follow it once it is written, its files included. --->
-        <cfset saved = variables.recordWriter.save(
-            stModel = stModel,
-            data = arguments.data,
-            returnFormat = "cfml",
-            index_record = arguments.index_record
-        ) />
+        <!--- A record whose fields publish files: the record and its files are written in one transaction (unless the caller
+              has one), so publishing never reads one without the other; then its files follow it. --->
+        <cfif application.lib.published_files.inTransaction()>
+            <cfset saved = variables.recordWriter.save(
+                stModel = stModel,
+                data = arguments.data,
+                returnFormat = "cfml",
+                index_record = arguments.index_record
+            ) />
+        <cfelse>
+            <cftransaction>
+                <cfset saved = variables.recordWriter.save(
+                    stModel = stModel,
+                    data = arguments.data,
+                    returnFormat = "cfml",
+                    index_record = arguments.index_record
+                ) />
+            </cftransaction>
+        </cfif>
         <cfset publishRecord(arguments.table_name, saved.id ?: "") />
         <cfreturn variables.returnFormatter.formatCFML(saved, arguments.returnFormat) />
 

@@ -219,7 +219,7 @@
         <cfreturn left(httpResult.statusCode ?: "", 3) NEQ "404" />
     </cffunction>
 
-    <!--- What the store holds at a key (a HEAD request): { exists, size, contentType, metadata }. size is the stored length in
+    <!--- What the store holds at a key (a HEAD request): { exists, size, contentType, etag, metadata }. size is the stored length in
           bytes and contentType the type it was stored with; both are 0 and "" when the object isn't there. Anything but
           200 or 404 throws, since it says nothing about the object. --->
     <cffunction name="headObject" access="public" returntype="struct" output="false">
@@ -234,7 +234,7 @@
             allowedStatuses = "404"
         ) />
         <cfif left(httpResult.statusCode ?: "", 3) EQ "404">
-            <cfreturn { "exists": false, "size": 0, "contentType": "", "metadata": {} } />
+            <cfreturn { "exists": false, "size": 0, "contentType": "", "etag": "", "metadata": {} } />
         </cfif>
         <cfset var length = responseHeader(httpResult, "Content-Length") />
         <!--- Not isValid("integer"), which stops at 2^31: an object can be far bigger. --->
@@ -248,7 +248,7 @@
                 <cfset metadata[mid(lCase(local.headerName), 12, len(local.headerName))] = responseHeader(httpResult, local.headerName) />
             </cfif>
         </cfloop>
-        <cfreturn { "exists": true, "size": val(length), "contentType": responseHeader(httpResult, "Content-Type"), "metadata": metadata } />
+        <cfreturn { "exists": true, "size": val(length), "contentType": responseHeader(httpResult, "Content-Type"), "etag": replace(responseHeader(httpResult, "ETag"), '"', "", "all"), "metadata": metadata } />
     </cffunction>
 
     <!--- The first `bytes` bytes of an object (a ranged GET; S3 and R2 both honour Range), or all of it when it is

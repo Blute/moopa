@@ -4,6 +4,8 @@
         <cfset this.failCopyTo = "" />
         <cfset this.failDeleteOf = "" />
         <cfset this.failCopyAll = false />
+        <!--- A copy to this key answers an etag too long for moo_published_file.etag: the statement recording it fails. --->
+        <cfset this.longEtagFor = "" />
         <cfreturn this />
     </cffunction>
     <cffunction name="slot" access="private" returntype="string" output="false">
@@ -23,10 +25,10 @@
         <cfargument name="store" type="struct" required="true" />
         <cfargument name="objectKey" type="string" required="true" />
         <cfif NOT has(arguments.objectKey)>
-            <cfreturn { "exists": false, "size": 0, "contentType": "", "metadata": {} } />
+            <cfreturn { "exists": false, "size": 0, "contentType": "", "etag": "", "metadata": {} } />
         </cfif>
         <cfset var object = variables.objects[slot(arguments.objectKey)] />
-        <cfreturn { "exists": true, "size": len(object.body), "contentType": "application/octet-stream", "metadata": duplicate(object.metadata) } />
+        <cfreturn { "exists": true, "size": len(object.body), "contentType": "application/octet-stream", "etag": object.etag, "metadata": duplicate(object.metadata) } />
     </cffunction>
     <cffunction name="body" access="public" returntype="string" output="false">
         <cfargument name="key" type="string" required="true" />
@@ -50,6 +52,9 @@
             <cfthrow type="s3.request.failed" message="stub store: copying #arguments.sourceKey# to #arguments.targetKey# failed" />
         </cfif>
         <cfset put(arguments.targetKey, body(arguments.sourceKey), arguments.metadata) />
+        <cfif len(this.longEtagFor) AND this.longEtagFor EQ arguments.targetKey>
+            <cfreturn repeatString("e", 300) />
+        </cfif>
         <cfreturn variables.objects[slot(arguments.targetKey)].etag />
     </cffunction>
     <cffunction name="deleteObject" access="public" returntype="void" output="false">

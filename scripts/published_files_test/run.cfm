@@ -233,6 +233,43 @@
     }
     check("publishing by hand from a published copy is refused", aliasRefused AND NOT live("/brochures/alias.pdf"));
 
+    // 15. A statement that fails for one address (here: the store's etag too long to record) is rolled back to that
+    //     address's savepoint: the record's other addresses still commit.
+    echo = newProduct("echo", true);
+    attach(echo, "datasheet", [newFile("e.pdf", "echo sheet")]);
+    attach(echo, "images", [newFile("one.jpg", "one"), newFile("two.jpg", "two")]);
+    store.longEtagFor = "public/www/images/echo/one.jpg";
+    r = files.syncRecord("product", echo);
+    store.longEtagFor = "";
+    check("a statement failing for one address fails only that address", r.failed EQ 1 AND r.published EQ 2, summary(r));
+    check("...the others are recorded", len(rowPath("/datasheets/echo.pdf")) AND len(rowPath("/images/echo/two.jpg")));
+    check("...the failed one is left claimed and unlinked, for the next sync", rowPath("/images/echo/one.jpg") EQ "");
+    r = files.syncRecord("product", echo);
+    check("...which finishes it", r.published EQ 1 AND len(rowPath("/images/echo/one.jpg")), summary(r));
+
+    // 16. While another operation holds the publishing lock, a save's sync waits a little, then defers, holding no
+    //     connection while it waits.
+    request.lockHeldUntil = 0;
+    thread name="holder" action="run" {
+        transaction {
+            queryExecute("SELECT pg_advisory_xact_lock(hashtext('moopa_published_files'))");
+            sleep(3000);
+        }
+    }
+    sleep(500);
+    started = getTickCount();
+    r = files.syncRecord("product", echo, 1);
+    waited = getTickCount() - started;
+    thread action="join" name="holder";
+    check("a busy lock defers the sync after waitSeconds", r.deferred EQ 1 AND waited LT 2500, "deferred #r.deferred#, waited #waited# ms");
+    r = files.syncRecord("product", echo);
+    check("...and the next sync goes ahead", r.deferred EQ 0 AND r.kept EQ 3, summary(r));
+
+    // 17. A repair whose copy an earlier sweep already put right does nothing.
+    echoKey = "public/www/datasheets/echo.pdf";
+    echoPath = queryExecute("SELECT path FROM moo_published_file WHERE object_key = :k", { k: echoKey }).path;
+    check("a repair of a copy that is already right does nothing", NOT files.callRepair(echoKey, echoPath, "product", echo));
+
     // 14. A file no address can be made for is counted.
     nameless = newProduct("delta", true);
     attach(nameless, "images", [newFile("!!!.jpg", "no name")]);

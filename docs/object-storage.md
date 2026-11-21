@@ -40,7 +40,7 @@ Every call takes a store: `defaultStore()`, or one built with `configure(label, 
 | `downloadObject(store, objectKey, filePath)` | streams the object to a file, for anything large |
 | `writeObject(store, objectKey, value, contentType)` | writes text or bytes |
 | `objectExists(store, objectKey)` | asks the store (HEAD): true, false, or throws |
-| `headObject(store, objectKey)` | what the store holds (HEAD): `{ exists, size, contentType, metadata }` (user metadata by name) |
+| `headObject(store, objectKey)` | what the store holds (HEAD): `{ exists, size, contentType, etag, metadata }` (etag without quotes, user metadata by name) |
 | `readObjectStart(store, objectKey, bytes)` | the first `bytes` bytes (a ranged GET), to read a file's signature |
 | `copyObject(store, sourceKey, targetKey, metadata)` | copies it to another key inside the store (one CopyObject, up to 5 GB), keeping its Content-Type, with `metadata` (optional) in place of the source's; returns the copy's ETag |
 | `deleteObject(store, objectKey)` | deletes it |
@@ -178,15 +178,25 @@ A `many_to_many` field of `moo_file` can declare that its files are published, i
 
 This is `application.lib.published_files.syncRecord(table_name, id)`. A project calls it itself after changing a record, its files or a `moo_file` by SQL rather than `db.save`.
 
-**One at a time, and never inside a transaction.** Every publishing operation (a record's sync, a repair, a stray's removal) runs in a short transaction of its own, holding one Postgres advisory lock. So only one runs at a time, across every instance of the app, and what it reads stays true until it is done. A wait for the lock of over a minute fails and is logged.
+**One at a time, and never inside a transaction.** Every publishing operation (a record's sync, a repair, a stray's removal) runs in a short transaction of its own, read committed, holding one Postgres advisory lock. So only one runs at a time, across every instance of the app, and what it reads is what the last one committed.
+- **Waiting holds nothing.** An operation that finds the lock taken tries again a few times a second, outside any transaction, so waiters hold no database connection.
+- **A save doesn't wait long.** A save's sync gives up after 5 seconds (`syncRecord`'s `waitSeconds`) and returns `deferred: 1`.
+- **`syncAll()` waits longer.** It waits up to a minute for each step, and stops its run (`deferred: 1`) if the lock stays taken that long.
+- **The lock is held during store calls** (each up to two minutes when the store is slow). If an app instance loses its database connection part way, the lock goes with it while its store call may still finish. What that leaves is a copy out of step with its row, which `syncAll()` repairs.
+- **Failures are logged after the lock is released.**
 
-Inside a caller's `cftransaction`, nothing is published, since the transaction could still roll back. `syncRecord` returns `deferred: 1`, and the record is published by its next save outside a transaction, by `syncRecord` after the commit, or by `syncAll()`. Save a record whose files must not be public, even briefly, outside a transaction, or call `syncRecord` only after the commit.
+Inside a caller's `cftransaction`, nothing is published or unpublished, since the transaction could still roll back. `syncRecord` returns `deferred: 1`, and the record follows by its next save outside a transaction, by `syncRecord` after the commit, or by `syncAll()`. Save a record whose files must not be public, even briefly, outside a transaction, or call `syncRecord` only after the commit.
+
+**One moment's state.** Outside a caller's transaction, `db.save` writes a publishing table's record and its files in one transaction. A sync reads the record and all its publishing files in one statement, so it never pairs one save's `when` with another's files.
 
 **Each address goes through its row in `moo_published_file`, whose `path` is its state:**
 - **Publishing:** claim the row, with an empty path, then copy, then set the path and the copy's `etag`.
 - **Unpublishing:** empty the path (pages stop linking it), delete the copy, then the row.
 
-A failure part way leaves at most the store ahead of the rows: a row with an empty path (finished by the next sync), a copy without a row (removed by the sweep), or a row without its copy (repaired by the sweep).
+Each address has its own savepoint, moved on past its claim or its unlink. So a failure part way, in the store or in a statement, undoes only what came after; the record's other addresses go on. What it leaves is at most:
+- a row with an empty path, which the next sync finishes;
+- a copy without a row, which the sweep removes;
+- a row without its copy, which the sweep repairs.
 
 **Failures.** A failure is logged (`core.logError`, or the engine's log if even that fails) and counted, never thrown at the save or delete. `syncRecord` returns `{ published, unpublished, kept, taken, skipped, failed, deferred }`: `skipped` counts files no address could be made for (a value that comes out empty).
 
@@ -199,7 +209,7 @@ A failure part way leaves at most the store ahead of the rows: a row with an emp
    - a copy that is missing, or isn't the one recorded (its `etag`), is published again;
    - a marked copy that no row accounts for is deleted.
 
-   Each repair and each removal is decided again under the lock, so a record that published or unpublished the address since the sweep listed it is left as it now is.
+   Each repair and each removal is decided again under the lock. A record that published or unpublished the address since the sweep listed it is left as it now is, and a copy already put right is left alone.
 
 It returns the totals plus `repaired` and `removed`. Inside a transaction it does nothing (`deferred: 1`).
 
