@@ -98,20 +98,20 @@
           =============================================================================================================== --->
 
     <cffunction name="syncRecord" access="public" returntype="struct" output="false"
-        hint="Puts one record's published files in step with it: publishes what its publishing fields should have published (new or replaced files) and unpublishes what they no longer should (a removed file, a changed address, publish.when false, the record deleted), copying only what changed. Returns { published, unpublished, kept, taken, skipped, failed, deferred }: taken counts addresses another record holds, skipped files no address could be made for, failed the addresses that failed (each logged, left for the next sync). deferred is 1 when nothing was done: inside a caller's transaction (it could roll back), or when other publishing work kept the lock for longer than waitSeconds (logged). The next save, or syncAll, does it: publishing and unpublishing are eventual. Never throws. Does nothing while moo_published_file isn't in the database yet. db.save and db.delete call it.">
+        hint="Puts one record's published files in step with it: publishes what its publishing fields should have published (new or replaced files) and unpublishes what they no longer should (a removed file, a changed address, publish.when false, the record deleted), copying only what changed. Returns { published, unpublished, kept, taken, skipped, failed, deferred }: taken counts addresses another record holds, skipped files no address could be made for, failed the addresses that failed (each logged, left for the next sync). deferred is 1 when nothing was done: inside a caller's transaction (it could roll back), or when other publishing work kept the lock for longer than waitSeconds (logged). The next save, or syncAll, does it: publishing and unpublishing are eventual. Throws only published_files.invalid, for a waitSeconds it can't use; anything else is logged, never thrown. Does nothing while moo_published_file isn't in the database yet. db.save and db.delete call it.">
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="true" />
         <cfargument name="waitSeconds" type="any" required="false" default="" hint="Whole seconds to wait for other publishing work to finish, 0 to 3600; anything else throws published_files.invalid. Left out: 5, unless an earlier sync in this request has just been deferred (then 0, until one gets the lock)." />
         <cfargument name="outsideTransaction" type="boolean" required="false" default="false" hint="The caller has just checked it isn't in a transaction (db.save): not checked again." />
         <cfset var outcome = { "result": emptyResult(), "failures": [] } />
-        <cfset var byDefault = NOT len(trim(arguments.waitSeconds)) />
+        <cfset var byDefault = isSimpleValue(arguments.waitSeconds) AND NOT len(trim(arguments.waitSeconds)) />
         <cfset var wait = 5 />
         <cfif byDefault>
             <cfset wait = (request.moopaPublishingBusy ?: false) ? 0 : 5 />
-        <cfelseif isValid("integer", arguments.waitSeconds) AND arguments.waitSeconds GTE 0 AND arguments.waitSeconds LTE 3600 AND NOT find(".", arguments.waitSeconds)>
+        <cfelseif isSimpleValue(arguments.waitSeconds) AND isValid("integer", arguments.waitSeconds) AND arguments.waitSeconds GTE 0 AND arguments.waitSeconds LTE 3600 AND NOT find(".", arguments.waitSeconds)>
             <cfset wait = int(arguments.waitSeconds) />
         <cfelse>
-            <cfthrow type="published_files.invalid" message="published_files: waitSeconds is whole seconds, 0 to 3600, not '#arguments.waitSeconds#'" />
+            <cfthrow type="published_files.invalid" message="published_files: waitSeconds is whole seconds, 0 to 3600" />
         </cfif>
         <cftry>
             <cfif len(canonicalId(arguments.id)) AND trackingTableExists()>

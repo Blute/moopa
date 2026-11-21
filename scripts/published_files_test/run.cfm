@@ -279,16 +279,16 @@
     r = files.syncRecord("product", echo);
 
     // 16b. waitSeconds is whole seconds, 0 to 3600.
-    for (bad in [0.1, -1, 3601, "soon"]) {
+    for (bad in [0.1, -1, 3601, "soon", [5], { "s": 5 }]) {
         try {
             files.syncRecord("product", echo, bad);
             badRefused = false;
         } catch (any e) {
             badRefused = e.type EQ "published_files.invalid";
         }
-        check("waitSeconds #bad# is refused", badRefused);
+        check("waitSeconds #isSimpleValue(bad) ? bad : (isArray(bad) ? "(an array)" : "(a struct)")# is refused", badRefused);
     }
-    // The lock_timeout the connection had is back after the lock is taken (here the default, 0).
+    // The lock_timeout the connection had is back after the lock is taken (here 250ms, set for this transaction).
     transaction {
         queryExecute("SET LOCAL lock_timeout = '250ms'");
         files.callTakeLock(2000);
