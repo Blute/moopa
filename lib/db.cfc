@@ -348,8 +348,8 @@ Delete - delete
             ) />
         </cfif>
 
-        <!--- A record whose fields publish files: the record and its files are written in one transaction (unless the caller
-              has one), so publishing never reads one without the other; then its files follow it. --->
+        <!--- A record whose fields publish files. Inside a caller's transaction it is saved as any other record, and its files
+              wait (it could roll back): the next save outside one, syncRecord after the commit, or syncAll publishes them. --->
         <cfif application.lib.published_files.inTransaction()>
             <cfset saved = variables.recordWriter.save(
                 stModel = stModel,
@@ -357,16 +357,26 @@ Delete - delete
                 returnFormat = "cfml",
                 index_record = arguments.index_record
             ) />
-        <cfelse>
-            <cftransaction>
-                <cfset saved = variables.recordWriter.save(
-                    stModel = stModel,
-                    data = arguments.data,
-                    returnFormat = "cfml",
-                    index_record = arguments.index_record
-                ) />
-            </cftransaction>
+            <cfreturn variables.returnFormatter.formatCFML(saved, arguments.returnFormat) />
         </cfif>
+
+        <!--- Otherwise the record and its files are written in one transaction, so publishing never reads one without the
+              other; then its files follow it. The writer works on a copy: a new record's key reaches the caller's data only
+              once the transaction has committed, so a save that rolled back can be retried as the insert it was. --->
+        <cfset local.working = structCopy(arguments.data) />
+        <cftransaction>
+            <cfset saved = variables.recordWriter.save(
+                stModel = stModel,
+                data = local.working,
+                returnFormat = "cfml",
+                index_record = arguments.index_record
+            ) />
+        </cftransaction>
+        <cfloop array="#stModel.primary_keys ?: []#" item="local.keyName">
+            <cfif structKeyExists(local.working, local.keyName)>
+                <cfset arguments.data[local.keyName] = local.working[local.keyName] />
+            </cfif>
+        </cfloop>
         <cfset publishRecord(arguments.table_name, saved.id ?: "") />
         <cfreturn variables.returnFormatter.formatCFML(saved, arguments.returnFormat) />
 

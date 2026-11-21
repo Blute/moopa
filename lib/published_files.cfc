@@ -98,21 +98,24 @@
           =============================================================================================================== --->
 
     <cffunction name="syncRecord" access="public" returntype="struct" output="false"
-        hint="Puts one record's published files in step with it: publishes what its publishing fields should have published (new or replaced files) and unpublishes what they no longer should (a removed file, a changed address, publish.when false, the record deleted), copying only what changed. Returns { published, unpublished, kept, taken, skipped, failed, deferred }: taken counts addresses another record holds, skipped files no address could be made for, failed the addresses that failed (each logged, left for the next sync). deferred is 1 when nothing was done: inside a caller's transaction (it could roll back), or when another publishing operation held the lock for longer than waitSeconds; the next save, or syncAll, does it. Never throws for a publishing failure. Does nothing while moo_published_file isn't in the database yet. db.save and db.delete call it.">
+        hint="Puts one record's published files in step with it: publishes what its publishing fields should have published (new or replaced files) and unpublishes what they no longer should (a removed file, a changed address, publish.when false, the record deleted), copying only what changed. Returns { published, unpublished, kept, taken, skipped, failed, deferred }: taken counts addresses another record holds, skipped files no address could be made for, failed the addresses that failed (each logged, left for the next sync). deferred is 1 when nothing was done: inside a caller's transaction (it could roll back), or when other publishing work kept the lock for longer than waitSeconds (logged; after that, the rest of the request doesn't wait). The next save, or syncAll, does it: publishing and unpublishing are eventual. Never throws. Does nothing while moo_published_file isn't in the database yet. db.save and db.delete call it.">
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="true" />
-        <cfargument name="waitSeconds" type="numeric" required="false" default="5" hint="How long to wait for another publishing operation to finish." />
-        <cfset var result = emptyResult() />
-        <cfset var outcome = {} />
-        <cfif NOT len(canonicalId(arguments.id)) OR NOT trackingTableExists()>
-            <cfreturn result />
-        </cfif>
-        <cfif inTransaction()>
-            <cfset result.deferred = 1 />
-            <cfreturn result />
-        </cfif>
+        <cfargument name="waitSeconds" type="numeric" required="false" default="5" hint="How long to wait for other publishing work to finish." />
+        <cfset var outcome = { "result": emptyResult(), "failures": [] } />
+        <cfset var wait = (request.moopaPublishingBusy ?: false) ? 0 : arguments.waitSeconds />
         <cftry>
-            <cfset outcome = syncLocked(lCase(arguments.table_name), canonicalId(arguments.id), arguments.waitSeconds) />
+            <cfif len(canonicalId(arguments.id)) AND trackingTableExists()>
+                <cfif inTransaction()>
+                    <cfset outcome.result.deferred = 1 />
+                <cfelse>
+                    <cfset outcome = syncLocked(lCase(arguments.table_name), canonicalId(arguments.id), wait, true) />
+                    <cfif outcome.result.deferred>
+                        <cfset request.moopaPublishingBusy = true />
+                        <cflog file="moopa" type="warning" text="published_files: other publishing work held the lock; #arguments.table_name# #arguments.id# deferred to the next sync" />
+                    </cfif>
+                </cfif>
+            </cfif>
             <cfcatch>
                 <cfset outcome = { "result": emptyResult(), "failures": [ { "error": cfcatch, "where": "published_files.syncRecord #arguments.table_name# #arguments.id#" } ] } />
                 <cfset outcome.result.failed = 1 />
@@ -122,29 +125,59 @@
         <cfreturn outcome.result />
     </cffunction>
 
-    <!--- One record's sync under the publishing lock: { result, failures }. The failures are logged by the caller, after the
-          lock is released. A lock still held by another operation after waitSeconds leaves result.deferred = 1. --->
+    <!--- One record's sync under the publishing lock: { result, failures }; the failures are logged by the caller, after the
+          lock is released. A save's sync (queued) first queues behind this instance's other saves on a named lock, holding
+          no connection, then waits in Postgres's own queue for the publishing lock, in turn with every other instance and
+          with syncAll, for what is left of waitSeconds; syncAll waits in that queue directly. Still busy then: deferred. --->
     <cffunction name="syncLocked" access="private" returntype="struct" output="false">
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="true" />
         <cfargument name="waitSeconds" type="numeric" required="true" />
+        <cfargument name="queued" type="boolean" required="true" />
         <cfset var outcome = { "result": emptyResult(), "failures": [] } />
-        <cfset var deadline = getTickCount() + arguments.waitSeconds * 1000 />
-        <cfset var done = false />
-        <cfloop condition="true">
+        <cfset var started = getTickCount() />
+        <cfset var entered = false />
+        <cfif NOT arguments.queued>
+            <cfreturn lockedReconcile(arguments.table_name, arguments.id, arguments.waitSeconds * 1000) />
+        </cfif>
+        <cfif arguments.waitSeconds LTE 0>
+            <!--- No waiting: the lock now, or deferred. --->
+            <cfreturn lockedReconcile(arguments.table_name, arguments.id, 0) />
+        </cfif>
+        <cflock name="moopa_published_files_queue" type="exclusive" timeout="#max(1, ceiling(arguments.waitSeconds))#" throwontimeout="false">
+            <cfset entered = true />
+            <cfset outcome = lockedReconcile(arguments.table_name, arguments.id, max(1, arguments.waitSeconds * 1000 - (getTickCount() - started))) />
+        </cflock>
+        <cfif NOT entered>
+            <cfset outcome.result.deferred = 1 />
+        </cfif>
+        <cfreturn outcome />
+    </cffunction>
+
+    <!--- reconcileRecord in a transaction of its own holding the publishing lock, waiting for it at most waitMs (0: only if
+          it is free now). { result, failures }, result.deferred = 1 when the lock didn't come. --->
+    <cffunction name="lockedReconcile" access="private" returntype="struct" output="false">
+        <cfargument name="table_name" type="string" required="true" />
+        <cfargument name="id" type="string" required="true" />
+        <cfargument name="waitMs" type="numeric" required="true" />
+        <cfset var outcome = { "result": emptyResult(), "failures": [] } />
+        <cfset var got = false />
+        <cftry>
             <cftransaction>
-                <cfif tryLock()>
+                <cfset got = takeLock(arguments.waitMs) />
+                <cfif got>
                     <cfset outcome = reconcileRecord(arguments.table_name, arguments.id) />
-                    <cfset done = true />
                 </cfif>
             </cftransaction>
-            <cfif done OR getTickCount() GTE deadline>
-                <cfbreak />
-            </cfif>
-            <!--- Waiting outside any transaction: a waiter holds no connection. --->
-            <cfset sleep(250) />
-        </cfloop>
-        <cfif NOT done>
+            <cfcatch>
+                <cfif NOT isLockTimeout(cfcatch)>
+                    <cfrethrow />
+                </cfif>
+                <cfset got = false />
+            </cfcatch>
+        </cftry>
+        <cfif NOT got>
+            <cfset outcome = { "result": emptyResult(), "failures": [] } />
             <cfset outcome.result.deferred = 1 />
         </cfif>
         <cfreturn outcome />
@@ -167,6 +200,7 @@
             <cfset totals.deferred = 1 />
             <cfreturn totals />
         </cfif>
+        <cfset totals.byRecord = {} />
 
         <!--- 1. Left behind: rows of a table that no longer publishes, of a field that no longer does, or of a record that
                  is gone. First, so a record waiting for one of their addresses gets it in this run. Table by table, so
@@ -177,7 +211,7 @@
                 WHERE table_name NOT IN (<cfqueryparam cfsqltype="varchar" list="true" value="#listAppend(structKeyList(publishing), '-none-')#" />)
             </cfquery>
             <cfloop query="q">
-                <cfif NOT runRecord(totals, q.table_name, q.record_id, synced)><cfreturn totals /></cfif>
+                <cfif NOT runRecord(totals, q.table_name, q.record_id, synced)><cfreturn finishTotals(totals) /></cfif>
             </cfloop>
             <cfcatch>
                 <cfset totals.failed++ />
@@ -196,7 +230,7 @@
                     )
                 </cfquery>
                 <cfloop query="q">
-                    <cfif NOT runRecord(totals, tableName, q.record_id, synced)><cfreturn totals /></cfif>
+                    <cfif NOT runRecord(totals, tableName, q.record_id, synced)><cfreturn finishTotals(totals) /></cfif>
                 </cfloop>
                 <cfcatch>
                     <cfset totals.failed++ />
@@ -228,7 +262,7 @@
                     ORDER BY id
                 </cfquery>
                 <cfloop query="q">
-                    <cfif NOT runRecord(totals, tableName, q.id, synced)><cfreturn totals /></cfif>
+                    <cfif NOT runRecord(totals, tableName, q.id, synced)><cfreturn finishTotals(totals) /></cfif>
                 </cfloop>
                 <cfcatch>
                     <cfset totals.failed++ />
@@ -239,7 +273,7 @@
 
         <!--- 3. The store against the rows, under each publishing field's literal prefix. --->
         <cfset sweep(publishing, totals) />
-        <cfreturn totals />
+        <cfreturn finishTotals(totals) />
     </cffunction>
 
     <!--- One record of syncAll: synced at most once per run once it has nothing taken or failed (a record that found its
@@ -257,7 +291,7 @@
             <cfreturn true />
         </cfif>
         <cftry>
-            <cfset outcome = syncLocked(lCase(arguments.table_name), id, 60) />
+            <cfset outcome = syncLocked(lCase(arguments.table_name), id, 60, false) />
             <cfcatch>
                 <cfset outcome = { "result": emptyResult(), "failures": [ { "error": cfcatch, "where": "published_files.syncAll #arguments.table_name# #id#" } ] } />
                 <cfset outcome.result.failed = 1 />
@@ -268,16 +302,18 @@
             <cfset arguments.totals.deferred = 1 />
             <cfreturn false />
         </cfif>
-        <cfset addTotals(arguments.totals, outcome.result) />
+        <!--- A record's last run is what counts: one run again in step 2 replaces its step-1 result. --->
+        <cfset arguments.totals.byRecord[mark] = outcome.result />
         <cfif NOT outcome.result.taken AND NOT outcome.result.failed>
             <cfset arguments.synced[mark] = true />
         </cfif>
         <cfreturn true />
     </cffunction>
 
-    <!--- One record's addresses, under the publishing lock: { result, failures }. Each address in a savepoint of its own,
-          moved on past its claim or its unlink, so a failure (in the store, or a statement that would otherwise abort the
-          whole transaction) undoes only what came after and is counted; the other addresses go on. --->
+    <!--- One record's addresses, under the publishing lock: { result, failures }. Each address in a savepoint of its own;
+          once its claim or its unlink is made, a second savepoint after it (checkpoint), so a failure (in the store, or a
+          statement that would otherwise abort the whole transaction) undoes only what came after it. The address is then
+          counted as failed, and the other addresses go on. --->
     <cffunction name="reconcileRecord" access="private" returntype="struct" output="false">
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="true" />
@@ -288,6 +324,7 @@
         <cfset var q = "" />
         <cfset var slot = "" />
         <cfset var entry = {} />
+        <cfset var done = "" />
 
         <cfquery name="q">
             SELECT object_key, site, address, path, field, moo_file_id::text AS moo_file_id FROM moo_published_file
@@ -303,15 +340,15 @@
             <cfif structKeyExists(wanted, slot)>
                 <cfcontinue />
             </cfif>
-            <cfquery>SAVEPOINT moopa_published_address</cfquery>
+            <cfset beginAddress() />
             <cftry>
-                <cfif retire(mine[slot].key, arguments.table_name, arguments.id)>
-                    <cfset outcome.result.unpublished++ />
-                </cfif>
+                <cfset done = retire(mine[slot].key, arguments.table_name, arguments.id) ? "unpublished" : "" />
                 <cfquery>RELEASE SAVEPOINT moopa_published_address</cfquery>
+                <cfif len(done)>
+                    <cfset outcome.result[done]++ />
+                </cfif>
                 <cfcatch>
-                    <cfquery>ROLLBACK TO SAVEPOINT moopa_published_address</cfquery>
-                    <cfquery>RELEASE SAVEPOINT moopa_published_address</cfquery>
+                    <cfset abandonAddress() />
                     <cfset outcome.result.failed++ />
                     <cfset arrayAppend(outcome.failures, { "error": cfcatch, "where": "published_files unpublish #mine[slot].key#" }) />
                 </cfcatch>
@@ -320,7 +357,7 @@
 
         <cfloop collection="#wanted#" item="slot">
             <cfset entry = wanted[slot] />
-            <cfquery>SAVEPOINT moopa_published_address</cfquery>
+            <cfset beginAddress() />
             <cftry>
                 <cfif structKeyExists(mine, slot) AND len(mine[slot].path) AND compare(mine[slot].path, entry.path) EQ 0>
                     <!--- The same copy: only which file and field it is for may have changed. --->
@@ -331,16 +368,14 @@
                             WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#entry.key#" /> AND table_name = <cfqueryparam cfsqltype="varchar" value="#arguments.table_name#" /> AND record_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
                         </cfquery>
                     </cfif>
-                    <cfset outcome.result.kept++ />
-                <cfelseif placeCopy(entry, arguments.table_name, arguments.id)>
-                    <cfset outcome.result.published++ />
+                    <cfset done = "kept" />
                 <cfelse>
-                    <cfset outcome.result.taken++ />
+                    <cfset done = placeCopy(entry, arguments.table_name, arguments.id) ? "published" : "taken" />
                 </cfif>
                 <cfquery>RELEASE SAVEPOINT moopa_published_address</cfquery>
+                <cfset outcome.result[done]++ />
                 <cfcatch>
-                    <cfquery>ROLLBACK TO SAVEPOINT moopa_published_address</cfquery>
-                    <cfquery>RELEASE SAVEPOINT moopa_published_address</cfquery>
+                    <cfset abandonAddress() />
                     <cfset outcome.result.failed++ />
                     <cfset arrayAppend(outcome.failures, { "error": cfcatch, "where": "published_files publish #entry.key#" }) />
                 </cfcatch>
@@ -350,11 +385,28 @@
         <cfreturn outcome />
     </cffunction>
 
-    <!--- Keeps what this address's savepoint has done so far (its claim, or its unlink) even if what follows fails: that
-          is what the next sync finishes from. --->
-    <cffunction name="checkpoint" access="private" returntype="void" output="false">
-        <cfquery>RELEASE SAVEPOINT moopa_published_address</cfquery>
+    <!--- An address's savepoint. Which of its two savepoints is the latest is kept per request (request scope: this
+          component is shared). --->
+    <cffunction name="beginAddress" access="private" returntype="void" output="false">
+        <cfset request.moopaPublishedCheckpoint = false />
         <cfquery>SAVEPOINT moopa_published_address</cfquery>
+    </cffunction>
+
+    <!--- Keeps what this address has done so far (its claim, or its unlink) even if what follows fails: that is what the
+          next sync finishes from. A savepoint inside the address's own. --->
+    <cffunction name="checkpoint" access="private" returntype="void" output="false">
+        <cfquery>SAVEPOINT moopa_published_after</cfquery>
+        <cfset request.moopaPublishedCheckpoint = true />
+    </cffunction>
+
+    <!--- After a failure: back to the latest savepoint, then both released (releasing the outer one releases the inner). --->
+    <cffunction name="abandonAddress" access="private" returntype="void" output="false">
+        <cfif request.moopaPublishedCheckpoint ?: false>
+            <cfquery>ROLLBACK TO SAVEPOINT moopa_published_after</cfquery>
+        <cfelse>
+            <cfquery>ROLLBACK TO SAVEPOINT moopa_published_address</cfquery>
+        </cfif>
+        <cfquery>RELEASE SAVEPOINT moopa_published_address</cfquery>
     </cffunction>
 
     <!--- Publishes one address for a record, under the publishing lock. The row is the record's before anything is copied:
@@ -528,16 +580,15 @@
         </cfloop>
     </cffunction>
 
-    <!--- A sweep step under the publishing lock: "yes" (done), "no" (nothing to do, now), "busy" (the lock stayed taken for a
-          minute). --->
+    <!--- A sweep step under the publishing lock, waiting in Postgres's queue for up to a minute: "yes" (done), "no" (nothing
+          to do, now), "busy" (the lock didn't come). --->
     <cffunction name="underLock" access="private" returntype="string" output="false">
         <cfargument name="step" type="string" required="true" />
         <cfargument name="args" type="struct" required="true" />
         <cfset var answer = "busy" />
-        <cfset var deadline = getTickCount() + 60000 />
-        <cfloop condition="true">
+        <cftry>
             <cftransaction>
-                <cfif tryLock()>
+                <cfif takeLock(60000)>
                     <cfif arguments.step EQ "repair">
                         <cfset answer = repairCopy(arguments.args.key, arguments.args.path, arguments.args.table_name, arguments.args.id) ? "yes" : "no" />
                     <cfelse>
@@ -545,11 +596,13 @@
                     </cfif>
                 </cfif>
             </cftransaction>
-            <cfif answer NEQ "busy" OR getTickCount() GTE deadline>
-                <cfbreak />
-            </cfif>
-            <cfset sleep(250) />
-        </cfloop>
+            <cfcatch>
+                <cfif NOT isLockTimeout(cfcatch)>
+                    <cfrethrow />
+                </cfif>
+                <cfset answer = "busy" />
+            </cfcatch>
+        </cftry>
         <cfreturn answer />
     </cffunction>
 
@@ -641,19 +694,24 @@
                 </cfif>
             </cfloop>
         </cfloop>
-        <!--- Only the columns the addresses and conditions use, and each field's files, in its order. Names come from the
-              table definitions, checked at start. --->
+        <!--- Only the columns the addresses and conditions use, and each field's files, in its order, as one row per field
+              gathered into one object (json_object_agg: no limit on how many fields). row_to_json(published_record.*) is the
+              row even when the table has a column of the alias's name. Names come from the table definitions, checked at
+              start. --->
         <cfquery name="q">
             SELECT json_build_object(
-                'record', (SELECT row_to_json(record) FROM (SELECT id<cfloop array="#columns#" item="column">, #column#</cfloop> FROM #arguments.table_name# WHERE id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />) AS record)
-                <cfloop array="#fieldNames#" item="fieldName">
-                , 'files_#fieldName#', COALESCE((
-                    SELECT json_agg(json_build_object('file_id', moo_file.id::text, 'name', moo_file.name, 'path', moo_file.path) ORDER BY bridge.sequence, moo_file.id)
-                    FROM #fields[fieldName].bridge# AS bridge
-                    JOIN moo_file ON moo_file.id = bridge.foreign_id
-                    WHERE bridge.primary_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
-                ), '[]'::json)
-                </cfloop>
+                'record', (SELECT row_to_json(published_record.*) FROM (SELECT id<cfloop array="#columns#" item="column">, #column#</cfloop> FROM #arguments.table_name# WHERE id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />) AS published_record),
+                'files', (SELECT json_object_agg(per_field.field_name, per_field.files) FROM (
+                    <cfloop from="1" to="#arrayLen(fieldNames)#" index="local.i">
+                        <cfif local.i GT 1>UNION ALL</cfif>
+                        SELECT '#fieldNames[local.i]#' AS field_name, COALESCE((
+                            SELECT json_agg(json_build_object('file_id', moo_file.id::text, 'name', moo_file.name, 'path', moo_file.path) ORDER BY bridge.sequence, moo_file.id)
+                            FROM #fields[fieldNames[local.i]].bridge# AS bridge
+                            JOIN moo_file ON moo_file.id = bridge.foreign_id
+                            WHERE bridge.primary_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
+                        ), '[]'::json) AS files
+                    </cfloop>
+                ) AS per_field)
             )::text AS data
         </cfquery>
         <cfset state = deserializeJSON(q.data) />
@@ -667,7 +725,7 @@
             <cfif len(setting.when) AND NOT (isBoolean(record[setting.when] ?: "") AND record[setting.when])>
                 <cfcontinue />
             </cfif>
-            <cfloop array="#state['files_' & fieldName]#" item="file">
+            <cfloop array="#state.files[fieldName] ?: []#" item="file">
                 <cfset address = len(file.path ?: "") ? addressFor(setting.address, record, file.name ?: "") : "" />
                 <cfif NOT len(address)>
                     <cfset arguments.result.skipped++ />
@@ -763,13 +821,37 @@
         <cfreturn first.recordCount AND second.recordCount AND compare(first.id, second.id) EQ 0 />
     </cffunction>
 
-    <!--- The publishing lock for the rest of the current transaction, if it is free now; read committed, so what is read
-          after it is what the last holder committed. --->
-    <cffunction name="tryLock" access="private" returntype="boolean" output="false">
+    <!--- The publishing lock, for the rest of the current transaction, read committed (so what is read after it is what the
+          last holder committed). waitMs 0: only if it is free now. Otherwise waits in Postgres's queue for it, at most
+          waitMs: past that the statement fails with a lock timeout (isLockTimeout), which rolls the transaction back. --->
+    <cffunction name="takeLock" access="private" returntype="boolean" output="false">
+        <cfargument name="waitMs" type="numeric" required="true" />
         <cfset var got = "" />
         <cfquery>SET TRANSACTION ISOLATION LEVEL READ COMMITTED</cfquery>
-        <cfquery name="got">SELECT pg_try_advisory_xact_lock(hashtext(<cfqueryparam cfsqltype="varchar" value="#variables.LOCK_NAME#" />)) AS got</cfquery>
-        <cfreturn got.got EQ true />
+        <cfif arguments.waitMs LTE 0>
+            <cfquery name="got">SELECT pg_try_advisory_xact_lock(hashtext(<cfqueryparam cfsqltype="varchar" value="#variables.LOCK_NAME#" />)) AS got</cfquery>
+            <cfreturn got.got EQ true />
+        </cfif>
+        <cfquery>SET LOCAL lock_timeout = '#int(arguments.waitMs)#ms'</cfquery>
+        <cfquery>SELECT pg_advisory_xact_lock(hashtext(<cfqueryparam cfsqltype="varchar" value="#variables.LOCK_NAME#" />))</cfquery>
+        <cfreturn true />
+    </cffunction>
+
+    <cffunction name="isLockTimeout" access="private" returntype="boolean" output="false">
+        <cfargument name="error" type="any" required="true" />
+        <cfreturn findNoCase("lock timeout", (arguments.error.message ?: "") & " " & (arguments.error.detail ?: "")) GT 0
+            OR (arguments.error.sqlState ?: "") EQ "55P03" />
+    </cffunction>
+
+    <!--- syncAll's totals: each record's last result added up, with the sweep's own counts. --->
+    <cffunction name="finishTotals" access="private" returntype="struct" output="false">
+        <cfargument name="totals" type="struct" required="true" />
+        <cfset var result = duplicate(arguments.totals) />
+        <cfset structDelete(result, "byRecord") />
+        <cfloop collection="#arguments.totals.byRecord ?: {}#" item="local.mark">
+            <cfset addTotals(result, arguments.totals.byRecord[local.mark]) />
+        </cfloop>
+        <cfreturn result />
     </cffunction>
 
     <cffunction name="addTotals" access="private" returntype="void" output="false">

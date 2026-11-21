@@ -249,7 +249,6 @@
 
     // 16. While another operation holds the publishing lock, a save's sync waits a little, then defers, holding no
     //     connection while it waits.
-    request.lockHeldUntil = 0;
     thread name="holder" action="run" {
         transaction {
             queryExecute("SELECT pg_advisory_xact_lock(hashtext('moopa_published_files'))");
