@@ -109,11 +109,13 @@
     }
     check("two fields at the same addresses on one site fail", twiceMessage EQ "moopa.publish.invalid");
 
-    // 4. What syncAll needs from a setting: the columns to read, and the literal folder it sweeps.
+    // 4. What syncAll needs from a setting: the columns to read, and the literal prefix it sweeps.
     check("columns: the placeholders and when", arrayToList(built.product.datasheet.columns) EQ "slug,is_published" AND arrayToList(built.product.images.columns) EQ "slug");
-    check("folder: the literal folder before the first placeholder", built.product.datasheet.folder EQ "/datasheets/" AND built.product.images.folder EQ "/images/");
-    rootLevel = config.build(product({ "site": "www", "address": "/{slug}.pdf" }));
-    check("folder: / when the template has none (never swept)", rootLevel.product.datasheet.folder EQ "/");
+    check("prefix: the literal start, before the first placeholder", built.product.datasheet.prefix EQ "/datasheets/" AND built.product.images.prefix EQ "/images/");
+    check("prefix: a fixed address is its own", config.build(product({ "site": "www", "address": "/docs/terms.pdf" })).product.datasheet.prefix EQ "/docs/terms.pdf");
+    check("prefix: part of a name", config.build(product({ "site": "www", "address": "/docs/product-{slug}.pdf" })).product.datasheet.prefix EQ "/docs/product-");
+    check("a template without a literal folder fails (it could never be swept)", len(invalid({ "site": "www", "address": "/{slug}.pdf" })) AND len(invalid({ "site": "www", "address": "/terms-{slug}.pdf" })));
+    check("a template making keys over 1024 bytes fails", len(invalid({ "site": "www", "address": "/d/" & repeatString("a/", 520) & "{slug}.pdf" })));
 
     // 5. Addresses made from a template, a record and a file name.
     files = createObject("component", "moopa.lib.published_files").init();

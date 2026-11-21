@@ -3,6 +3,11 @@
 
     <!--- Every published file's key starts with this, then the site. The Worker reads the same prefix. --->
     <cfset variables.PREFIX = "public" />
+    <!--- The mark (user metadata) on every copy a publishing field makes: syncAll's sweep deletes only marked copies. --->
+    <cfset variables.MARK = { "moopa-published": "1" } />
+    <!--- The owner of the row the sweep claims an address with while it deletes a stray copy there. --->
+    <cfset variables.SWEEP_OWNER = "-sweep" />
+    <cfset variables.NIL = "00000000-0000-0000-0000-000000000000" />
 
     <cffunction name="init" access="public" returntype="any" output="false">
         <cfreturn this />
@@ -92,21 +97,23 @@
           =============================================================================================================== --->
 
     <cffunction name="syncRecord" access="public" returntype="struct" output="false"
-        hint="Puts one record's published files in step with it: publishes what its publishing fields should have published (new or replaced files) and unpublishes what they no longer should (a removed file, a changed address, publish.when false, the record deleted), copying only what changed. Returns { published, unpublished, kept, taken, failed }: taken counts addresses another record holds, failed the addresses that failed (each logged), left for the next sync. Does nothing while moo_published_file isn't in the database yet. db.save and db.delete call it.">
+        hint="Puts one record's published files in step with it: publishes what its publishing fields should have published (new or replaced files) and unpublishes what they no longer should (a removed file, a changed address, publish.when false, the record deleted), copying only what changed. Returns { published, unpublished, kept, taken, skipped, failed }: taken counts addresses another record holds, skipped files no address could be made for, failed the addresses that failed (each logged), left for the next sync. Does nothing while moo_published_file isn't in the database yet. db.save and db.delete call it.">
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="true" />
         <cfset var result = emptyResult() />
-        <cfif NOT trackingTableExists() OR NOT isRecordId(arguments.id)>
+        <cfset var recordId = canonicalId(arguments.id) />
+        <cfset var tableName = lCase(arguments.table_name) />
+        <cfif NOT len(recordId) OR NOT trackingTableExists()>
             <cfreturn result />
         </cfif>
-        <cflock name="moopa_published_#lCase(arguments.table_name)#_#lCase(arguments.id)#" type="exclusive" timeout="60">
-            <cfset result = reconcileRecord(lCase(arguments.table_name), lCase(arguments.id)) />
+        <cflock name="moopa_published_#tableName#_#recordId#" type="exclusive" timeout="60">
+            <cfset result = reconcileRecord(tableName, recordId) />
         </cflock>
         <cfreturn result />
     </cffunction>
 
     <cffunction name="syncAll" access="public" returntype="struct" output="false"
-        hint="Every publishing table's files in step with every record, and the store with moo_published_file: first what a deleted record, or a field or table that no longer publishes, left behind; then each record (syncRecord); then, under each publishing field's literal folder (/datasheets/ for /datasheets/{slug}.pdf), a copy that is missing or not the one recorded is published again, and a copy no row accounts for is deleted. A record that fails is logged and counted, and the rest go on. Returns the totals { published, unpublished, kept, taken, failed, repaired, removed }. Run it once when a table first publishes, and on a schedule.">
+        hint="Every publishing table's files in step with every record, and the store with moo_published_file: first what a deleted record, or a field or table that no longer publishes, left behind; then each record (syncRecord); then, under each publishing field's literal prefix (/datasheets/ for /datasheets/{slug}.pdf), a copy that is missing or not the one recorded is published again, and a copy this library made that no row accounts for is deleted. A record or table that fails is logged and counted, and the rest go on. Returns the totals { published, unpublished, kept, taken, skipped, failed, repaired, removed }. Run it once when a table first publishes, and on a schedule.">
         <cfset var totals = emptyResult() />
         <cfset var publishing = application.lib.db.getPublishing() />
         <cfset var tableName = "" />
@@ -118,19 +125,41 @@
             <cfreturn totals />
         </cfif>
 
-        <!--- 1. Left behind: rows of a table that no longer publishes, or of a record that is gone. First, so a record
-                 waiting for one of their addresses gets it in this run. --->
-        <cfquery name="q">
-            SELECT DISTINCT published.table_name, published.record_id::text AS record_id
-            FROM moo_published_file AS published
-            WHERE published.table_name NOT IN (<cfqueryparam cfsqltype="varchar" list="true" value="#listAppend(structKeyList(publishing), '-')#" />)
-            <cfloop collection="#publishing#" item="tableName">
-                OR (published.table_name = <cfqueryparam cfsqltype="varchar" value="#tableName#" />
-                    AND NOT EXISTS (SELECT 1 FROM #tableName# AS live WHERE live.id = published.record_id))
+        <!--- 1. Left behind: rows of a table that no longer publishes, of a field that no longer does, or of a record that
+                 is gone. First, so a record waiting for one of their addresses gets it in this run. Table by table, so
+                 one that fails (not in the database yet, say) doesn't stop the others. --->
+        <cftry>
+            <cfquery name="q">
+                SELECT DISTINCT table_name, record_id::text AS record_id FROM moo_published_file
+                WHERE table_name NOT IN (<cfqueryparam cfsqltype="varchar" list="true" value="#listAppend(structKeyList(publishing), '-')#" />)
+            </cfquery>
+            <cfloop query="q">
+                <cfset addTotals(totals, safeSync(q.table_name, q.record_id)) />
             </cfloop>
-        </cfquery>
-        <cfloop query="q">
-            <cfset addTotals(totals, safeSync(q.table_name, q.record_id)) />
+            <cfcatch>
+                <cfset totals.failed++ />
+                <cfset logFailure(cfcatch, "published_files.syncAll leftovers") />
+            </cfcatch>
+        </cftry>
+        <cfloop collection="#publishing#" item="tableName">
+            <cftry>
+                <cfquery name="q">
+                    SELECT DISTINCT published.record_id::text AS record_id
+                    FROM moo_published_file AS published
+                    WHERE published.table_name = <cfqueryparam cfsqltype="varchar" value="#tableName#" />
+                    AND (
+                        published.field NOT IN (<cfqueryparam cfsqltype="varchar" list="true" value="#structKeyList(publishing[tableName])#" />)
+                        OR NOT EXISTS (SELECT 1 FROM #tableName# AS live WHERE live.id = published.record_id)
+                    )
+                </cfquery>
+                <cfloop query="q">
+                    <cfset addTotals(totals, safeSync(tableName, q.record_id)) />
+                </cfloop>
+                <cfcatch>
+                    <cfset totals.failed++ />
+                    <cfset logFailure(cfcatch, "published_files.syncAll leftovers of #tableName#") />
+                </cfcatch>
+            </cftry>
         </cfloop>
 
         <!--- 2. Every record that publishes, or has published, something. --->
@@ -146,20 +175,26 @@
                     <cfset local.always = true />
                 </cfif>
             </cfloop>
-            <cfquery name="q">
-                SELECT id::text AS id FROM #tableName#
-                <cfif NOT local.always>
-                    WHERE #arrayToList(local.conditions, " OR ")# OR
-                    id IN (SELECT record_id FROM moo_published_file WHERE table_name = <cfqueryparam cfsqltype="varchar" value="#tableName#" />)
-                </cfif>
-                ORDER BY id
-            </cfquery>
-            <cfloop query="q">
-                <cfset addTotals(totals, safeSync(tableName, q.id)) />
-            </cfloop>
+            <cftry>
+                <cfquery name="q">
+                    SELECT id::text AS id FROM #tableName#
+                    <cfif NOT local.always>
+                        WHERE #arrayToList(local.conditions, " OR ")# OR
+                        id IN (SELECT record_id FROM moo_published_file WHERE table_name = <cfqueryparam cfsqltype="varchar" value="#tableName#" />)
+                    </cfif>
+                    ORDER BY id
+                </cfquery>
+                <cfloop query="q">
+                    <cfset addTotals(totals, safeSync(tableName, q.id)) />
+                </cfloop>
+                <cfcatch>
+                    <cfset totals.failed++ />
+                    <cfset logFailure(cfcatch, "published_files.syncAll #tableName#") />
+                </cfcatch>
+            </cftry>
         </cfloop>
 
-        <!--- 3. The store against the rows, under each publishing field's literal folder. --->
+        <!--- 3. The store against the rows, under each publishing field's literal prefix. --->
         <cfset sweep(publishing, totals) />
         <cfreturn totals />
     </cffunction>
@@ -184,12 +219,11 @@
         <cfargument name="id" type="string" required="true" />
 
         <cfset var result = emptyResult() />
-        <cfset var wanted = wantedFor(arguments.table_name, arguments.id) />
+        <cfset var wanted = wantedFor(arguments.table_name, arguments.id, result) />
         <cfset var mine = {} />
         <cfset var q = "" />
         <cfset var slot = "" />
         <cfset var entry = {} />
-        <cfset var row = {} />
 
         <cfquery name="q">
             SELECT object_key, site, address, path, field, moo_file_id::text AS moo_file_id FROM moo_published_file
@@ -206,8 +240,9 @@
                 <cfcontinue />
             </cfif>
             <cftry>
-                <cfset retire(mine[slot], arguments.table_name, arguments.id) />
-                <cfset result.unpublished++ />
+                <cfif retire(mine[slot].key, arguments.table_name, arguments.id)>
+                    <cfset result.unpublished++ />
+                </cfif>
                 <cfcatch>
                     <cfset result.failed++ />
                     <cfset logFailure(cfcatch, "published_files unpublish #mine[slot].key#") />
@@ -217,20 +252,18 @@
 
         <cfloop collection="#wanted#" item="slot">
             <cfset entry = wanted[slot] />
-            <cfif structKeyExists(mine, slot) AND len(mine[slot].path) AND compare(mine[slot].path, entry.path) EQ 0>
-                <!--- The same copy: only which file and field it is for may have changed. --->
-                <cfif compare(mine[slot].file_id, entry.file_id) NEQ 0 OR compare(mine[slot].field, entry.field) NEQ 0>
-                    <cfquery>
-                        UPDATE moo_published_file
-                        SET moo_file_id = <cfqueryparam cfsqltype="other" value="#entry.file_id#" />, field = <cfqueryparam cfsqltype="varchar" value="#entry.field#" />
-                        WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#entry.key#" /> AND table_name = <cfqueryparam cfsqltype="varchar" value="#arguments.table_name#" /> AND record_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
-                    </cfquery>
-                </cfif>
-                <cfset result.kept++ />
-                <cfcontinue />
-            </cfif>
             <cftry>
-                <cfif placeCopy(entry, arguments.table_name, arguments.id, structKeyExists(mine, slot))>
+                <cfif structKeyExists(mine, slot) AND len(mine[slot].path) AND compare(mine[slot].path, entry.path) EQ 0>
+                    <!--- The same copy: only which file and field it is for may have changed. --->
+                    <cfif compare(mine[slot].file_id, entry.file_id) NEQ 0 OR compare(mine[slot].field, entry.field) NEQ 0>
+                        <cfquery>
+                            UPDATE moo_published_file
+                            SET moo_file_id = <cfqueryparam cfsqltype="other" value="#entry.file_id#" />, field = <cfqueryparam cfsqltype="varchar" value="#entry.field#" />
+                            WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#entry.key#" /> AND table_name = <cfqueryparam cfsqltype="varchar" value="#arguments.table_name#" /> AND record_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
+                        </cfquery>
+                    </cfif>
+                    <cfset result.kept++ />
+                <cfelseif placeCopy(entry, arguments.table_name, arguments.id)>
                     <cfset result.published++ />
                 <cfelse>
                     <cfset result.taken++ />
@@ -245,22 +278,27 @@
         <cfreturn result />
     </cffunction>
 
-    <!--- Publishes one address for a record: claims its row (or, already this record's, empties its path), copies, then
-          sets path and etag. False when another record holds the address. --->
+    <!--- Publishes one address for a record. The row is the record's before anything is copied: if it is already, its path
+          is emptied (pages stop linking it during the copy); if not, it is claimed, the unique object_key settling it
+          against any other record or instance. After the copy, path and etag are set, again only if the row is still the
+          record's; a copy that lost it on the way is removed again unless another record now holds the address. False
+          when another record holds it. --->
     <cffunction name="placeCopy" access="private" returntype="boolean" output="false">
         <cfargument name="entry" type="struct" required="true" />
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="true" />
-        <cfargument name="held" type="boolean" required="true" />
+        <cfset var owned = "" />
         <cfset var claimed = "" />
         <cfset var etag = "" />
+        <cfset var settled = "" />
+        <cfset var holder = "" />
 
-        <cfif arguments.held>
-            <cfquery>
-                UPDATE moo_published_file SET path = '', last_updated_at = now()
-                WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#arguments.entry.key#" /> AND table_name = <cfqueryparam cfsqltype="varchar" value="#arguments.table_name#" /> AND record_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
-            </cfquery>
-        <cfelse>
+        <cfquery name="owned">
+            UPDATE moo_published_file SET path = '', last_updated_at = now()
+            WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#arguments.entry.key#" /> AND table_name = <cfqueryparam cfsqltype="varchar" value="#arguments.table_name#" /> AND record_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
+            RETURNING object_key
+        </cfquery>
+        <cfif NOT owned.recordCount>
             <cfquery name="claimed">
                 INSERT INTO moo_published_file (object_key, site, address, table_name, record_id, field, moo_file_id, path, etag)
                 VALUES (
@@ -277,13 +315,12 @@
                 RETURNING object_key
             </cfquery>
             <cfif NOT claimed.recordCount>
-                <!--- Another record's. --->
                 <cfreturn false />
             </cfif>
         </cfif>
 
-        <cfset etag = application.lib.s3_client.copyObject(application.lib.s3_client.defaultStore(), arguments.entry.path, arguments.entry.key) />
-        <cfquery>
+        <cfset etag = application.lib.s3_client.copyObject(application.lib.s3_client.defaultStore(), arguments.entry.path, arguments.entry.key, variables.MARK) />
+        <cfquery name="settled">
             UPDATE moo_published_file
             SET path = <cfqueryparam cfsqltype="varchar" value="#arguments.entry.path#" />,
                 etag = <cfqueryparam cfsqltype="varchar" value="#etag#" />,
@@ -291,54 +328,81 @@
                 field = <cfqueryparam cfsqltype="varchar" value="#arguments.entry.field#" />,
                 last_updated_at = now()
             WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#arguments.entry.key#" /> AND table_name = <cfqueryparam cfsqltype="varchar" value="#arguments.table_name#" /> AND record_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
+            RETURNING object_key
+        </cfquery>
+        <cfif settled.recordCount>
+            <cfreturn true />
+        </cfif>
+        <!--- Lost on the way (another instance unpublished it, say): the copy goes again, unless the address is now another
+              record's, whose own sync or the sweep (by its etag) puts its copy back. --->
+        <cfquery name="holder">
+            SELECT 1 FROM moo_published_file WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#arguments.entry.key#" />
+        </cfquery>
+        <cfif NOT holder.recordCount>
+            <cfset application.lib.s3_client.deleteObject(application.lib.s3_client.defaultStore(), arguments.entry.key) />
+        </cfif>
+        <cfreturn false />
+    </cffunction>
+
+    <!--- Unpublishes one of a record's addresses: empties its path (only while it is the record's), deletes the copy, then
+          the row. False, touching nothing in the store, when the row is no longer the record's. --->
+    <cffunction name="retire" access="private" returntype="boolean" output="false">
+        <cfargument name="key" type="string" required="true" />
+        <cfargument name="table_name" type="string" required="true" />
+        <cfargument name="id" type="string" required="true" />
+        <cfset var owned = "" />
+        <cfquery name="owned">
+            UPDATE moo_published_file SET path = '', last_updated_at = now()
+            WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#arguments.key#" /> AND table_name = <cfqueryparam cfsqltype="varchar" value="#arguments.table_name#" /> AND record_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
+            RETURNING object_key
+        </cfquery>
+        <cfif NOT owned.recordCount>
+            <cfreturn false />
+        </cfif>
+        <cfset application.lib.s3_client.deleteObject(application.lib.s3_client.defaultStore(), arguments.key) />
+        <cfquery>
+            DELETE FROM moo_published_file
+            WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#arguments.key#" /> AND table_name = <cfqueryparam cfsqltype="varchar" value="#arguments.table_name#" /> AND record_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
         </cfquery>
         <cfreturn true />
     </cffunction>
 
-    <!--- Unpublishes one of a record's addresses: empties its path, deletes the copy, then the row. --->
-    <cffunction name="retire" access="private" returntype="void" output="false">
-        <cfargument name="row" type="struct" required="true" />
-        <cfargument name="table_name" type="string" required="true" />
-        <cfargument name="id" type="string" required="true" />
-        <cfquery>
-            UPDATE moo_published_file SET path = '', last_updated_at = now()
-            WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#arguments.row.key#" /> AND table_name = <cfqueryparam cfsqltype="varchar" value="#arguments.table_name#" /> AND record_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
-        </cfquery>
-        <cfset application.lib.s3_client.deleteObject(application.lib.s3_client.defaultStore(), arguments.row.key) />
-        <cfquery>
-            DELETE FROM moo_published_file WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#arguments.row.key#" /> AND table_name = <cfqueryparam cfsqltype="varchar" value="#arguments.table_name#" /> AND record_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
-        </cfquery>
-    </cffunction>
-
-    <!--- The store against the rows, folder by folder: a row whose copy is missing, or isn't the copy it recorded (its
-          etag), is published again; a copy no row accounts for is deleted. Only under a publishing field's literal folder
-          (never the whole site), so a file published by hand elsewhere is left alone. --->
+    <!--- The store against the rows, prefix by prefix: a row whose copy is missing, or isn't the copy it recorded (its
+          etag), is published again; a copy no row accounts for is deleted, but only one this library made (its mark), so
+          a file published by hand, or another environment's, is never touched. Only under a publishing field's literal
+          prefix, never the whole site. --->
     <cffunction name="sweep" access="private" returntype="void" output="false">
         <cfargument name="publishing" type="struct" required="true" />
         <cfargument name="totals" type="struct" required="true" />
-        <cfset var folders = {} />
+        <cfset var prefixes = [] />
         <cfset var tableName = "" />
         <cfset var fieldName = "" />
-        <cfset var setting = {} />
         <cfset var prefix = "" />
+        <cfset var other = "" />
         <cfset var stored = {} />
         <cfset var object = {} />
         <cfset var q = "" />
         <cfset var slot = "" />
         <cfset var store = application.lib.s3_client.defaultStore() />
 
+        <!--- Each field's prefix once, and none inside another (it is listed with it). --->
         <cfloop collection="#arguments.publishing#" item="tableName">
             <cfloop collection="#arguments.publishing[tableName]#" item="fieldName">
-                <cfset setting = arguments.publishing[tableName][fieldName] />
-                <cfif len(setting.folder) GT 1>
-                    <cfset folders[slotFor(variables.PREFIX & "/" & setting.site & setting.folder)] = variables.PREFIX & "/" & setting.site & setting.folder />
-                </cfif>
+                <cfset arrayAppend(prefixes, variables.PREFIX & "/" & arguments.publishing[tableName][fieldName].site & arguments.publishing[tableName][fieldName].prefix) />
             </cfloop>
         </cfloop>
+        <cfset arraySort(prefixes, "text") />
+        <cfset local.kept = [] />
+        <cfloop array="#prefixes#" item="prefix">
+            <cfif arrayLen(local.kept) AND compare(left(prefix, len(local.kept[arrayLen(local.kept)])), local.kept[arrayLen(local.kept)]) EQ 0>
+                <cfcontinue />
+            </cfif>
+            <cfset arrayAppend(local.kept, prefix) />
+        </cfloop>
 
-        <cfloop collection="#folders#" item="local.folderSlot">
-            <cfset prefix = folders[local.folderSlot] />
+        <cfloop array="#local.kept#" item="prefix">
             <cftry>
+                <!--- Listed before the rows are read: a copy published in between has its row by then. --->
                 <cfset stored = {} />
                 <cfloop array="#application.lib.s3_client.listObjects(store, prefix)#" item="object">
                     <cfset stored[slotFor(object.key)] = object />
@@ -351,8 +415,9 @@
                     <cfset slot = slotFor(q.object_key) />
                     <cfif len(q.path) AND (NOT structKeyExists(stored, slot) OR (len(q.etag) AND compare(stored[slot].etag, q.etag) NEQ 0))>
                         <cftry>
-                            <cfset repairCopy(q.object_key, q.path, q.table_name, q.record_id) />
-                            <cfset arguments.totals.repaired++ />
+                            <cfif repairCopy(q.object_key, q.path, q.table_name, q.record_id)>
+                                <cfset arguments.totals.repaired++ />
+                            </cfif>
                             <cfcatch>
                                 <cfset arguments.totals.failed++ />
                                 <cfset logFailure(cfcatch, "published_files repair #q.object_key#") />
@@ -361,10 +426,17 @@
                     </cfif>
                     <cfset structDelete(stored, slot) />
                 </cfloop>
-                <!--- What is left has no row: nothing accounts for it. --->
+                <!--- What is left had no row when read. --->
                 <cfloop collection="#stored#" item="slot">
-                    <cfset application.lib.s3_client.deleteObject(store, stored[slot].key) />
-                    <cfset arguments.totals.removed++ />
+                    <cftry>
+                        <cfif removeStray(stored[slot].key)>
+                            <cfset arguments.totals.removed++ />
+                        </cfif>
+                        <cfcatch>
+                            <cfset arguments.totals.failed++ />
+                            <cfset logFailure(cfcatch, "published_files remove #stored[slot].key#") />
+                        </cfcatch>
+                    </cftry>
                 </cfloop>
                 <cfcatch>
                     <cfset arguments.totals.failed++ />
@@ -374,28 +446,90 @@
         </cfloop>
     </cffunction>
 
-    <cffunction name="repairCopy" access="private" returntype="void" output="false">
+    <!--- Deletes a copy no row accounted for, if this library made it (its mark) and no record has the address by now. The
+          address is claimed for the sweep first (a row of its own), so a record publishing it meanwhile waits, or the
+          sweep leaves it: the unique object_key decides, across instances and open transactions alike. --->
+    <cffunction name="removeStray" access="private" returntype="boolean" output="false">
+        <cfargument name="key" type="string" required="true" />
+        <cfset var claimed = "" />
+        <cfset var head = application.lib.s3_client.headObject(application.lib.s3_client.defaultStore(), arguments.key) />
+        <cfif NOT head.exists OR NOT structKeyExists(head.metadata, structKeyList(variables.MARK))>
+            <cfreturn false />
+        </cfif>
+        <cfquery name="claimed">
+            INSERT INTO moo_published_file (object_key, site, address, table_name, record_id, field, moo_file_id, path, etag)
+            VALUES (
+                <cfqueryparam cfsqltype="varchar" value="#arguments.key#" />, '-', '-',
+                <cfqueryparam cfsqltype="varchar" value="#variables.SWEEP_OWNER#" />,
+                <cfqueryparam cfsqltype="other" value="#variables.NIL#" />, '-',
+                <cfqueryparam cfsqltype="other" value="#variables.NIL#" />, '', ''
+            )
+            ON CONFLICT (object_key) DO NOTHING
+            RETURNING object_key
+        </cfquery>
+        <cfif NOT claimed.recordCount>
+            <cfreturn false />
+        </cfif>
+        <cftry>
+            <cfset application.lib.s3_client.deleteObject(application.lib.s3_client.defaultStore(), arguments.key) />
+            <cfcatch>
+                <cfset releaseSweepClaim(arguments.key) />
+                <cfrethrow />
+            </cfcatch>
+        </cftry>
+        <cfset releaseSweepClaim(arguments.key) />
+        <cfreturn true />
+    </cffunction>
+
+    <cffunction name="releaseSweepClaim" access="private" returntype="void" output="false">
+        <cfargument name="key" type="string" required="true" />
+        <cfquery>
+            DELETE FROM moo_published_file
+            WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#arguments.key#" /> AND table_name = <cfqueryparam cfsqltype="varchar" value="#variables.SWEEP_OWNER#" />
+        </cfquery>
+    </cffunction>
+
+    <!--- Copies a row's file to its address again, under the record's lock, if the row is still the record's with that path
+          (a save may have changed or unpublished it since the sweep read it). True when it was repaired. --->
+    <cffunction name="repairCopy" access="private" returntype="boolean" output="false">
         <cfargument name="key" type="string" required="true" />
         <cfargument name="path" type="string" required="true" />
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="true" />
         <cfset var etag = "" />
-        <cflock name="moopa_published_#arguments.table_name#_#arguments.id#" type="exclusive" timeout="60">
-            <cfset etag = application.lib.s3_client.copyObject(application.lib.s3_client.defaultStore(), arguments.path, arguments.key) />
-            <cfquery>
-                UPDATE moo_published_file SET etag = <cfqueryparam cfsqltype="varchar" value="#etag#" />, last_updated_at = now()
+        <cfset var still = "" />
+        <cfset var settled = "" />
+        <cfif compare(arguments.table_name, variables.SWEEP_OWNER) EQ 0>
+            <cfreturn false />
+        </cfif>
+        <cflock name="moopa_published_#lCase(arguments.table_name)#_#lCase(arguments.id)#" type="exclusive" timeout="60">
+            <cfquery name="still">
+                SELECT 1 FROM moo_published_file
                 WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#arguments.key#" /> AND table_name = <cfqueryparam cfsqltype="varchar" value="#arguments.table_name#" /> AND record_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
                 AND path = <cfqueryparam cfsqltype="varchar" value="#arguments.path#" />
             </cfquery>
+            <cfif NOT still.recordCount>
+                <cfreturn false />
+            </cfif>
+            <cfset etag = application.lib.s3_client.copyObject(application.lib.s3_client.defaultStore(), arguments.path, arguments.key, variables.MARK) />
+            <cfquery name="settled">
+                UPDATE moo_published_file SET etag = <cfqueryparam cfsqltype="varchar" value="#etag#" />, last_updated_at = now()
+                WHERE object_key = <cfqueryparam cfsqltype="varchar" value="#arguments.key#" /> AND table_name = <cfqueryparam cfsqltype="varchar" value="#arguments.table_name#" /> AND record_id = <cfqueryparam cfsqltype="other" value="#arguments.id#" />
+                AND path = <cfqueryparam cfsqltype="varchar" value="#arguments.path#" />
+                RETURNING object_key
+            </cfquery>
         </cflock>
+        <cfreturn settled.recordCount GT 0 />
     </cffunction>
 
     <!--- What a record's publishing fields should have published, by slot (slotFor its store key): { key, site, address,
           field, file_id, path }. Nothing for a record that is gone, or whose publish.when is not true. Fields are taken in
-          name order and files in their order, so who gets a contested address is always the same. --->
+          name order and files in their order, so who gets a contested address is always the same. A file no address can
+          be made for (an empty value, too long) is counted in result.skipped. --->
     <cffunction name="wantedFor" access="private" returntype="struct" output="false">
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="true" />
+        <cfargument name="result" type="struct" required="true" />
 
         <cfset var wanted = {} />
         <cfset var fields = application.lib.db.getPublishing()[arguments.table_name] ?: {} />
@@ -416,7 +550,7 @@
         </cfif>
         <cfloop collection="#fields#" item="fieldName">
             <cfloop array="#fields[fieldName].columns#" item="column">
-                <cfif NOT arrayFindNoCase(columns, column)>
+                <cfif column NEQ "id" AND NOT arrayFindNoCase(columns, column)>
                     <cfset arrayAppend(columns, column) />
                 </cfif>
             </cfloop>
@@ -446,11 +580,9 @@
                 ORDER BY bridge.sequence, moo_file.id
             </cfquery>
             <cfloop query="files">
-                <cfif NOT len(files.path)>
-                    <cfcontinue />
-                </cfif>
-                <cfset address = addressFor(setting.address, record, files.name) />
+                <cfset address = len(files.path) ? addressFor(setting.address, record, files.name) : "" />
                 <cfif NOT len(address)>
+                    <cfset arguments.result.skipped++ />
                     <cfcontinue />
                 </cfif>
                 <!--- An address this record already wants (two files of one name, say): -2, -3 before the extension. A
@@ -466,6 +598,7 @@
                 </cfif>
                 <cfset key = keyOrEmpty(setting.site, candidate) />
                 <cfif NOT len(key)>
+                    <cfset arguments.result.skipped++ />
                     <cfcontinue />
                 </cfif>
                 <cfset wanted[slotFor(key)] = { "key": key, "site": setting.site, "address": candidate, "field": fieldName, "file_id": files.file_id, "path": files.path } />
@@ -497,9 +630,19 @@
         <cfreturn "k" & binaryEncode(charsetDecode(arguments.key, "utf-8"), "hex") />
     </cffunction>
 
-    <cffunction name="isRecordId" access="private" returntype="boolean" output="false">
+    <!--- A record id as the database writes it (lowercase, 8-4-4-4-12), from that or the 32-digit form; "" for anything
+          else. --->
+    <cffunction name="canonicalId" access="private" returntype="string" output="false">
         <cfargument name="id" type="string" required="true" />
-        <cfreturn reFind("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", arguments.id) GT 0 />
+        <cfset var id = lCase(arguments.id) />
+        <!--- Length first: on Lucee, $ also matches before a trailing newline. --->
+        <cfif len(id) EQ 36 AND reFind("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", id)>
+            <cfreturn id />
+        </cfif>
+        <cfif len(id) EQ 32 AND NOT reFind("[^0-9a-f]", id)>
+            <cfreturn mid(id, 1, 8) & "-" & mid(id, 9, 4) & "-" & mid(id, 13, 4) & "-" & mid(id, 17, 4) & "-" & mid(id, 21, 12) />
+        </cfif>
+        <cfreturn "" />
     </cffunction>
 
     <!--- Whether moo_published_file is in the database (a project that publishes has synced its schema). Remembered once
@@ -520,13 +663,13 @@
     </cffunction>
 
     <cffunction name="emptyResult" access="private" returntype="struct" output="false">
-        <cfreturn { "published": 0, "unpublished": 0, "kept": 0, "taken": 0, "failed": 0 } />
+        <cfreturn { "published": 0, "unpublished": 0, "kept": 0, "taken": 0, "skipped": 0, "failed": 0 } />
     </cffunction>
 
     <cffunction name="addTotals" access="private" returntype="void" output="false">
         <cfargument name="totals" type="struct" required="true" />
         <cfargument name="one" type="struct" required="true" />
-        <cfloop list="published,unpublished,kept,taken,failed" item="local.count">
+        <cfloop list="published,unpublished,kept,taken,skipped,failed" item="local.count">
             <cfset arguments.totals[local.count] += arguments.one[local.count] ?: 0 />
         </cfloop>
     </cffunction>

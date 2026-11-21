@@ -40,9 +40,9 @@ Every call takes a store: `defaultStore()`, or one built with `configure(label, 
 | `downloadObject(store, objectKey, filePath)` | streams the object to a file, for anything large |
 | `writeObject(store, objectKey, value, contentType)` | writes text or bytes |
 | `objectExists(store, objectKey)` | asks the store (HEAD): true, false, or throws |
-| `headObject(store, objectKey)` | what the store holds (HEAD): `{ exists, size, contentType }` |
+| `headObject(store, objectKey)` | what the store holds (HEAD): `{ exists, size, contentType, metadata }` (user metadata by name) |
 | `readObjectStart(store, objectKey, bytes)` | the first `bytes` bytes (a ranged GET), to read a file's signature |
-| `copyObject(store, sourceKey, targetKey)` | copies it to another key inside the store (one CopyObject, up to 5 GB), keeping its Content-Type; returns the copy's ETag |
+| `copyObject(store, sourceKey, targetKey, metadata)` | copies it to another key inside the store (one CopyObject, up to 5 GB), keeping its Content-Type, with `metadata` (optional) in place of the source's; returns the copy's ETag |
 | `deleteObject(store, objectKey)` | deletes it |
 | `listObjects(store, prefix)` | `[{ key, etag, size, last_modified }]` under a prefix |
 | `presignedUrl(store, objectKey, method, expiresSeconds, signedHeaders)` | a URL a browser can GET or PUT without credentials; with `signedHeaders` (such as `{ "Content-Type": "image/jpeg", "Content-Length": 48213 }`) the browser must send each with exactly that value, or the store refuses it |
@@ -158,6 +158,7 @@ A `many_to_many` field of `moo_file` can declare that its files are published, i
   - `{field}` is the record's value of that column, `{name}` the file's name without its extension, and `{ext}` its extension.
   - `{field}` and `{name}` are made readable: lowercase letters and digits, with dashes between. So `Front View (2).JPG` gives `front-view-2` and `jpg`.
   - The literal parts are lowercase too, so every address has one spelling.
+  - It starts with a literal folder (`/datasheets/`), so its copies can always be swept (below).
   - `{name}` and `{ext}` are always the file's, even when the table has columns of those names.
   - A placeholder must be a plain column, not a link, list, `jsonb` and so on.
 - **Without `{name}`**, a field publishes its first file only (in its order): one address, one file. With it, two files whose names come out the same get `-2`, `-3` before the extension, in the files' order. Removing the first shifts the numbers of the rest.
@@ -166,7 +167,8 @@ A `many_to_many` field of `moo_file` can declare that its files are published, i
   - a field that isn't a `many_to_many` of `moo_file`;
   - an unknown key in `publish` (a misspelt `when` would otherwise publish always);
   - a `when` that isn't a `bool` column;
-  - an address no filled-in template could make: an empty, `.` or `..` segment, or one over 200 characters;
+  - an address no filled-in template could make: an empty, `.` or `..` segment, one over 200 characters, or a key over 1024 bytes;
+  - a template without a literal folder (`/{slug}.pdf`);
   - two fields of a table publishing to the same addresses.
 
 **What follows a record.** `db.save` and `db.delete` keep a publishing table's files in step with each record, after it is written:
@@ -182,20 +184,28 @@ This is `application.lib.published_files.syncRecord(table_name, id)`. A project 
 
 So a failure at any step leaves a row with an empty path, which the next sync of that record, or `syncAll()`, finishes. No public copy is ever without its row.
 
-**Failures.** A failure is logged (`core.logError`, or the engine's log if even that fails) and counted, never thrown at the save or delete. `syncRecord` returns `{ published, unpublished, kept, taken, failed }`.
+**Failures.** A failure is logged (`core.logError`, or the engine's log if even that fails) and counted, never thrown at the save or delete. `syncRecord` returns `{ published, unpublished, kept, taken, skipped, failed }`: `skipped` counts files no address could be made for (a value that comes out empty).
+
+**No store operation acts on a stale read.**
+- Unpublishing touches the store only after the guarded update that empties its row matched.
+- Publishing again empties its row the same way first, or else claims it.
+- A copy that lost its row on the way is removed again, unless another record now holds the address.
+- `syncAll`'s repair re-reads the row under the record's lock before copying.
+
+**Every copy is marked.** A copy a publishing field makes carries user metadata `moopa-published`.
 
 **`syncAll()`** is the repair job. Run it once when a table first publishes (that publishes its existing records), and on a schedule. In order:
 1. It unpublishes what a deleted record, or a field or table that no longer publishes, left behind. A record waiting for one of those addresses gets it in the same run.
 2. It syncs every record that publishes, or has published, something. A record that fails is logged and counted, and the rest go on.
-3. It compares the store with the rows, under each publishing field's literal folder (`/datasheets/` for `/datasheets/{slug}.pdf`):
+3. It compares the store with the rows, under each publishing field's literal prefix (`/datasheets/` for `/datasheets/{slug}.pdf`, `/docs/product-` for `/docs/product-{slug}.pdf`):
    - a copy that is missing, or isn't the one recorded (its `etag`), is published again;
-   - a copy no row accounts for is deleted.
+   - a marked copy that no row accounts for is deleted. The sweep claims its address first, in a row of its own, so a record publishing that address at the same moment wins and the sweep leaves it; the database's unique key decides, across instances and open transactions alike.
 
-   That clears what a transaction rolled back after a save left in the store: the store isn't part of the database's transaction.
+   That clears what a transaction rolled back after a save left in the store: the store isn't part of the database's transaction, so until the sweep runs, such a copy is still answered.
 
-It returns the totals plus `repaired` and `removed`. A template with no literal folder (`/{slug}.pdf`) is never swept.
+It returns the totals plus `repaired` and `removed`.
 
-**Files published by hand** (`publish()`) must not live under a publishing field's literal folder: the sweep deletes a copy there that no row accounts for.
+**Only marked copies are ever deleted by the sweep.** A file published by hand (`publish()`), or one another environment made in a shared bucket, is never touched, even under a publishing prefix. Still, don't publish by hand under a publishing field's prefix: a declared field publishing the same address replaces it. Two environments sharing a bucket (a stage on production's bucket) must not both run `syncAll()`: each sees the other's marked copies as strays.
 
 **`moo_published_file`** records what is published where: one row per address, with its `site`, `address` and `object_key`, the `table_name`, `record_id` and `field` that publish it, the `moo_file_id`, the `path` it was copied from, and its `etag`. Pages link a file at its own address once the row's path is set, and by its signed link until then:
 
@@ -211,7 +221,7 @@ LEFT JOIN moo_published_file AS published
 
 - **Only for projects that publish.** A project gets `moo_published_file` (a schema sync adds it) only when one of its fields declares `publish`. Without one there is no table, and `db.save` and `db.delete` work exactly as before. Until the table is in the database, publishing does nothing (the schema not synced yet).
 - **An address belongs to the first record that publishes it.** Another record wanting it is counted as `taken` and left alone, until the first lets go of it. The table's unique `object_key` settles this, across app instances too.
-- **Two saves of one record on two app instances at once** can leave the copy a save behind. The next sync of that record, or `syncAll()`, puts it right.
+- **Two saves of one record on two app instances at once** can leave the copy a save behind, or remove a copy another record has just taken over. The next sync of that record, or `syncAll()` (by the row's `etag`), puts it right.
 
 ### How a published file is answered
 

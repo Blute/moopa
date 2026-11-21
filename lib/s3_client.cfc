@@ -219,7 +219,7 @@
         <cfreturn left(httpResult.statusCode ?: "", 3) NEQ "404" />
     </cffunction>
 
-    <!--- What the store holds at a key (a HEAD request): { exists, size, contentType }. size is the stored length in
+    <!--- What the store holds at a key (a HEAD request): { exists, size, contentType, metadata }. size is the stored length in
           bytes and contentType the type it was stored with; both are 0 and "" when the object isn't there. Anything but
           200 or 404 throws, since it says nothing about the object. --->
     <cffunction name="headObject" access="public" returntype="struct" output="false">
@@ -234,14 +234,21 @@
             allowedStatuses = "404"
         ) />
         <cfif left(httpResult.statusCode ?: "", 3) EQ "404">
-            <cfreturn { "exists": false, "size": 0, "contentType": "" } />
+            <cfreturn { "exists": false, "size": 0, "contentType": "", "metadata": {} } />
         </cfif>
         <cfset var length = responseHeader(httpResult, "Content-Length") />
         <!--- Not isValid("integer"), which stops at 2^31: an object can be far bigger. --->
         <cfif NOT reFind("^[0-9]+$", length)>
             <cfthrow type="s3.request.failed" message="#arguments.store.label#: HEAD #arguments.objectKey# answered without a Content-Length" />
         </cfif>
-        <cfreturn { "exists": true, "size": val(length), "contentType": responseHeader(httpResult, "Content-Type") } />
+        <!--- User metadata: x-amz-meta-<name> headers, by name in lowercase. --->
+        <cfset var metadata = {} />
+        <cfloop collection="#httpResult.responseHeader ?: {}#" item="local.headerName">
+            <cfif left(lCase(local.headerName), 11) EQ "x-amz-meta-">
+                <cfset metadata[mid(lCase(local.headerName), 12, len(local.headerName))] = responseHeader(httpResult, local.headerName) />
+            </cfif>
+        </cfloop>
+        <cfreturn { "exists": true, "size": val(length), "contentType": responseHeader(httpResult, "Content-Type"), "metadata": metadata } />
     </cffunction>
 
     <!--- The first `bytes` bytes of an object (a ranged GET; S3 and R2 both honour Range), or all of it when it is
@@ -274,16 +281,33 @@
         <cfargument name="store" type="struct" required="true" />
         <cfargument name="sourceKey" type="string" required="true" />
         <cfargument name="targetKey" type="string" required="true" />
+        <cfargument name="metadata" type="struct" required="false" default="#{}#" hint="User metadata for the copy (name -> value, sent as x-amz-meta-<name>), in place of the source's. The copy keeps the source's Content-Type either way." />
+
+        <cfset var headers = {
+            "x-amz-copy-source": "/" & arguments.store.bucket & "/" & encodeObjectKey(arguments.sourceKey),
+            "x-amz-metadata-directive": "COPY"
+        } />
+        <cfset var contentType = "" />
+        <cfset var name = "" />
+        <!--- New metadata replaces the source's, Content-Type included, so the source's type is read and sent again. --->
+        <cfif NOT structIsEmpty(arguments.metadata)>
+            <cfset contentType = headObject(arguments.store, arguments.sourceKey).contentType />
+            <cfset headers["x-amz-metadata-directive"] = "REPLACE" />
+            <cfloop collection="#arguments.metadata#" item="name">
+                <cfif NOT reFind("^[a-z0-9-]{1,100}$", lCase(name))>
+                    <cfthrow type="s3.request.invalid" message="#arguments.store.label#: '#name#' is not a metadata name (letters, digits and dashes)" />
+                </cfif>
+                <cfset headers["x-amz-meta-" & lCase(name)] = arguments.metadata[name] />
+            </cfloop>
+        </cfif>
 
         <cfset var httpResult = signedRequest(
             store = arguments.store,
             method = "PUT",
             canonicalUri = objectCanonicalUri(arguments.store, arguments.targetKey),
             canonicalQueryString = "",
-            amzHeaders = {
-                "x-amz-copy-source": "/" & arguments.store.bucket & "/" & encodeObjectKey(arguments.sourceKey),
-                "x-amz-metadata-directive": "COPY"
-            }
+            contentType = contentType,
+            amzHeaders = headers
         ) />
         <!--- S3 can fail a copy after answering 200, with the error in the body: only a whole CopyObjectResult with the
               copy's ETag is a copy. --->

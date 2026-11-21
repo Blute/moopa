@@ -16,7 +16,17 @@
     <cffunction name="put" access="public" returntype="void" output="false">
         <cfargument name="key" type="string" required="true" />
         <cfargument name="body" type="string" required="true" />
-        <cfset variables.objects[slot(arguments.key)] = { "key": reReplace(arguments.key, "^/+", ""), "body": arguments.body, "etag": lCase(hash(arguments.body & createUUID(), "MD5")) } />
+        <cfargument name="metadata" type="struct" required="false" default="#{}#" />
+        <cfset variables.objects[slot(arguments.key)] = { "key": reReplace(arguments.key, "^/+", ""), "body": arguments.body, "etag": lCase(hash(arguments.body & createUUID(), "MD5")), "metadata": duplicate(arguments.metadata) } />
+    </cffunction>
+    <cffunction name="headObject" access="public" returntype="struct" output="false">
+        <cfargument name="store" type="struct" required="true" />
+        <cfargument name="objectKey" type="string" required="true" />
+        <cfif NOT has(arguments.objectKey)>
+            <cfreturn { "exists": false, "size": 0, "contentType": "", "metadata": {} } />
+        </cfif>
+        <cfset var object = variables.objects[slot(arguments.objectKey)] />
+        <cfreturn { "exists": true, "size": len(object.body), "contentType": "application/octet-stream", "metadata": duplicate(object.metadata) } />
     </cffunction>
     <cffunction name="body" access="public" returntype="string" output="false">
         <cfargument name="key" type="string" required="true" />
@@ -35,10 +45,11 @@
         <cfargument name="store" type="struct" required="true" />
         <cfargument name="sourceKey" type="string" required="true" />
         <cfargument name="targetKey" type="string" required="true" />
+        <cfargument name="metadata" type="struct" required="false" default="#{}#" />
         <cfif this.failCopyAll OR (len(this.failCopyTo) AND this.failCopyTo EQ arguments.targetKey) OR NOT has(arguments.sourceKey)>
             <cfthrow type="s3.request.failed" message="stub store: copying #arguments.sourceKey# to #arguments.targetKey# failed" />
         </cfif>
-        <cfset put(arguments.targetKey, body(arguments.sourceKey)) />
+        <cfset put(arguments.targetKey, body(arguments.sourceKey), arguments.metadata) />
         <cfreturn variables.objects[slot(arguments.targetKey)].etag />
     </cffunction>
     <cffunction name="deleteObject" access="public" returntype="void" output="false">

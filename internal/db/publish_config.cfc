@@ -130,10 +130,16 @@
             <cfset fail(arguments.where, "the field has no bridging table") />
         </cfif>
 
-        <!--- The literal folder the template's addresses are under (/datasheets/ for /datasheets/{slug}.pdf): syncAll
-              clears copies there that no record accounts for. "/" when the template has none. --->
+        <!--- The literal start of every address the template makes (/datasheets/ for /datasheets/{slug}.pdf, the whole
+              address for a fixed one): syncAll sweeps under it. It must hold a folder, so the sweep never covers a site's
+              whole root. --->
         <cfset literalPart = find("{", address) ? left(address, find("{", address) - 1) : address />
-        <cfset literalPart = left(literalPart, len(literalPart) - find("/", reverse(literalPart)) + 1) />
+        <cfif NOT find("/", mid(literalPart, 2, len(literalPart)))>
+            <cfset fail(arguments.where, "publish.address starts with a literal folder, such as /datasheets/{slug}.pdf, so its copies can be swept") />
+        </cfif>
+        <cfif len("public/" & setting.site & sample) GT 1024>
+            <cfset fail(arguments.where, "publish.address makes keys longer than 1024 bytes") />
+        </cfif>
 
         <cfreturn {
             "site": setting.site,
@@ -143,7 +149,7 @@
             "first": NOT find("{name}", address),
             "bridge": arguments.field.bridgingTableName,
             "columns": columns,
-            "folder": literalPart
+            "prefix": literalPart
         } />
     </cffunction>
 

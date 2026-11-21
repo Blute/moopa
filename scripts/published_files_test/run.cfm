@@ -27,10 +27,15 @@
                 "datasheet": { "type": "many_to_many", "foreign_key_table": "moo_file", "publish": { "site": "www", "address": "/datasheets/{slug}.pdf", "when": "is_published" } },
                 "images": { "type": "many_to_many", "foreign_key_table": "moo_file", "publish": { "site": "www", "address": "/images/{slug}/{name}.{ext}", "when": "is_published" } }
             } },
+            "ghost": { "fields": {
+                "slug": { "type": "varchar" },
+                "files": { "type": "many_to_many", "foreign_key_table": "moo_file", "publish": { "site": "www", "address": "/ghosts/{slug}/{name}.{ext}" } }
+            } },
             "moo_file": { "fields": { "name": { "type": "varchar" }, "path": { "type": "varchar" } } }
         })
     };
-    application.lib.published_files = createObject("component", "moopa.lib.published_files").init();
+    // ghost publishes in the definitions but isn't in the database (its schema not applied): it must not stop the rest.
+    application.lib.published_files = createObject("component", "exposed_files").init();
     store = application.lib.s3_client;
     files = application.lib.published_files;
 
@@ -76,6 +81,9 @@
     function summary(required struct r) {
         return "p#r.published# u#r.unpublished# k#r.kept# t#r.taken# f#r.failed#";
     }
+    function marked(required string address) {
+        return structKeyExists(application.lib.s3_client.headObject({}, "public/www" & arguments.address).metadata, "moopa-published");
+    }
 
     // 1. A product's files publish once it is published, at readable addresses.
     sheet1 = newFile("Alpha Datasheet.pdf", "sheet one");
@@ -92,6 +100,7 @@
     check("...the datasheet by the slug", liveBody("/datasheets/alpha.pdf") EQ "sheet one" AND len(rowPath("/datasheets/alpha.pdf")));
     check("...pictures by name, the second of one name numbered", live("/images/alpha/front.jpg") AND live("/images/alpha/front-2.jpg"));
     check("...each with the etag of its copy", queryExecute("SELECT count(*) AS n FROM moo_published_file WHERE coalesce(etag, '') = ''").n EQ 0);
+    check("...and marked as this library's copy", marked("/datasheets/alpha.pdf") AND marked("/images/alpha/front.jpg"));
     r = files.syncRecord("product", alpha);
     check("nothing changed: nothing copied", summary(r) EQ "p0 u0 k3 t0 f0", summary(r));
 
@@ -140,19 +149,22 @@
     attach(after, "datasheet", [zuluSheet]);
     r = files.syncAll();
     check("syncAll: a record whose file is missing is counted", r.failed GTE 1, summary(r));
+    check("...as is a publishing table not in the database, without stopping the rest", r.failed GTE 2, summary(r));
     check("...and the others are still published", liveBody("/datasheets/zulu.pdf") EQ "zulu sheet");
 
     // 7. The sweep: a missing or replaced copy is published again; a copy nothing accounts for under a publishing
     //    folder is deleted; anything outside those folders is left alone.
     store.deleteObject(store.defaultStore(), "public/www/datasheets/zulu.pdf");
-    store.put("public/www/datasheets/stray.pdf", "stray");
+    store.put("public/www/datasheets/stray.pdf", "stray", { "moopa-published": "1" });
+    store.put("public/www/datasheets/by-hand.pdf", "by hand, in a publishing folder");
     store.put("public/www/brochures/by-hand.pdf", "by hand");
     store.setEtag("public/www/datasheets/alpha.pdf", "not-the-recorded-one");
     r = files.syncAll();
     check("sweep: a missing copy is published again", liveBody("/datasheets/zulu.pdf") EQ "zulu sheet");
     check("...as is one that isn't the recorded copy", r.repaired EQ 2, "repaired #r.repaired#");
-    check("...a stray under a publishing folder is removed", NOT live("/datasheets/stray.pdf") AND r.removed EQ 1, "removed #r.removed#");
-    check("...a file published by hand elsewhere is left alone", live("/brochures/by-hand.pdf"));
+    check("...a marked stray under a publishing prefix is removed", NOT live("/datasheets/stray.pdf") AND r.removed EQ 1, "removed #r.removed#");
+    check("...an unmarked file there (published by hand) is left alone", live("/datasheets/by-hand.pdf"));
+    check("...and so is a file published by hand elsewhere", live("/brochures/by-hand.pdf"));
 
     // 8. A transaction that rolls back takes the row, not the copy: the next syncAll removes the copy.
     tx = newProduct("rolled", false);
@@ -177,8 +189,36 @@
     r = files.syncRecord("product", rival);
     check("a new slug moves the address", liveBody("/datasheets/bravo.pdf") EQ "rival sheet" AND NOT live("/datasheets/alpha.pdf") AND rowPath("/datasheets/alpha.pdf") EQ "(no row)", summary(r));
 
-    // 11. Ids: only the database's own spelling.
+    // 11. Ids: the database's spelling, or its 32-digit form; nothing else.
     check("a 35-character CFML id is no record", summary(files.syncRecord("product", createUUID())) EQ "p0 u0 k0 t0 f0");
+    compactProduct = newProduct("charlie", true);
+    attach(compactProduct, "datasheet", [newFile("c.pdf", "charlie sheet")]);
+    r = files.syncRecord("product", uCase(replace(compactProduct, "-", "", "all")));
+    check("a 32-digit id is the record", liveBody("/datasheets/charlie.pdf") EQ "charlie sheet", summary(r));
+
+    // 12. State a concurrent save left behind: nothing in the store is touched on a stale read.
+    queryExecute("UPDATE product SET is_published = false WHERE id = :id::uuid", { id: compactProduct });
+    stalePath = queryExecute("SELECT path FROM moo_published_file WHERE address = '/datasheets/charlie.pdf'").path;
+    files.syncRecord("product", compactProduct);
+    check("a repair from a stale read doesn't bring an unpublished copy back", NOT files.callRepair("public/www/datasheets/charlie.pdf", stalePath, "product", compactProduct) AND NOT live("/datasheets/charlie.pdf"));
+    check("a stale retire leaves another record's copy alone", NOT files.callRetire("public/www/datasheets/bravo.pdf", "product", compactProduct) AND liveBody("/datasheets/bravo.pdf") EQ "rival sheet");
+    check("a marked copy whose address a record holds is not a stray", NOT files.callRemoveStray("public/www/datasheets/bravo.pdf") AND live("/datasheets/bravo.pdf"));
+    queryExecute("INSERT INTO moo_published_file (object_key, site, address, table_name, record_id, field, moo_file_id, path, etag) VALUES ('public/www/datasheets/claimed.pdf', 'www', '/datasheets/claimed.pdf', 'product', :id::uuid, 'datasheet', :id::uuid, '', '')", { id: rival });
+    store.put("public/www/datasheets/claimed.pdf", "being published", { "moopa-published": "1" });
+    check("...nor is one whose address is being claimed", NOT files.callRemoveStray("public/www/datasheets/claimed.pdf") AND live("/datasheets/claimed.pdf"));
+    queryExecute("DELETE FROM moo_published_file WHERE address = '/datasheets/claimed.pdf'");
+
+    // 13. A field that no longer publishes: its rows go in syncAll's first step.
+    queryExecute("INSERT INTO moo_published_file (object_key, site, address, table_name, record_id, field, moo_file_id, path, etag) VALUES ('public/www/old/bravo.pdf', 'www', '/old/bravo.pdf', 'product', :id::uuid, 'brochure', :id::uuid, 'x', 'x')", { id: rival });
+    store.put("public/www/old/bravo.pdf", "old brochure", { "moopa-published": "1" });
+    r = files.syncAll();
+    check("a retired field's copy and row are removed", NOT live("/old/bravo.pdf") AND rowPath("/old/bravo.pdf") EQ "(no row)");
+
+    // 14. A file no address can be made for is counted.
+    nameless = newProduct("delta", true);
+    attach(nameless, "images", [newFile("!!!.jpg", "no name")]);
+    r = files.syncRecord("product", nameless);
+    check("a file with no readable name is skipped, and counted", r.skipped EQ 1 AND r.published EQ 0, "skipped #r.skipped#");
 
     output = arrayToList(request.results, chr(10)) & chr(10) & chr(10) & (request.failures ? "#request.failures# of #arrayLen(request.results)# checks failed" : "All #arrayLen(request.results)# checks passed") & chr(10);
 </cfscript>
