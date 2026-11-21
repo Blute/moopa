@@ -312,11 +312,12 @@ Delete - delete
     <cffunction name="publishRecord" access="private" returntype="void" output="false">
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="true" />
+        <cfargument name="outsideTransaction" type="boolean" required="false" default="false" />
         <cfif NOT len(arguments.id)>
             <cfreturn />
         </cfif>
         <cftry>
-            <cfset application.lib.published_files.syncRecord(arguments.table_name, arguments.id) />
+            <cfset application.lib.published_files.syncRecord(table_name = arguments.table_name, id = arguments.id, outsideTransaction = arguments.outsideTransaction) />
             <cfcatch>
                 <cfset application.lib.published_files.logFailure(cfcatch, "published_files.syncRecord #arguments.table_name# #arguments.id#") />
             </cfcatch>
@@ -377,7 +378,7 @@ Delete - delete
                 <cfset arguments.data[local.keyName] = local.working[local.keyName] />
             </cfif>
         </cfloop>
-        <cfset publishRecord(arguments.table_name, saved.id ?: "") />
+        <cfset publishRecord(arguments.table_name, saved.id ?: "", true) />
         <cfreturn variables.returnFormatter.formatCFML(saved, arguments.returnFormat) />
 
     </cffunction>

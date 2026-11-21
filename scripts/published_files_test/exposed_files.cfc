@@ -9,7 +9,7 @@
         <!--- As reconcileRecord calls it: in a transaction, inside the address's savepoint. --->
         <cftransaction>
             <cfquery>SAVEPOINT moopa_published_address</cfquery>
-            <cfset retired = retire(arguments.key, arguments.table_name, arguments.id) />
+            <cfset retired = retire(arguments.key, arguments.table_name, arguments.id, { "checkpointed": false }) />
         </cftransaction>
         <cfreturn retired />
     </cffunction>

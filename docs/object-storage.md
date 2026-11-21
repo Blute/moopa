@@ -180,14 +180,17 @@ This is `application.lib.published_files.syncRecord(table_name, id)`. A project 
 
 **One at a time, and never inside a transaction.** Every publishing operation (a record's sync, a repair, a stray's removal) runs in a short transaction of its own, read committed, holding one Postgres advisory lock. So only one runs at a time, across every instance of the app, and what it reads is what the last one committed.
 - **Saves wait in turn, holding little.** On each app instance a save's sync queues behind that instance's other saves on a named lock, holding no database connection. The one at the front waits in Postgres's own queue, in turn with the other instances and with `syncAll()`, so at most one connection per instance waits. A waiting save also holds its request.
-- **A save doesn't wait long.** A save's sync gives up after 5 seconds (`syncRecord`'s `waitSeconds`), logs a warning naming the record, and returns `deferred: 1`; the rest of that request doesn't wait at all.
+- **A save doesn't wait long.** A save's sync gives up after 5 seconds, logs a warning naming the record, and returns `deferred: 1`. The next save in that request then doesn't wait, until one gets the lock. `syncRecord(table_name, id, waitSeconds)` called directly waits the whole seconds it is given (0 to 3600).
+- **The wait is for the lock alone.** Once a sync has the lock, a row it has to wait for is waited for as usual; a failure there is a failure, never a deferral.
 - **`syncAll()` waits longer.** It waits up to a minute for each step, and stops its run (`deferred: 1`) if the lock stays taken that long.
 - **The lock is held during store calls** (each up to two minutes when the store is slow). If an app instance loses its database connection part way, the lock goes with it while its store call may still finish. What that leaves is a copy out of step with its row, which `syncAll()` repairs.
 - **Failures are logged after the lock is released.**
 
 Inside a caller's `cftransaction`, nothing is published or unpublished, since the transaction could still roll back. `syncRecord` returns `deferred: 1`, and the record follows by its next save outside a transaction, by `syncRecord` after the commit, or by `syncAll()`.
 
-**Publishing and unpublishing are eventual.** A save returns once the record is written, whether its files followed it or were deferred. A file can stay public after its record is unpublished or deleted until the next sync that gets the lock: the record's next save, or `syncAll()` on its schedule. Don't rely on unpublishing to withdraw a file at once. If that matters, check the record where the file is served, or call `syncRecord` after the save and act on `deferred`. Pages see an address stop being linked once the sync that unlinked it has committed.
+**Publishing and unpublishing are eventual.** A save returns once the record is written, whether its files followed it, were deferred, or failed. A file can stay public after its record is unpublished or deleted until the next sync that gets the lock and succeeds: the record's next save, or `syncAll()` on its schedule. Browsers and the edge may also keep a copy for up to five minutes after it is gone.
+
+So don't rely on unpublishing to withdraw a file at once. If that matters, check the record where the file is served, with a cache policy to match. Or call `syncRecord` after the save and act on both `deferred` and `failed`. Pages see an address stop being linked once the sync that unlinked it has committed.
 
 **One moment's state.** Outside a caller's transaction, `db.save` writes a publishing table's record and its files in one transaction. A sync reads the record and all its publishing files in one statement, so it never pairs one save's `when` with another's files.
 

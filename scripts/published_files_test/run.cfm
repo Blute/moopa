@@ -247,8 +247,7 @@
     r = files.syncRecord("product", echo);
     check("...which finishes it", r.published EQ 1 AND len(rowPath("/images/echo/one.jpg")), summary(r));
 
-    // 16. While another operation holds the publishing lock, a save's sync waits a little, then defers, holding no
-    //     connection while it waits.
+    // 16. While another operation holds the publishing lock, a sync waits the time it is given, then defers.
     thread name="holder" action="run" {
         transaction {
             queryExecute("SELECT pg_advisory_xact_lock(hashtext('moopa_published_files'))");
@@ -263,11 +262,26 @@
     check("a busy lock defers the sync after waitSeconds", r.deferred EQ 1 AND waited LT 2500, "deferred #r.deferred#, waited #waited# ms");
     r = files.syncRecord("product", echo);
     check("...and the next sync goes ahead", r.deferred EQ 0 AND r.kept EQ 3, summary(r));
+    // A row lock met after the publishing lock is the work's failure, never "busy": the lock's wait doesn't outlive it.
+    thread name="rowholder" action="run" {
+        transaction {
+            queryExecute("SELECT 1 FROM moo_published_file WHERE address = '/datasheets/echo.pdf' FOR UPDATE");
+            sleep(2500);
+        }
+    }
+    sleep(300);
+    queryExecute("UPDATE product SET slug = 'echo-two' WHERE id = :id::uuid", { id: echo });
+    started = getTickCount();
+    r = files.syncRecord("product", echo, 1);
+    rowWaited = getTickCount() - started;
+    thread action="join" name="rowholder";
+    check("...a row lock after the publishing lock waits for the row, not the lock's time", r.deferred EQ 0 AND r.failed EQ 0 AND rowWaited GTE 1500, "#summary(r)# waited #rowWaited# ms");
+    r = files.syncRecord("product", echo);
 
     // 17. A repair whose copy an earlier sweep already put right does nothing.
-    echoKey = "public/www/datasheets/echo.pdf";
+    echoKey = "public/www/datasheets/echo-two.pdf";
     echoPath = queryExecute("SELECT path FROM moo_published_file WHERE object_key = :k", { k: echoKey }).path;
-    check("a repair of a copy that is already right does nothing", NOT files.callRepair(echoKey, echoPath, "product", echo));
+    check("a repair of a copy that is already right does nothing", len(echoPath) AND NOT files.callRepair(echoKey, echoPath, "product", echo));
 
     // 14. A file no address can be made for is counted.
     nameless = newProduct("delta", true);
