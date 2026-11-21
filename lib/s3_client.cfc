@@ -270,7 +270,7 @@
           through the app. One CopyObject copies up to 5 GB. The copy keeps the source's Content-Type. A key already at
           the target is replaced. Throws s3.request.failed when the source isn't there or the store doesn't confirm the
           copy. --->
-    <cffunction name="copyObject" access="public" returntype="void" output="false">
+    <cffunction name="copyObject" access="public" returntype="string" output="false" hint="Returns the copy's ETag, without quotes.">
         <cfargument name="store" type="struct" required="true" />
         <cfargument name="sourceKey" type="string" required="true" />
         <cfargument name="targetKey" type="string" required="true" />
@@ -299,6 +299,7 @@
         <cfif NOT copied>
             <cfthrow type="s3.request.failed" message="#arguments.store.label#: copying #arguments.sourceKey# to #arguments.targetKey# failed" detail="#left(answer, 1000)#" />
         </cfif>
+        <cfreturn replace(childText(result, "ETag"), '"', "", "all") />
     </cffunction>
 
     <!--- Deletes an object. Deleting a key that isn't there succeeds, as S3 answers it. --->

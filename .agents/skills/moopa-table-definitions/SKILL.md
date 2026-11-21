@@ -207,7 +207,7 @@ A `many_to_many` field of `moo_file` can publish its files at readable addresses
 }
 ```
 
-`{field}` is a column of the record, `{name}` and `{ext}` the file's; without `{name}` only the first file is published. `when` names a `bool` column. Read `docs/object-storage.md` ("Publishing a table's files") before using it: it covers `moo_published_file`, `syncAll()`, linking a published file from a page, and the Worker setup it needs.
+`{field}` is a plain column of the record, `{name}` and `{ext}` the file's; literal parts are lowercase; without `{name}` only the first file is published. `when` names a `bool` column. Run `published_files.syncAll()` once and on a schedule. Read `docs/object-storage.md` ("Publishing a table's files") before using it: it covers `moo_published_file`, `syncAll()`, linking a published file from a page, and the Worker setup it needs.
 
 ## What a link carries
 

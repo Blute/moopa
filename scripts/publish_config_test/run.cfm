@@ -76,7 +76,46 @@
     }
     check("a field that is not a file field", notFile EQ "moopa.publish.invalid");
 
-    // 4. Addresses made from a template, a record and a file name.
+    check("a misspelt key (wen) fails, rather than publishing always", invalid({ "site": "www", "address": "/a.pdf", "wen": "is_published" }) CONTAINS "wen");
+    check("when as a list fails", len(invalid({ "site": "www", "address": "/a.pdf", "when": ["is_published"] })));
+    check("when as a struct fails", len(invalid({ "site": "www", "address": "/a.pdf", "when": { "field": "is_published" } })));
+    check("when empty fails", len(invalid({ "site": "www", "address": "/a.pdf", "when": " " })));
+    check("an uppercase literal fails (one spelling per address)", len(invalid({ "site": "www", "address": "/Datasheets/{slug}.pdf" })));
+    check("an empty segment fails", len(invalid({ "site": "www", "address": "/d//{slug}.pdf" })));
+    check("a .. segment fails", len(invalid({ "site": "www", "address": "/d/../{slug}.pdf" })));
+    check("a . segment fails", len(invalid({ "site": "www", "address": "/d/./{slug}.pdf" })));
+    check("a segment over 200 characters fails", len(invalid({ "site": "www", "address": "/" & repeatString("a", 201) & "/{slug}.pdf" })));
+    try {
+        withJson = createObject("component", "moopa.internal.db.schema_normalizer").init().normalize({
+            "product": { "fields": { "slug": { "type": "varchar" }, "meta": { "type": "jsonb" },
+                "datasheet": { "type": "many_to_many", "foreign_key_table": "moo_file", "publish": { "site": "www", "address": "/d/{meta}.pdf" } } } },
+            "moo_file": { "fields": { "name": { "type": "varchar" } } } }, {});
+        config.build(withJson);
+        jsonMessage = "";
+    } catch (any error) {
+        jsonMessage = error.type;
+    }
+    check("a jsonb column as a placeholder fails", jsonMessage EQ "moopa.publish.invalid");
+    try {
+        twice = createObject("component", "moopa.internal.db.schema_normalizer").init().normalize({
+            "product": { "fields": { "slug": { "type": "varchar" },
+                "a": { "type": "many_to_many", "foreign_key_table": "moo_file", "publish": { "site": "www", "address": "/d/{slug}.pdf" } },
+                "b": { "type": "many_to_many", "foreign_key_table": "moo_file", "publish": { "site": "www", "address": "/d/{slug}.pdf" } } } },
+            "moo_file": { "fields": { "name": { "type": "varchar" } } } }, {});
+        config.build(twice);
+        twiceMessage = "";
+    } catch (any error) {
+        twiceMessage = error.type;
+    }
+    check("two fields at the same addresses on one site fail", twiceMessage EQ "moopa.publish.invalid");
+
+    // 4. What syncAll needs from a setting: the columns to read, and the literal folder it sweeps.
+    check("columns: the placeholders and when", arrayToList(built.product.datasheet.columns) EQ "slug,is_published" AND arrayToList(built.product.images.columns) EQ "slug");
+    check("folder: the literal folder before the first placeholder", built.product.datasheet.folder EQ "/datasheets/" AND built.product.images.folder EQ "/images/");
+    rootLevel = config.build(product({ "site": "www", "address": "/{slug}.pdf" }));
+    check("folder: / when the template has none (never swept)", rootLevel.product.datasheet.folder EQ "/");
+
+    // 5. Addresses made from a template, a record and a file name.
     files = createObject("component", "moopa.lib.published_files").init();
     check("{field}, {name} and {ext}", files.addressFor("/images/{slug}/{name}.{ext}", { "slug": "widget" }, "Front View.JPG") EQ "/images/widget/front-view.jpg");
     check("values made readable", files.addressFor("/p/{title}/{name}.{ext}", { "title": "Big Bin (2 m³)" }, "Photo ##1.png") EQ "/p/big-bin-2-m/photo-1.png");
@@ -84,6 +123,8 @@
     check("an empty value gives no address", files.addressFor("/d/{slug}.pdf", { "slug": "" }, "x.pdf") EQ "");
     check("a missing value gives no address", files.addressFor("/d/{slug}.pdf", {}, "x.pdf") EQ "");
     check("a fixed address", files.addressFor("/datasheets/{slug}.pdf", { "slug": "tipper" }, "Anything.PDF") EQ "/datasheets/tipper.pdf");
+    check("a file name with a trailing space", files.addressFor("/p/{name}.{ext}", {}, "Photo.JPG ") EQ "/p/photo.jpg");
+    check("a long value ends without a dash", right(files.addressFor("/p/{title}.pdf", { "title": repeatString("a", 119) & " b" }, "x.pdf"), 5) NEQ "-.pdf");
 
     output = arrayToList(results, chr(10)) & chr(10) & chr(10) & (failures ? "#failures# of #arrayLen(results)# checks failed" : "All #arrayLen(results)# checks passed") & chr(10);
 </cfscript>

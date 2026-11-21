@@ -42,7 +42,7 @@ Every call takes a store: `defaultStore()`, or one built with `configure(label, 
 | `objectExists(store, objectKey)` | asks the store (HEAD): true, false, or throws |
 | `headObject(store, objectKey)` | what the store holds (HEAD): `{ exists, size, contentType }` |
 | `readObjectStart(store, objectKey, bytes)` | the first `bytes` bytes (a ranged GET), to read a file's signature |
-| `copyObject(store, sourceKey, targetKey)` | copies it to another key inside the store (one CopyObject, up to 5 GB), keeping its Content-Type |
+| `copyObject(store, sourceKey, targetKey)` | copies it to another key inside the store (one CopyObject, up to 5 GB), keeping its Content-Type; returns the copy's ETag |
 | `deleteObject(store, objectKey)` | deletes it |
 | `listObjects(store, prefix)` | `[{ key, etag, size, last_modified }]` under a prefix |
 | `presignedUrl(store, objectKey, method, expiresSeconds, signedHeaders)` | a URL a browser can GET or PUT without credentials; with `signedHeaders` (such as `{ "Content-Type": "image/jpeg", "Content-Length": 48213 }`) the browser must send each with exactly that value, or the store refuses it |
@@ -154,21 +154,50 @@ A `many_to_many` field of `moo_file` can declare that its files are published, i
 ```
 
 - **`site`** is the site the files are published on, as the Worker's `PUBLIC_SITES` names it.
-- **`address`** is where each file goes. `{field}` is the record's value of that column, `{name}` the file's name without its extension and `{ext}` its extension. `{field}` and `{name}` are made readable: lowercase letters and digits, with dashes between, so `Front View (2).JPG` gives `front-view-2` and `jpg`.
-- **Without `{name}`**, a field publishes its first file only (in its order): one address, one file. With it, two files whose names come out the same get `-2`, `-3` before the extension.
+- **`address`** is where each file goes:
+  - `{field}` is the record's value of that column, `{name}` the file's name without its extension, and `{ext}` its extension.
+  - `{field}` and `{name}` are made readable: lowercase letters and digits, with dashes between. So `Front View (2).JPG` gives `front-view-2` and `jpg`.
+  - The literal parts are lowercase too, so every address has one spelling.
+  - `{name}` and `{ext}` are always the file's, even when the table has columns of those names.
+  - A placeholder must be a plain column, not a link, list, `jsonb` and so on.
+- **Without `{name}`**, a field publishes its first file only (in its order): one address, one file. With it, two files whose names come out the same get `-2`, `-3` before the extension, in the files' order. Removing the first shifts the numbers of the rest.
 - **`when`** (optional) names a `bool` column of the table: its files are published only while it is true. Without it, they always are.
-- **The table definition is checked at start.** A field that isn't a `many_to_many` of `moo_file`, a placeholder that isn't a column, or a `when` that isn't a `bool` column stops the app with `moopa.publish.invalid`, naming the table and field.
+- **The table definition is checked at start.** The app stops with `moopa.publish.invalid`, naming the table and field, for:
+  - a field that isn't a `many_to_many` of `moo_file`;
+  - an unknown key in `publish` (a misspelt `when` would otherwise publish always);
+  - a `when` that isn't a `bool` column;
+  - an address no filled-in template could make: an empty, `.` or `..` segment, or one over 200 characters;
+  - two fields of a table publishing to the same addresses.
 
 **What follows a record.** `db.save` and `db.delete` keep a publishing table's files in step with each record, after it is written:
 - a file added, or replaced by another, is published;
 - a file removed, a changed address (the slug edited), `when` turning false, or the record deleted, unpublishes;
 - only what changed is copied.
 
-This is `application.lib.published_files.syncRecord(table_name, id)`, which a project calls itself after changing a record or its files by SQL rather than `db.save`.
+This is `application.lib.published_files.syncRecord(table_name, id)`. A project calls it itself after changing a record, its files or a `moo_file` by SQL rather than `db.save`.
 
-**Failures and catching up.** A failure to publish never fails the save or delete: it is logged (`core.logError`), and the record's files catch up on its next save or on `syncAll()`. **`syncAll()`** does every record of every publishing table, and unpublishes what a deleted record, or a field that no longer publishes, left behind. Run it once when a table first publishes (its existing records are published then), and on a schedule.
+**Each address goes through its row in `moo_published_file`, whose `path` is its state:**
+- **Publishing:** claim the row, with an empty path, then copy, then set the path and the copy's `etag`.
+- **Unpublishing:** empty the path (pages stop linking it), delete the copy, then the row.
 
-**`moo_published_file`** records what is published where: one row per address, with its `site`, `address`, `object_key`, the `table_name`, `record_id` and `field` that publish it, the `moo_file_id`, and the `path` it was copied from. Pages read it to link a file at its own address, and a file not published yet (no row) by its signed link:
+So a failure at any step leaves a row with an empty path, which the next sync of that record, or `syncAll()`, finishes. No public copy is ever without its row.
+
+**Failures.** A failure is logged (`core.logError`, or the engine's log if even that fails) and counted, never thrown at the save or delete. `syncRecord` returns `{ published, unpublished, kept, taken, failed }`.
+
+**`syncAll()`** is the repair job. Run it once when a table first publishes (that publishes its existing records), and on a schedule. In order:
+1. It unpublishes what a deleted record, or a field or table that no longer publishes, left behind. A record waiting for one of those addresses gets it in the same run.
+2. It syncs every record that publishes, or has published, something. A record that fails is logged and counted, and the rest go on.
+3. It compares the store with the rows, under each publishing field's literal folder (`/datasheets/` for `/datasheets/{slug}.pdf`):
+   - a copy that is missing, or isn't the one recorded (its `etag`), is published again;
+   - a copy no row accounts for is deleted.
+
+   That clears what a transaction rolled back after a save left in the store: the store isn't part of the database's transaction.
+
+It returns the totals plus `repaired` and `removed`. A template with no literal folder (`/{slug}.pdf`) is never swept.
+
+**Files published by hand** (`publish()`) must not live under a publishing field's literal folder: the sweep deletes a copy there that no row accounts for.
+
+**`moo_published_file`** records what is published where: one row per address, with its `site`, `address` and `object_key`, the `table_name`, `record_id` and `field` that publish it, the `moo_file_id`, the `path` it was copied from, and its `etag`. Pages link a file at its own address once the row's path is set, and by its signed link until then:
 
 ```sql
 SELECT COALESCE(published.address, signed_asset_url(moo_file.path, 'NEVER', 'a')) AS url
@@ -177,10 +206,12 @@ JOIN moo_file ON moo_file.id = product_datasheet.foreign_id
 LEFT JOIN moo_published_file AS published
   ON published.table_name = 'product' AND published.record_id = product_datasheet.primary_id
  AND published.field = 'datasheet' AND published.moo_file_id = moo_file.id
+ AND published.site = 'www' AND published.path <> ''
 ```
 
-- **Only for projects that publish.** A project gets `moo_published_file` (a schema sync adds it) only when one of its fields declares `publish`. Without one there is no table, and `db.save` and `db.delete` work exactly as before.
-- **An address belongs to the first record that publishes it.** Another record wanting the same address leaves it alone, until the first lets go of it.
+- **Only for projects that publish.** A project gets `moo_published_file` (a schema sync adds it) only when one of its fields declares `publish`. Without one there is no table, and `db.save` and `db.delete` work exactly as before. Until the table is in the database, publishing does nothing (the schema not synced yet).
+- **An address belongs to the first record that publishes it.** Another record wanting it is counted as `taken` and left alone, until the first lets go of it. The table's unique `object_key` settles this, across app instances too.
+- **Two saves of one record on two app instances at once** can leave the copy a save behind. The next sync of that record, or `syncAll()`, puts it right.
 
 ### How a published file is answered
 
@@ -198,13 +229,13 @@ The signed assets Worker answers published files when its **`PUBLIC_SITES`** set
 
 ### Upgrading to published files
 
-Nothing changes for a project that doesn't publish: the library is only called by a project's own code, it needs no table, and the Worker publishes nothing until `PUBLIC_SITES` is set. A project that publishes:
+Nothing changes for a project that doesn't publish: without a `publish` setting there is no table and `db.save` is as before, the library runs only when a project calls it, and the Worker publishes nothing until `PUBLIC_SITES` is set. A project that publishes:
 
 1. **Redeploy the signed assets Worker** from `config/init/cloudflare-signed-assets-worker.js`, with `PUBLIC_SITES` and `ASSETS_ORIGIN`.
 2. **Turn on Images Transformations** on the site's zone if images are resized (above).
 3. **Route the Worker on the site's hostname** for each prefix it publishes under (a Workers route, `www.example.com/datasheets/*`). The hostname must be proxied by Cloudflare in the same account as the Worker.
 4. **Check the bucket has nothing under `public/`** that wasn't published on purpose: once the Worker publishes a site, everything under `public/<site>/` is answered.
-5. **Publish**: declare `publish` on the file fields (then sync the schema, which adds `moo_published_file`, and run `published_files.syncAll()` once), or call `published_files.publish()` from the project's code. Link to the site's own addresses.
+5. **Publish**: declare `publish` on the file fields (then sync the schema, which adds `moo_published_file`, and run `published_files.syncAll()` once and on a schedule), or call `published_files.publish()` from the project's code, outside any publishing field's folder. Link to the site's own addresses.
 
 ### Upgrading to PDF pages
 

@@ -300,12 +300,15 @@ Delete - delete
             data = arguments.data,
             returnFormat = arguments.returnFormat
         ) />
-        <cfset publishRecord(arguments.table_name, len(arguments.id) ? arguments.id : (arguments.data.id ?: "")) />
+        <!--- The id the writer deleted: data.id first, as record_writer resolves it. --->
+        <cfset publishRecord(arguments.table_name, len(arguments.data.id ?: "") ? arguments.data.id : arguments.id) />
         <cfreturn deleted />
     </cffunction>
 
     <!--- Puts a record's published files in step with it (lib/published_files.cfc syncRecord). A failure is logged, never
-          the save's or delete's: the record is written, and published_files.syncAll() catches up. --->
+          the save's or delete's: the record is written, and the next sync of it, or published_files.syncAll(), finishes
+          the job. (Inside a caller's cftransaction that later rolls back, the store isn't rolled back with it: syncAll
+          repairs that too.) --->
     <cffunction name="publishRecord" access="private" returntype="void" output="false">
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="true" />
@@ -315,7 +318,7 @@ Delete - delete
         <cftry>
             <cfset application.lib.published_files.syncRecord(arguments.table_name, arguments.id) />
             <cfcatch>
-                <cfset application.lib.core.logError(cfcatch, "published_files.syncRecord") />
+                <cfset application.lib.published_files.logFailure(cfcatch, "published_files.syncRecord #arguments.table_name# #arguments.id#") />
             </cfcatch>
         </cftry>
     </cffunction>
