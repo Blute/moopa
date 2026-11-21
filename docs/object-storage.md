@@ -42,6 +42,7 @@ Every call takes a store: `defaultStore()`, or one built with `configure(label, 
 | `objectExists(store, objectKey)` | asks the store (HEAD): true, false, or throws |
 | `headObject(store, objectKey)` | what the store holds (HEAD): `{ exists, size, contentType }` |
 | `readObjectStart(store, objectKey, bytes)` | the first `bytes` bytes (a ranged GET), to read a file's signature |
+| `copyObject(store, sourceKey, targetKey)` | copies it to another key inside the store (one CopyObject, up to 5 GB), keeping its Content-Type |
 | `deleteObject(store, objectKey)` | deletes it |
 | `listObjects(store, prefix)` | `[{ key, etag, size, last_modified }]` under a prefix |
 | `presignedUrl(store, objectKey, method, expiresSeconds, signedHeaders)` | a URL a browser can GET or PUT without credentials; with `signedHeaders` (such as `{ "Content-Type": "image/jpeg", "Content-Length": 48213 }`) the browser must send each with exactly that value, or the store refuses it |
@@ -120,6 +121,47 @@ POST /page   {"source": "<address the PDF can be read from>", "page": 1, "width"
 Anything else it answers is a 502 to the asker. A container running a PDF library (PyMuPDF, PDFium) behind a Worker fits: it can download a large PDF to disk and read only the page.
 
 A page is rendered each time an address is first asked for, then kept in the edge cache until the address expires, so sign with a period-aligned expiry (`EOW`, `EOM`) as for thumbnails.
+
+## Published files
+
+A file can also be **published**: answered at a fixed, readable address on one of the project's own sites, without a signature, such as `https://www.example.com/datasheets/product.pdf`. Use it for what a public website shows search engines and links to (datasheets, brochures, product photos), where a signed link's address on the asset hostname, with its `?exp=…&sig=…` and an id that changes with every upload, is the wrong address to rank or share. Everything not published stays private and signed.
+
+```cfml
+application.lib.published_files.publish("www", "/datasheets/product.pdf", moo_file.path)   // copies it to public/www/datasheets/product.pdf
+application.lib.published_files.unpublish("www", "/datasheets/product.pdf")
+application.lib.published_files.isPublished("www", "/datasheets/product.pdf")
+application.lib.published_files.list("www", "/datasheets/")                                 // [{ address, size, last_modified }]
+```
+
+- **The bucket is the record.** `publish()` copies the stored file inside the store (`copyObject`, nothing passes through the app) to `public/<site>/<address>`. There is no table: what is under `public/` is what is published. A project keeps which file it published where in its own tables if it needs to.
+- **An address never changes.** Publishing again at the same address replaces the file there, so a new version of a datasheet keeps its address, and the links and search ranking that point at it.
+- **Addresses** start with `/` and are segments of letters, digits, dot, dash and underscore. Site names are lowercase letters, digits and dashes. Anything else throws `published_files.invalid`. Prefer lowercase, dash-separated addresses that say what the file is.
+- **Unpublishing** removes the copy, not the original. Browsers may keep their copy for up to five minutes more. Deleting the original does not unpublish it: the published copy is the project's to remove.
+- **Size:** a copy is one CopyObject, so a file over 5 GB can't be published.
+
+### How a published file is answered
+
+The signed assets Worker answers published files when its **`PUBLIC_SITES`** setting names the site's hostname, as JSON: `{"www.example.com": "www"}` answers `https://www.example.com/<address>` from `public/www/<address>`. The Worker is routed on that hostname for the prefixes the site publishes under (`www.example.com/datasheets/*`, `www.example.com/images/*`); every other address on the site goes to the app as before.
+
+- A hostname in `PUBLIC_SITES` **only ever answers published files**, from its own site's `public/<site>/` prefix: no signed asset, no other site's file and no other key can be reached through it. The asset hostname still wants a signature for everything, `public/` keys included.
+- **Only images, video, audio and PDFs open in the browser.** Anything else is a download typed `application/octet-stream`, so a published file can never show a page on the site, nor be loaded there as a script or a style. Every answer is `nosniff`.
+- **Each file has one address:** a path with any percent-encoding is a 404, since an address never needs it.
+- **Caching:** an answer carries an `ETag` and `Cache-Control: public, max-age=300`, so a replaced file shows within five minutes. `If-None-Match` (a list, or `*`) is answered 304 before any range. A range is served only when its `If-Range`, if any, names the current version; otherwise the whole file is the answer, so a resumed download never mixes two versions of a replaced file. Unresized files are read from R2 on each request; browsers keep them five minutes.
+- **An image is resized** with `?width=`, from a fixed set of widths only (160, 320, 480, 640, 800, 1024, 1200, 1600, 2000), and only when the stored file is a raster image (JPEG, PNG, WebP, GIF, AVIF). Any other width is a 400; another type a 415; an address with nothing published a 404, all without asking the resizer. A resize answer carries an `ETag` for its version and width and is kept as above; an answer Cloudflare didn't resize (see below) is `no-store` with no `ETag`, so it is asked for again each time. The resizer reads the original at one address per version of the file, and each width is kept at the edge per address, width and version, so a replaced image shows at once and an unchanged one is resized once. A failed resize is a 502 that nothing keeps.
+- **Resizing needs Images Transformations on the site's zone** (and the asset hostname allowed as a source when it is in another zone). Without them Cloudflare answers the original: it is served, but never kept at the edge as a resized copy (the Worker keeps only answers marked `Cf-Resized`), and a file replaced while it was being resized is never kept under the version looked up. One edge remains: Cloudflare's own transformation cache may keep such a replacement under the replaced version's source address, which only shows if that exact earlier file is published again at the same address.
+- **`ASSETS_ORIGIN`** is the Worker's own hostname (`https://<the asset hostname>`), where the resizer reads the original: a request to the site's hostname would go to the site's app, not back to the Worker. Without it, or set to a published site's hostname, a resize answers 500.
+- **A `PUBLIC_SITES` that can't be read** (not JSON, not an object, a bad site name) leaves signed requests answered as ever and answers every other request 500, naming the problem. Its hostnames match in any case.
+- Without `PUBLIC_SITES` nothing is published, and the Worker answers exactly as it did before published files.
+
+### Upgrading to published files
+
+Nothing changes for a project that doesn't publish: the library is only called by a project's own code, it needs no table, and the Worker publishes nothing until `PUBLIC_SITES` is set. A project that publishes:
+
+1. **Redeploy the signed assets Worker** from `config/init/cloudflare-signed-assets-worker.js`, with `PUBLIC_SITES` and `ASSETS_ORIGIN`.
+2. **Turn on Images Transformations** on the site's zone if images are resized (above).
+3. **Route the Worker on the site's hostname** for each prefix it publishes under (a Workers route, `www.example.com/datasheets/*`). The hostname must be proxied by Cloudflare in the same account as the Worker.
+4. **Check the bucket has nothing under `public/`** that wasn't published on purpose: once the Worker publishes a site, everything under `public/<site>/` is answered.
+5. **Publish** from the project's code (`published_files.publish()`), and link to the site's own addresses.
 
 ### Upgrading to PDF pages
 

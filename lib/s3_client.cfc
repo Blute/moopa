@@ -266,6 +266,41 @@
         <cfreturn httpResult.fileContent />
     </cffunction>
 
+    <!--- Copies an object to another key in the same store, inside the store (S3 and R2 CopyObject): nothing passes
+          through the app. One CopyObject copies up to 5 GB. The copy keeps the source's Content-Type. A key already at
+          the target is replaced. Throws s3.request.failed when the source isn't there or the store doesn't confirm the
+          copy. --->
+    <cffunction name="copyObject" access="public" returntype="void" output="false">
+        <cfargument name="store" type="struct" required="true" />
+        <cfargument name="sourceKey" type="string" required="true" />
+        <cfargument name="targetKey" type="string" required="true" />
+
+        <cfset var httpResult = signedRequest(
+            store = arguments.store,
+            method = "PUT",
+            canonicalUri = objectCanonicalUri(arguments.store, arguments.targetKey),
+            canonicalQueryString = "",
+            amzHeaders = {
+                "x-amz-copy-source": "/" & arguments.store.bucket & "/" & encodeObjectKey(arguments.sourceKey),
+                "x-amz-metadata-directive": "COPY"
+            }
+        ) />
+        <!--- S3 can fail a copy after answering 200, with the error in the body: only a whole CopyObjectResult with the
+              copy's ETag is a copy. --->
+        <cfset var answer = isBinary(httpResult.fileContent ?: "") ? charsetEncode(httpResult.fileContent, "utf-8") : (httpResult.fileContent ?: "") />
+        <cfset var copied = false />
+        <cfset var result = "" />
+        <cftry>
+            <!--- trim: S3 may send whitespace ahead of the XML to keep a slow copy's connection open. --->
+            <cfset result = xmlParse(trim(answer)).xmlRoot />
+            <cfset copied = localName(result) EQ "CopyObjectResult" AND len(childText(result, "ETag")) GT 0 />
+            <cfcatch><cfset copied = false /></cfcatch>
+        </cftry>
+        <cfif NOT copied>
+            <cfthrow type="s3.request.failed" message="#arguments.store.label#: copying #arguments.sourceKey# to #arguments.targetKey# failed" detail="#left(answer, 1000)#" />
+        </cfif>
+    </cffunction>
+
     <!--- Deletes an object. Deleting a key that isn't there succeeds, as S3 answers it. --->
     <cffunction name="deleteObject" access="public" returntype="void" output="false">
         <cfargument name="store" type="struct" required="true" />
@@ -328,6 +363,7 @@
         <cfargument name="filePath" type="string" required="false" default="" />
         <cfargument name="allowedStatuses" type="string" required="false" default="" />
         <cfargument name="requestHeaders" type="struct" required="false" default="#{}#" hint="More headers to send, unsigned (a GET's Range). Not Host, Authorization or any X-Amz- header." />
+        <cfargument name="amzHeaders" type="struct" required="false" default="#{}#" hint="X-Amz- headers of the request's own (a copy's x-amz-copy-source), signed and sent. Not x-amz-date, x-amz-content-sha256 or x-amz-security-token." />
 
         <cfset var httpResult = {} />
         <cfset var extraName = "" />
@@ -336,7 +372,14 @@
                 <cfthrow type="s3.request.invalid" message="#arguments.store.label#: the header '#extraName#' is the client's own to send" />
             </cfif>
         </cfloop>
+        <cfloop collection="#arguments.amzHeaders#" item="extraName">
+            <cfif NOT reFindNoCase("^x-amz-", extraName) OR listFindNoCase("x-amz-date,x-amz-content-sha256,x-amz-security-token", extraName)>
+                <cfthrow type="s3.request.invalid" message="#arguments.store.label#: '#extraName#' is not an X-Amz- header a request may add" />
+            </cfif>
+        </cfloop>
         <cfset var payloadHash = application.lib.aws_sigv4.sha256Hex(arguments.body) />
+        <cfset var headersToSign = { "x-amz-content-sha256": payloadHash } />
+        <cfset structAppend(headersToSign, arguments.amzHeaders) />
         <cfset var credentials = application.lib.aws_credentials.resolve(
             accessKeyId = arguments.store.accessKeyId,
             secretAccessKey = arguments.store.secretAccessKey,
@@ -347,7 +390,7 @@
             host = arguments.store.host,
             canonicalUri = arguments.canonicalUri,
             canonicalQueryString = arguments.canonicalQueryString,
-            headers = { "x-amz-content-sha256": payloadHash },
+            headers = headersToSign,
             payloadHash = payloadHash,
             region = arguments.store.region,
             service = "s3",
@@ -375,6 +418,9 @@
                 <cfif len(arguments.contentType)>
                     <cfhttpparam type="header" name="Content-Type" value="#arguments.contentType#" />
                 </cfif>
+                <cfloop collection="#arguments.amzHeaders#" item="extraName">
+                    <cfhttpparam type="header" name="#lCase(extraName)#" value="#trim(arguments.amzHeaders[extraName])#" />
+                </cfloop>
                 <cfloop collection="#arguments.requestHeaders#" item="extraName">
                     <cfhttpparam type="header" name="#extraName#" value="#arguments.requestHeaders[extraName]#" />
                 </cfloop>
