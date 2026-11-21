@@ -24,6 +24,7 @@
         return createObject("component", "moopa.internal.db.schema_normalizer").init().normalize({
             "product": { "fields": {
                 "slug": { "type": "varchar" },
+                "name_en": { "type": "varchar" },
                 "is_published": { "type": "bool" },
                 "datasheet": { "type": "many_to_many", "foreign_key_table": "moo_file", "publish": arguments.datasheetPublish },
                 "images": { "type": "many_to_many", "foreign_key_table": "moo_file", "publish": { "site": "www", "address": "/images/{slug}/{name}.{ext}" } },
@@ -55,6 +56,7 @@
     check("...with the bridging table Moopa made", built.product.datasheet.bridge EQ "product_datasheet" AND built.product.images.bridge EQ "product_images");
     check("...when", built.product.datasheet.when EQ "is_published" AND built.product.images.when EQ "");
     check("...an address without {name} publishes the first file only", built.product.datasheet.first AND NOT built.product.images.first);
+    check("...a column whose name starts with name is not the file's {name}", config.build(product({ "site": "www", "address": "/datasheets/{name_en}.pdf" })).product.datasheet.first);
 
     // 3. Mistakes fail at start, naming the table and field.
     check("publish not a struct", invalid("x") CONTAINS "product.datasheet");

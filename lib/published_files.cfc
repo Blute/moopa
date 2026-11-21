@@ -101,11 +101,18 @@
         hint="Puts one record's published files in step with it: publishes what its publishing fields should have published (new or replaced files) and unpublishes what they no longer should (a removed file, a changed address, publish.when false, the record deleted), copying only what changed. Returns { published, unpublished, kept, taken, skipped, failed, deferred }: taken counts addresses another record holds, skipped files no address could be made for, failed the addresses that failed (each logged, left for the next sync). deferred is 1 when nothing was done: inside a caller's transaction (it could roll back), or when other publishing work kept the lock for longer than waitSeconds (logged). The next save, or syncAll, does it: publishing and unpublishing are eventual. Never throws. Does nothing while moo_published_file isn't in the database yet. db.save and db.delete call it.">
         <cfargument name="table_name" type="string" required="true" />
         <cfargument name="id" type="string" required="true" />
-        <cfargument name="waitSeconds" type="numeric" required="false" default="-1" hint="Whole seconds to wait for other publishing work to finish, 0 to 3600. Left out: 5, unless an earlier sync in this request has just been deferred (then 0, until one gets the lock)." />
+        <cfargument name="waitSeconds" type="any" required="false" default="" hint="Whole seconds to wait for other publishing work to finish, 0 to 3600; anything else throws published_files.invalid. Left out: 5, unless an earlier sync in this request has just been deferred (then 0, until one gets the lock)." />
         <cfargument name="outsideTransaction" type="boolean" required="false" default="false" hint="The caller has just checked it isn't in a transaction (db.save): not checked again." />
         <cfset var outcome = { "result": emptyResult(), "failures": [] } />
-        <cfset var byDefault = arguments.waitSeconds LT 0 />
-        <cfset var wait = byDefault ? ((request.moopaPublishingBusy ?: false) ? 0 : 5) : min(3600, ceiling(arguments.waitSeconds)) />
+        <cfset var byDefault = NOT len(trim(arguments.waitSeconds)) />
+        <cfset var wait = 5 />
+        <cfif byDefault>
+            <cfset wait = (request.moopaPublishingBusy ?: false) ? 0 : 5 />
+        <cfelseif isValid("integer", arguments.waitSeconds) AND arguments.waitSeconds GTE 0 AND arguments.waitSeconds LTE 3600 AND NOT find(".", arguments.waitSeconds)>
+            <cfset wait = int(arguments.waitSeconds) />
+        <cfelse>
+            <cfthrow type="published_files.invalid" message="published_files: waitSeconds is whole seconds, 0 to 3600, not '#arguments.waitSeconds#'" />
+        </cfif>
         <cftry>
             <cfif len(canonicalId(arguments.id)) AND trackingTableExists()>
                 <cfif NOT arguments.outsideTransaction AND inTransaction()>
@@ -117,8 +124,6 @@
                             <cfset request.moopaPublishingBusy = true />
                         </cfif>
                         <cflog file="moopa" type="warning" text="published_files: other publishing work held the lock; #arguments.table_name# #arguments.id# deferred to the next sync" />
-                    <cfelse>
-                        <cfset request.moopaPublishingBusy = false />
                     </cfif>
                 </cfif>
             </cfif>
@@ -173,6 +178,8 @@
         <cftransaction>
             <cfset got = takeLock(arguments.waitMs) />
             <cfif got>
+                <!--- The lock came: the request's saves may wait for it again. --->
+                <cfset request.moopaPublishingBusy = false />
                 <cfset outcome = reconcileRecord(arguments.table_name, arguments.id) />
             </cfif>
         </cftransaction>
@@ -828,17 +835,19 @@
     <!--- The publishing lock, for the rest of the current transaction, read committed (so what is read after it is what the
           last holder committed). waitMs under 1: only if it is free now. Otherwise waits in Postgres's queue for it, at
           most waitMs; false when it didn't come (the transaction is then failed, and rolls back with nothing done). The
-          wait applies to taking the lock alone: lock_timeout is back to its default for the work that follows, so a
-          row lock met there is a failure of that work, never "busy". --->
+          wait applies to taking the lock alone: lock_timeout is back to what the connection had for the work that
+          follows, so a row lock met there is that work's to wait for or fail on, never "busy". --->
     <cffunction name="takeLock" access="private" returntype="boolean" output="false">
         <cfargument name="waitMs" type="numeric" required="true" />
         <cfset var got = "" />
+        <cfset var prior = "" />
         <cfset var waitMs = int(arguments.waitMs) />
         <cfquery>SET TRANSACTION ISOLATION LEVEL READ COMMITTED</cfquery>
         <cfif waitMs LT 1>
             <cfquery name="got">SELECT pg_try_advisory_xact_lock(hashtext(<cfqueryparam cfsqltype="varchar" value="#variables.LOCK_NAME#" />)) AS got</cfquery>
             <cfreturn got.got EQ true />
         </cfif>
+        <cfquery name="prior">SELECT current_setting('lock_timeout') AS setting</cfquery>
         <cfquery>SET LOCAL lock_timeout = '#min(waitMs, 3600000)#ms'</cfquery>
         <cftry>
             <cfquery>SELECT pg_advisory_xact_lock(hashtext(<cfqueryparam cfsqltype="varchar" value="#variables.LOCK_NAME#" />))</cfquery>
@@ -849,7 +858,8 @@
                 <cfrethrow />
             </cfcatch>
         </cftry>
-        <cfquery>SET LOCAL lock_timeout TO DEFAULT</cfquery>
+        <!--- Back to what the connection had (its session's or role's setting), for the rest of this transaction. --->
+        <cfquery>SELECT set_config('lock_timeout', <cfqueryparam cfsqltype="varchar" value="#prior.setting#" />, true)</cfquery>
         <cfreturn true />
     </cffunction>
 

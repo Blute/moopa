@@ -278,6 +278,24 @@
     check("...a row lock after the publishing lock waits for the row, not the lock's time", r.deferred EQ 0 AND r.failed EQ 0 AND rowWaited GTE 1500, "#summary(r)# waited #rowWaited# ms");
     r = files.syncRecord("product", echo);
 
+    // 16b. waitSeconds is whole seconds, 0 to 3600.
+    for (bad in [0.1, -1, 3601, "soon"]) {
+        try {
+            files.syncRecord("product", echo, bad);
+            badRefused = false;
+        } catch (any e) {
+            badRefused = e.type EQ "published_files.invalid";
+        }
+        check("waitSeconds #bad# is refused", badRefused);
+    }
+    // The lock_timeout the connection had is back after the lock is taken (here the default, 0).
+    transaction {
+        queryExecute("SET LOCAL lock_timeout = '250ms'");
+        files.callTakeLock(2000);
+        afterLock = queryExecute("SELECT current_setting('lock_timeout') AS s").s;
+    }
+    check("the connection's own lock_timeout is back after the lock", afterLock EQ "250ms", afterLock);
+
     // 17. A repair whose copy an earlier sweep already put right does nothing.
     echoKey = "public/www/datasheets/echo-two.pdf";
     echoPath = queryExecute("SELECT path FROM moo_published_file WHERE object_key = :k", { k: echoKey }).path;

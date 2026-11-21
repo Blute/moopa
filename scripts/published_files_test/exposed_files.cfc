@@ -17,4 +17,8 @@
         <cfargument name="key" />
         <cfreturn underLock("remove", { "key": arguments.key }) EQ "yes" />
     </cffunction>
+    <cffunction name="callTakeLock" access="public" returntype="boolean" output="false">
+        <cfargument name="waitMs" />
+        <cfreturn takeLock(arguments.waitMs) />
+    </cffunction>
 </cfcomponent>
