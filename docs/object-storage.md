@@ -104,7 +104,7 @@ SELECT signed_asset_url(moo_file.path, 'EOW', 'p', 'page=1&width=120&height=120&
 ```
 
 - `page` counts from 1 and is 1 when not given. A page the PDF doesn't have is a 404.
-- `width`, `height`, `fit` and `quality` resize the page exactly as `/i/` resizes an image, in the format the browser takes. With none of them the page comes 1600 pixels wide.
+- `width`, `height`, `fit` and `quality` resize the page exactly as `/i/` resizes an image, in the newest format the browser's `Accept` header takes (AVIF, then WebP). With none of them the page comes 1600 pixels wide.
 - `render=<width>` (16 to 4000) answers the page as a PNG that many pixels wide without image resizing, for a zone that doesn't have Images Transformations.
 - A file that isn't a PDF is a 415, and one that can't be opened (damaged, or needing a password) a 422.
 
