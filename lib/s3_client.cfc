@@ -267,8 +267,9 @@
     </cffunction>
 
     <!--- Copies an object to another key in the same store, inside the store (S3 and R2 CopyObject): nothing passes
-          through the app, whatever its size. The copy keeps the source's Content-Type. A key already at the target is
-          replaced. Throws s3.request.failed when the source isn't there. --->
+          through the app. One CopyObject copies up to 5 GB. The copy keeps the source's Content-Type. A key already at
+          the target is replaced. Throws s3.request.failed when the source isn't there or the store doesn't confirm the
+          copy. --->
     <cffunction name="copyObject" access="public" returntype="void" output="false">
         <cfargument name="store" type="struct" required="true" />
         <cfargument name="sourceKey" type="string" required="true" />
@@ -284,9 +285,9 @@
                 "x-amz-metadata-directive": "COPY"
             }
         ) />
-        <!--- S3 can fail a copy after answering 200, with the error in the body. --->
+        <!--- S3 can fail a copy after answering 200, with the error in the body: only a CopyObjectResult is a copy. --->
         <cfset var answer = isBinary(httpResult.fileContent ?: "") ? charsetEncode(httpResult.fileContent, "utf-8") : (httpResult.fileContent ?: "") />
-        <cfif findNoCase("<Error>", answer)>
+        <cfif findNoCase("<Error>", answer) OR NOT findNoCase("<CopyObjectResult", answer)>
             <cfthrow type="s3.request.failed" message="#arguments.store.label#: copying #arguments.sourceKey# to #arguments.targetKey# failed" detail="#left(answer, 1000)#" />
         </cfif>
     </cffunction>

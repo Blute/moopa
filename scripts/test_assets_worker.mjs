@@ -192,49 +192,92 @@ for (const kind of ["i", "m"]) {
   check(`...and is nosniff`, response.headers.get("X-Content-Type-Options"), "nosniff");
 }
 
-// Published files (PUBLIC_SITES). The bucket stand-in answers R2's onlyIf (etagDoesNotMatch) as R2 does: the object
-// without a body when the browser's copy is this one.
+// Published files (PUBLIC_SITES). The bucket stand-in answers as R2 does: head() without a body, get() with onlyIf
+// (an If-None-Match list, or *) evaluated before a range, and the object without a body when onlyIf failed.
+function r2Matches(header, etag) {
+  const value = header.trim();
+  return value === "*" || value.split(",").some((tag) => tag.trim().replace(/^W\//, "") === `"${etag}"`);
+}
+let bodyGets = 0;
 const publishedBucket = {
   async get(key, options = {}) {
+    bodyGets++;
     const object = objects.get(key);
     if (!object) return null;
     const etag = object.etag || "e1";
-    const meta = { size: object.body.length, etag, httpMetadata: { contentType: object.contentType } };
-    if (options.onlyIf?.etagDoesNotMatch === etag) return meta;
-    return { ...meta, body: object.body };
+    const meta = { size: object.body.length, etag, httpEtag: `"${etag}"`, httpMetadata: { contentType: object.contentType } };
+    const ifNoneMatch = options.onlyIf instanceof Headers ? options.onlyIf.get("If-None-Match") : null;
+    if (ifNoneMatch && r2Matches(ifNoneMatch, etag)) return meta;
+    let bytes = object.body;
+    if (options.range) {
+      const { offset = 0, length, suffix } = options.range;
+      if (suffix !== undefined) bytes = bytes.subarray(Math.max(0, bytes.length - suffix));
+      else bytes = bytes.subarray(offset, length === undefined ? undefined : offset + length);
+    }
+    const body = new ReadableStream({ start(c) { c.enqueue(new Uint8Array(bytes)); c.close(); } });
+    return { ...meta, body };
   },
-  async head(key) { return env.ASSETS_BUCKET.head(key); },
+  async head(key) {
+    const object = objects.get(key);
+    if (!object) return null;
+    const etag = object.etag || "e1";
+    return { size: object.body.length, etag, httpEtag: `"${etag}"`, httpMetadata: { contentType: object.contentType } };
+  },
 };
-const publicEnv = { ...env, ASSETS_BUCKET: publishedBucket, PUBLIC_SITES: JSON.stringify({ "www.example.com": "www" }), ASSETS_ORIGIN: "https://assets.example.com" };
+const publicEnv = { ...env, ASSETS_BUCKET: publishedBucket, PUBLIC_SITES: JSON.stringify({ "WWW.example.com": "www" }), ASSETS_ORIGIN: "https://assets.example.com" };
 objects.set("public/www/datasheets/product.pdf", { body: Buffer.from("%PDF-1.7 a datasheet"), contentType: "application/pdf", etag: "d1" });
-objects.set("public/www/images/product/front.webp", { body: Buffer.from("webp"), contentType: "image/webp" });
+objects.set("public/www/images/product/front.webp", { body: Buffer.from("webp"), contentType: "image/webp", etag: "i1" });
+objects.set("public/www/images/product/logo.png", { body: Buffer.from("<svg onload=alert(1)>"), contentType: "image/svg+xml" });
 objects.set("public/www/pages/page.html", { body: Buffer.from("<script>alert(1)</script>"), contentType: "text/html" });
+objects.set("public/www/scripts/app.js", { body: Buffer.from("alert(1)"), contentType: "application/javascript" });
 objects.set("public/other/datasheets/secret.pdf", { body: Buffer.from("%PDF other site"), contentType: "application/pdf" });
 objects.set("moo_file/2026-11/abc/private.pdf", { body: Buffer.from("%PDF private"), contentType: "application/pdf" });
 
 const pub = (path, init) => worker.fetch(new Request(`https://www.example.com${path}`, init), publicEnv, { waitUntil() {} });
 
 const datasheet = await pub("/datasheets/product.pdf");
-check("a published file answers unsigned on its site", `${datasheet.status} ${await datasheet.text()}`, "200 %PDF-1.7 a datasheet");
+check("a published file answers unsigned on its site (PUBLIC_SITES hostnames in any case)", `${datasheet.status} ${await datasheet.text()}`, "200 %PDF-1.7 a datasheet");
 check("...as the type it was stored with", datasheet.headers.get("Content-Type"), "application/pdf");
 check("...opening in the browser", datasheet.headers.get("Content-Disposition"), null);
-check("...kept briefly, since it can be replaced", datasheet.headers.get("Cache-Control"), "public, max-age=300, s-maxage=300");
+check("...kept five minutes, since it can be replaced", datasheet.headers.get("Cache-Control"), "public, max-age=300");
 check("...with an ETag to check it again", datasheet.headers.get("ETag"), '"d1"');
 check("...readable by any page", datasheet.headers.get("Access-Control-Allow-Origin"), "*");
 check("...and nosniff", datasheet.headers.get("X-Content-Type-Options"), "nosniff");
 
-const notModified = await pub("/datasheets/product.pdf", { headers: { "If-None-Match": '"d1"' } });
-check("a browser holding the current copy is told so", notModified.status, 304);
+for (const [label, value] of [["the current ETag", '"d1"'], ["a list holding it", '"old", "d1"'], ["it, weak", 'W/"d1"'], ["*", "*"]]) {
+  const answer = await pub("/datasheets/product.pdf", { headers: { "If-None-Match": value } });
+  check(`If-None-Match with ${label} is answered 304`, answer.status, 304);
+}
+check("...with its ETag", (await pub("/datasheets/product.pdf", { headers: { "If-None-Match": '"d1"' } })).headers.get("ETag"), '"d1"');
 const changed = await pub("/datasheets/product.pdf", { headers: { "If-None-Match": '"old"' } });
-check("...and one holding an older copy gets the file", changed.status, 200);
+check("an older copy gets the file", changed.status, 200);
+const rangedCurrent = await pub("/datasheets/product.pdf", { headers: { "If-None-Match": '"d1"', Range: "bytes=0-3" } });
+check("If-None-Match is answered before a range", rangedCurrent.status, 304);
 
+const ranged = await pub("/datasheets/product.pdf", { headers: { Range: "bytes=0-3" } });
+check("a range is answered 206", `${ranged.status} ${await ranged.text()}`, "206 %PDF");
+check("...saying which bytes", ranged.headers.get("Content-Range"), "bytes 0-3/20");
+const rangedSame = await pub("/datasheets/product.pdf", { headers: { Range: "bytes=0-3", "If-Range": '"d1"' } });
+check("a range for this version (If-Range) is answered 206", rangedSame.status, 206);
+const rangedOld = await pub("/datasheets/product.pdf", { headers: { Range: "bytes=0-3", "If-Range": '"old"' } });
+check("a range for a replaced version gets the whole file", `${rangedOld.status} ${await rangedOld.text()}`, "200 %PDF-1.7 a datasheet");
+const pastEnd = await pub("/datasheets/product.pdf", { headers: { Range: "bytes=500-" } });
+check("a range past the end is 416", pastEnd.status, 416);
+
+const getsBeforeHead = bodyGets;
 const headAnswer = await pub("/datasheets/product.pdf", { method: "HEAD" });
-check("HEAD of a published file answers without a body", `${headAnswer.status} ${(await headAnswer.text()).length}`, "200 0");
+check("HEAD answers without a body", `${headAnswer.status} ${(await headAnswer.text()).length} ${headAnswer.headers.get("Content-Length")}`, "200 0 20");
+check("...having opened no body", bodyGets - getsBeforeHead, 0);
+const headCurrent = await pub("/datasheets/product.pdf", { method: "HEAD", headers: { "If-None-Match": '"d1"' } });
+check("HEAD with the current ETag is 304", headCurrent.status, 304);
 const post = await pub("/datasheets/product.pdf", { method: "POST" });
 check("anything but GET or HEAD is refused", post.status, 405);
 
 const publishedPage = await pub("/pages/page.html");
-check("a published page is a download, never a page on the site", publishedPage.headers.get("Content-Disposition"), 'attachment; filename="page.html"');
+check("a published page is a download", publishedPage.headers.get("Content-Disposition"), 'attachment; filename="page.html"');
+check("...typed so it can't be used as anything on the site", publishedPage.headers.get("Content-Type"), "application/octet-stream");
+const publishedScript = await pub("/scripts/app.js");
+check("a published script can't be loaded as one", publishedScript.headers.get("Content-Type"), "application/octet-stream");
 
 for (const [label, path] of [
   ["an address the site hasn't published", "/datasheets/missing.pdf"],
@@ -242,8 +285,10 @@ for (const [label, path] of [
   ["another site's file, by climbing out", "/datasheets/..%2F..%2Fother/datasheets/secret.pdf"],
   ["a path with ..", "/datasheets/../../other/datasheets/secret.pdf"],
   ["an encoded slash", "/datasheets%2Fproduct.pdf"],
+  ["any percent-encoding (one address per file)", "/datasheets/%70roduct.pdf"],
   ["an empty segment", "/datasheets//product.pdf"],
   ["a directory", "/datasheets/"],
+  ["a key longer than R2 allows", `/datasheets/${"a".repeat(190)}/${"b".repeat(190)}/${"c".repeat(190)}/${"d".repeat(190)}/${"e".repeat(190)}/${"f".repeat(190)}.pdf`],
 ]) {
   const refused = await pub(path);
   check(`${label} is not found`, refused.status, 404);
@@ -255,44 +300,76 @@ const signedOnAssets = await worker.fetch(new Request(await signedUrl("moo_file/
 check("...while it still works on the assets hostname", signedOnAssets.status, 200);
 const unsignedPublicKey = await worker.fetch(new Request("https://assets.example.com/a/public/www/datasheets/product.pdf"), publicEnv, { waitUntil() {} });
 check("the assets hostname still wants a signature, for published keys too", unsignedPublicKey.status, 401);
+const otherHost = await worker.fetch(new Request("https://elsewhere.example.com/datasheets/product.pdf"), publicEnv, { waitUntil() {} });
+check("a hostname PUBLIC_SITES doesn't name publishes nothing", otherHost.status, 404);
+const prototypeHost = await worker.fetch(new Request("https://constructor/datasheets/product.pdf"), publicEnv, { waitUntil() {} });
+check("...nor does a hostname that names an object property", prototypeHost.status, 404);
 
+// Without PUBLIC_SITES: what the Worker answered before published files, header for header.
 const withoutSetting = await worker.fetch(new Request("https://www.example.com/datasheets/product.pdf"), env, { waitUntil() {} });
 check("without PUBLIC_SITES nothing is published", withoutSetting.status, 404);
 const signedWithout = await worker.fetch(new Request(await signedUrl("moo_file/2026-11/abc/private.pdf")), env, { waitUntil() {} });
-check("...and signed links answer as before", signedWithout.status, 200);
+check("...signed links answer as before", signedWithout.status, 200);
+check("...with the unquoted ETag they had", signedWithout.headers.get("ETag"), "e");
 check("...kept until they expire, as before", /^public, max-age=\d+, s-maxage=\d+$/.test(signedWithout.headers.get("Cache-Control")) && signedWithout.headers.get("Expires") !== null, true);
-const otherHost = await worker.fetch(new Request("https://elsewhere.example.com/datasheets/product.pdf"), publicEnv, { waitUntil() {} });
-check("a hostname PUBLIC_SITES doesn't name publishes nothing", otherHost.status, 404);
 
 for (const [label, value] of [["not JSON", "{www"], ["a list", "[]"], ["a bad site name", JSON.stringify({ "www.example.com": "../x" })]]) {
-  const broken = await worker.fetch(new Request("https://www.example.com/datasheets/product.pdf"), { ...publicEnv, PUBLIC_SITES: value }, { waitUntil() {} });
+  const brokenEnv = { ...publicEnv, PUBLIC_SITES: value };
+  const broken = await worker.fetch(new Request("https://www.example.com/datasheets/product.pdf"), brokenEnv, { waitUntil() {} });
   check(`PUBLIC_SITES ${label} fails loudly`, broken.status, 500);
+  const stillSigned = await worker.fetch(new Request(await signedUrl("moo_file/2026-11/abc/private.pdf")), brokenEnv, { waitUntil() {} });
+  check("...while signed links keep working", stillSigned.status, 200);
 }
 
-// Resized published images: only the fixed widths, read through the assets hostname, cached under address and width.
+// Resized published images: only raster images, only the fixed widths, looked up before the resizer is asked,
+// read through the assets hostname at one address per version, kept at the edge per address, width and version.
 const resized = [];
-const cachePuts = [];
-globalThis.caches = { default: { async match() {}, async put(key) { cachePuts.push(key.url); } } };
+const cache = new Map();
+globalThis.caches = { default: { async match(key) { return cache.get(key.url)?.clone(); }, async put(key, response) { cache.set(key.url, response); } } };
 globalThis.fetch = async (source, init) => {
   resized.push({ source: new URL(source), image: init.cf.image });
-  return worker.fetch(new Request(source), publicEnv, { waitUntil() {} });
+  const original = await worker.fetch(new Request(source), publicEnv, { waitUntil() {} });
+  return new Response(original.body, { status: original.status, headers: { "Content-Type": original.headers.get("Content-Type") } });
 };
 const pending = [];
-const image = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=800&utm_source=x"), publicEnv, { waitUntil(p) { pending.push(p); } });
+const resizeCtx = { waitUntil(p) { pending.push(p); } };
+const image = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=800&utm_source=x"), publicEnv, resizeCtx);
 await Promise.all(pending);
-check("a published image at an offered width answers", image.status, 200);
+check("a published image at an offered width answers", `${image.status} ${await image.text()}`, "200 webp");
 check("...resized to it", JSON.stringify(resized[0].image), JSON.stringify({ width: 800, fit: "scale-down" }));
 check("...from the original, read through the assets hostname", `${resized[0].source.host} ${resized[0].source.pathname}`, "assets.example.com /a/public/www/images/product/front.webp");
-check("...cached under its address and width alone", cachePuts[0], "https://www.example.com/images/product/front.webp?width=800");
-check("...kept briefly", image.headers.get("Cache-Control"), "public, max-age=300, s-maxage=300");
-const oddWidth = await pub("/images/product/front.webp?width=801");
-check("a width not offered is refused", oddWidth.status, 400);
-const pdfWidth = await pub("/datasheets/product.pdf?width=800");
-check("only images are resized", pdfWidth.status, 400);
-const noOrigin = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=800"), { ...publicEnv, ASSETS_ORIGIN: "" }, { waitUntil() {} });
+check("...at an address that names its version and never changes", `${resized[0].source.searchParams.get("exp")} ${resized[0].source.searchParams.get("v")}`, "253402300799 i1");
+check("...kept at the edge under its address, width and version", [...cache.keys()][0], "https://www.example.com/images/product/front.webp?width=800&v=i1");
+check("...five minutes in a browser", image.headers.get("Cache-Control"), "public, max-age=300");
+check("...with an ETag for this version and width", image.headers.get("ETag"), '"i1-w800"');
+
+const again = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=800"), publicEnv, resizeCtx);
+const headResized = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=800", { method: "HEAD" }), publicEnv, resizeCtx);
+check("asked again, GET and HEAD come from the edge, the resizer asked once", `${again.status} ${headResized.status} ${resized.length}`, "200 200 1");
+const currentResized = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=800", { headers: { "If-None-Match": '"i1-w800"' } }), publicEnv, resizeCtx);
+check("a browser holding this width of this version is answered 304", currentResized.status, 304);
+
+for (const [label, path, status] of [
+  ["a width not offered", "/images/product/front.webp?width=801", 400],
+  ["a PDF", "/datasheets/product.pdf?width=800", 415],
+  ["an SVG at an image address", "/images/product/logo.png?width=800", 415],
+  ["an image not published", "/images/product/gone.webp?width=800", 404],
+]) {
+  const answer = await pub(path);
+  check(`${label} is refused (${status}) without asking the resizer`, `${answer.status} ${resized.length}`, `${status} 1`);
+}
+const noOrigin = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=640"), { ...publicEnv, ASSETS_ORIGIN: "" }, resizeCtx);
 check("a resize without ASSETS_ORIGIN fails loudly", noOrigin.status, 500);
-const missingImage = await pub("/images/product/gone.webp?width=800");
-check("a resize of an image not published is not found", missingImage.status, 404);
+const siteOrigin = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=640"), { ...publicEnv, ASSETS_ORIGIN: "https://www.example.com" }, resizeCtx);
+check("...as does one pointing at a published site", siteOrigin.status, 500);
+
+globalThis.fetch = async () => new Response("bad gateway", { status: 502, headers: { "Content-Type": "text/plain" } });
+const failed = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=320"), publicEnv, resizeCtx);
+check("a failed resize is a 502", failed.status, 502);
+check("...that nothing keeps", failed.headers.get("Cache-Control"), "no-store");
+globalThis.fetch = async () => { throw new Error("network down"); };
+const thrown = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=480"), publicEnv, resizeCtx);
+check("a resize that throws is answered by the Worker, nosniff", `${thrown.status} ${thrown.headers.get("X-Content-Type-Options")}`, "500 nosniff");
 globalThis.fetch = realFetch;
 
 const unsigned = await worker.fetch(new Request("https://assets.example.com/a/photos/house.jpg"), env, { waitUntil() {} });

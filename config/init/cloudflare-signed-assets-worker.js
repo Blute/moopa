@@ -9,27 +9,34 @@ export default {
   // The answer is copied before these headers go on: one from the edge cache (caches.default.match) has immutable
   // headers, and setting one would throw.
   //
-  // A request to a hostname named in PUBLIC_SITES is a published file's, never a signed asset's
-  // (handlePublishedFile). Without PUBLIC_SITES every request is a signed asset's, as before published files.
+  // A request to a hostname named in PUBLIC_SITES is a published file's, never a signed asset's (handlePublishedFile).
+  // Without PUBLIC_SITES every request is a signed asset's, answered as before published files. A PUBLIC_SITES that
+  // can't be read leaves signed links working and fails every other request loudly.
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    let answer;
-    let readableByAnyPage = url.pathname.startsWith("/a/");
-    let site;
+    let site = "";
+    let sitesError = null;
     try {
       site = publishedSiteFor(url.hostname, env);
     } catch (error) {
-      answer = new Response(`Worker error: ${normalizeErrorMessage(error, "Bad PUBLIC_SITES")}`, { status: 500 });
+      sitesError = error;
     }
-    if (!answer && site) {
-      readableByAnyPage = true;
+
+    let answer;
+    if (site) {
       answer = await handlePublishedFile({ request, env, ctx, url, site });
-    }
-    if (!answer) {
+    } else {
       answer = await handleRequest(request, env, ctx);
+      if (sitesError && (answer.status === 401 || answer.status === 404)) {
+        answer = new Response(`Worker error: ${normalizeErrorMessage(sitesError, "Bad PUBLIC_SITES")}`, {
+          status: 500,
+          headers: { "Cache-Control": "no-store" },
+        });
+      }
     }
+
     const response = new Response(answer.body, answer);
-    if (readableByAnyPage) {
+    if (site || url.pathname.startsWith("/a/")) {
       response.headers.set("Access-Control-Allow-Origin", "*");
     }
     response.headers.set("X-Content-Type-Options", "nosniff");
@@ -45,52 +52,70 @@ export default {
 // routed on that site's hostname for the address's prefixes, answers it there without a signature.
 //
 // PUBLIC_SITES names the sites, as JSON: {"www.example.com": "www"} answers www.example.com/<address> from
-// public/www/<address>. A hostname in it only ever answers published files: no signed asset, and no key outside
-// its site's public/ prefix, can be reached through it. Unset, nothing is published and every request is signed.
+// public/www/<address>. A hostname in it only ever answers published files: no signed asset, and no key outside its
+// site's public/ prefix, can be reached through it. Unset, nothing is published and every request is answered as it
+// was before published files; the signed path below (handleRequest) doesn't read it.
 //
-// An image is resized with ?width=, from a fixed set of widths only, so an unsigned address can't run up image
-// transformations; ASSETS_ORIGIN (this Worker's own hostname, https://...) is where the resizer reads the original.
+// An address can be replaced, so it is kept briefly (five minutes) and checked again (ETag), never kept forever as a
+// signed link is. Each file has one address: any percent-encoding is refused, since an address never needs it.
+//
+// An image is resized with ?width=, from a fixed set of widths only, and only when the stored file is a raster image,
+// so an unsigned address can't run up image transformations. The resizer reads the original through ASSETS_ORIGIN
+// (this Worker's own hostname: a request to the site's hostname would go to the site's app, not back here), at an
+// address that stays the same for each version of the file, and each width is kept at the edge per version.
 // ---------------------------------------------------------------------------------------------------------------
 
 const PUBLISHED_PREFIX = "public";
 const PUBLISHED_MAX_AGE_SECONDS = 300;
+const PUBLISHED_RESIZED_EDGE_SECONDS = 30 * 24 * 60 * 60;
 const PUBLISHED_IMAGE_WIDTHS = [160, 320, 480, 640, 800, 1024, 1200, 1600, 2000];
-const PUBLISHED_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif", "avif"];
+const PUBLISHED_RESIZABLE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
+const PUBLISHED_MAX_KEY_BYTES = 1024; // R2's limit
+const SIGNED_NEVER_EXPIRES = "253402300799";
+
+// PUBLIC_SITES parsed once per isolate (and again only when the setting changes).
+let publishedSitesSetting;
+let publishedSitesParsed;
 
 // The site a hostname publishes (PUBLIC_SITES), or "" when it publishes none. Throws when PUBLIC_SITES is set but
-// isn't a JSON object of hostname to site name, so a mistyped setting fails loudly instead of serving nothing.
+// isn't a JSON object of hostname to site name.
 function publishedSiteFor(hostname, env) {
+  const sites = publishedSites(env);
+  return sites.get(String(hostname).toLowerCase()) || "";
+}
+
+function publishedSites(env) {
   const setting = env.PUBLIC_SITES;
-  if (setting === undefined || setting === null || String(setting).trim() === "") return "";
-  let sites;
-  try {
-    sites = typeof setting === "string" ? JSON.parse(setting) : setting;
-  } catch (_error) {
-    throw new Error("PUBLIC_SITES is not JSON");
+  if (setting === publishedSitesSetting && publishedSitesParsed) return publishedSitesParsed;
+  const sites = new Map();
+  if (setting !== undefined && setting !== null && String(setting).trim() !== "") {
+    let parsed;
+    try {
+      parsed = typeof setting === "string" ? JSON.parse(setting) : setting;
+    } catch (_error) {
+      throw new Error("PUBLIC_SITES is not JSON");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("PUBLIC_SITES is not an object of hostname to site name");
+    }
+    for (const [host, site] of Object.entries(parsed)) {
+      if (typeof site !== "string" || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(site)) {
+        throw new Error(`PUBLIC_SITES names a bad site for ${host}`);
+      }
+      sites.set(host.toLowerCase(), site);
+    }
   }
-  if (!sites || typeof sites !== "object" || Array.isArray(sites)) {
-    throw new Error("PUBLIC_SITES is not an object of hostname to site name");
-  }
-  const site = sites[String(hostname).toLowerCase()];
-  if (site === undefined) return "";
-  if (typeof site !== "string" || !isPublishedSiteName(site)) {
-    throw new Error(`PUBLIC_SITES names a bad site for ${hostname}`);
-  }
-  return site;
+  publishedSitesSetting = setting;
+  publishedSitesParsed = sites;
+  return sites;
 }
 
-function isPublishedSiteName(site) {
-  return /^[a-z0-9][a-z0-9-]{0,62}$/.test(site);
-}
-
-// The address of a published file as its key's tail, or "" when it can't be one: segments of letters, digits,
-// dot, dash and underscore, none of them empty, "." or "..". The same rule as published_files.cfc's.
+// The address of a published file without its leading slash, or "" when the path can't be one: no percent-encoding
+// (an address never needs it, so a file has one address), segments of letters, digits, dot, dash and underscore,
+// none of them empty, "." or "..". The same rule as published_files.cfc's.
 function publishedAddress(pathname) {
-  // An encoded slash or backslash would give one file a second address.
-  if (/%(2f|5c)/i.test(pathname)) return "";
-  const decoded = decodePathname(pathname);
-  if (!decoded || !decoded.startsWith("/")) return "";
-  const segments = decoded.slice(1).split("/");
+  if (!pathname.startsWith("/") || /[%\\]/.test(pathname)) return "";
+  const segments = pathname.slice(1).split("/");
   for (const segment of segments) {
     if (!/^[A-Za-z0-9._-]{1,200}$/.test(segment) || segment === "." || segment === "..") return "";
   }
@@ -104,78 +129,200 @@ async function handlePublishedFile({ request, env, ctx, url, site }) {
       return new Response("Method not allowed", { status: 405 });
     }
     const address = publishedAddress(url.pathname);
-    if (!address) {
+    const objectKey = address ? `${PUBLISHED_PREFIX}/${site}/${address}` : "";
+    if (!objectKey || objectKey.length > PUBLISHED_MAX_KEY_BYTES) {
       return new Response("Not found", { status: 404 });
     }
-    const objectKey = `${PUBLISHED_PREFIX}/${site}/${address}`;
 
     const widthParam = url.searchParams.get("width");
     if (widthParam === null) {
-      return handleAssetProxy({ request, env, objectKey, method, url, published: true });
+      return await handlePublishedRaw({ request, env, method, objectKey });
     }
-
     const width = Number(widthParam);
     if (!PUBLISHED_IMAGE_WIDTHS.includes(width)) {
       return new Response(`Width must be one of ${PUBLISHED_IMAGE_WIDTHS.join(", ")}`, { status: 400 });
     }
-    const extension = address.split(".").pop().toLowerCase();
-    if (!PUBLISHED_IMAGE_EXTENSIONS.includes(extension)) {
-      return new Response("Only images are resized", { status: 400 });
-    }
-    return handlePublishedImage({ request, env, ctx, url, method, objectKey, width });
+    return await handlePublishedImage({ request, env, ctx, url, method, objectKey, address, width });
   } catch (error) {
     const message = normalizeErrorMessage(error, "Unhandled worker error");
-    return new Response(`Worker error: ${message}`, { status: 500 });
+    return new Response(`Worker error: ${message}`, { status: 500, headers: { "Cache-Control": "no-store" } });
   }
 }
 
-// A published image at one of the fixed widths. Cached at the edge under the address and width alone, so other query
-// parameters (a campaign's utm_*) share one copy, for as long as a browser keeps it.
-async function handlePublishedImage({ request, env, ctx, url, method, objectKey, width }) {
-  const origin = String(env.ASSETS_ORIGIN || "").trim().replace(/\/+$/, "");
-  if (!/^https?:\/\/[^/]+$/.test(origin)) {
-    return new Response("Missing ASSETS_ORIGIN", { status: 500 });
+// A published file as stored. If-None-Match is answered 304 (R2 evaluates it, lists and * included) before any range;
+// a range is served with If-Range only when that names the current version, otherwise the whole file is the answer,
+// so a resumed download never splices two versions of a replaced file. Only media and PDFs open in the browser; anything
+// else is a download typed application/octet-stream, so it can't be used as a script or style on the site either.
+async function handlePublishedRaw({ request, env, method, objectKey }) {
+  const ifNoneMatch = request.headers.get("If-None-Match");
+
+  if (method === "HEAD") {
+    const head = await env.ASSETS_BUCKET.head(objectKey);
+    if (!head) return new Response("Not found", { status: 404 });
+    if (ifNoneMatch && etagListMatches(ifNoneMatch, head.etag)) {
+      return publishedNotModified(head.etag);
+    }
+    const headers = publishedFileHeaders(head, objectKey);
+    headers.set("Content-Length", String(head.size));
+    return new Response(null, { status: 200, headers });
   }
+
+  const rangeHeader = request.headers.get("Range");
+  const ifRange = request.headers.get("If-Range");
+  const range = rangeHeader ? parseRange(rangeHeader) : null;
+  const options = {};
+  if (ifNoneMatch) options.onlyIf = new Headers({ "If-None-Match": ifNoneMatch });
+  if (range) options.range = range;
+
+  let obj;
+  try {
+    obj = await env.ASSETS_BUCKET.get(objectKey, options);
+  } catch (_error) {
+    // R2 throws for a range past the end of the object: that's the asker's (416), not R2 failing.
+    const head = range ? await env.ASSETS_BUCKET.head(objectKey).catch(() => null) : null;
+    if (head && !servedRange(range, head.size)) {
+      return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${head.size}` } });
+    }
+    return new Response("Upstream error", { status: 502, headers: { "Cache-Control": "no-store" } });
+  }
+  if (!obj) return new Response("Not found", { status: 404 });
+
+  // R2 answers an object without a body when onlyIf failed (it checks that before the range): the browser's copy is
+  // this one.
+  if (!("body" in obj) || !obj.body) {
+    return publishedNotModified(obj.etag);
+  }
+
+  // A range made for another version of the file (If-Range) gets the whole of this one.
+  if (range && ifRange && ifRange.trim() !== `"${obj.etag}"`) {
+    await obj.body.cancel();
+    obj = await env.ASSETS_BUCKET.get(objectKey);
+    if (!obj) return new Response("Not found", { status: 404 });
+    const whole = publishedFileHeaders(obj, objectKey);
+    whole.set("Content-Length", String(obj.size));
+    return new Response(obj.body, { status: 200, headers: whole });
+  }
+
+  const headers = publishedFileHeaders(obj, objectKey);
+  if (!range) {
+    headers.set("Content-Length", String(obj.size));
+    return new Response(obj.body, { status: 200, headers });
+  }
+  const served = servedRange(range, obj.size);
+  if (!served) {
+    await obj.body.cancel();
+    return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${obj.size}` } });
+  }
+  headers.set("Content-Range", `bytes ${served.offset}-${served.offset + served.length - 1}/${obj.size}`);
+  headers.set("Content-Length", String(served.length));
+  return new Response(obj.body, { status: 206, headers });
+}
+
+function publishedFileHeaders(obj, objectKey) {
+  const headers = new Headers();
+  const contentType = obj.httpMetadata?.contentType || guessContentType(objectKey) || "application/octet-stream";
+  if (opensInline(contentType)) {
+    headers.set("Content-Type", contentType);
+  } else {
+    headers.set("Content-Type", "application/octet-stream");
+    headers.set("Content-Disposition", `attachment; filename="${downloadFilename(objectKey)}"`);
+  }
+  headers.set("ETag", `"${obj.etag}"`);
+  headers.set("Accept-Ranges", "bytes");
+  applyPublishedCaching(headers);
+  return headers;
+}
+
+function publishedNotModified(etag) {
+  const headers = new Headers({ ETag: `"${etag}"` });
+  applyPublishedCaching(headers);
+  return new Response(null, { status: 304, headers });
+}
+
+// A published image at one of the fixed widths, only when the stored file is a raster image. Looked up first, so an
+// address with nothing published never reaches the resizer; kept at the edge under the address, width and version.
+async function handlePublishedImage({ request, env, ctx, url, method, objectKey, address, width }) {
+  const origin = assetsOrigin(env);
   if (!env.SIGNING_KEY_B64) {
-    return new Response("Missing SIGNING_KEY_B64", { status: 500 });
+    return new Response("Missing SIGNING_KEY_B64", { status: 500, headers: { "Cache-Control": "no-store" } });
   }
 
-  const cacheKey = new Request(`${url.origin}${url.pathname}?width=${width}`, { method: "GET" });
-  if (method === "GET") {
-    const cached = await caches.default.match(cacheKey);
-    if (cached) return cached;
+  const head = await env.ASSETS_BUCKET.head(objectKey);
+  if (!head) return new Response("Not found", { status: 404 });
+  const storedType = String(head.httpMetadata?.contentType || guessContentType(objectKey) || "").split(";")[0].trim().toLowerCase();
+  if (!PUBLISHED_RESIZABLE_TYPES.includes(storedType)) {
+    return new Response("Only images are resized", { status: 415 });
   }
 
-  // The resizer reads the original through this Worker's own hostname, signed for a minute: a request to the site's
-  // hostname would come back to this Worker's route there.
+  const etag = `"${head.etag}-w${width}"`;
+  const ifNoneMatch = request.headers.get("If-None-Match");
+  if (ifNoneMatch && etagListMatches(ifNoneMatch, `${head.etag}-w${width}`)) {
+    return publishedNotModified(`${head.etag}-w${width}`);
+  }
+
+  const cacheKey = new Request(`${url.origin}/${address}?width=${width}&v=${encodeURIComponent(head.etag)}`, { method: "GET" });
+  const cached = await caches.default.match(cacheKey);
+  if (cached) {
+    const headers = new Headers(cached.headers);
+    applyPublishedCaching(headers);
+    return new Response(method === "HEAD" ? null : cached.body, { status: 200, headers });
+  }
+
+  // The same source address for every request for this version of the file, so it is one image to the resizer.
   const source = await buildSignedUrl({
     origin,
     pathname: `/a/${objectKey}`,
-    params: { exp: String(Math.floor(Date.now() / 1000) + 60) },
+    params: { exp: SIGNED_NEVER_EXPIRES, v: head.etag },
     signingKeyB64: env.SIGNING_KEY_B64,
   });
-  const transformed = await fetch(source, { method, cf: { image: { width, fit: "scale-down" } } });
-  if (transformed.status === 404) {
-    return new Response("Not found", { status: 404 });
+  const transformed = await fetch(source, { cf: { image: { width, fit: "scale-down" } } });
+  const resizedType = String(transformed.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
+  if (transformed.status !== 200 || !resizedType.startsWith("image/") || resizedType === "image/svg+xml") {
+    await transformed.body?.cancel();
+    return new Response("Resize failed", { status: 502, headers: { "Cache-Control": "no-store" } });
   }
 
-  const headers = new Headers(transformed.headers);
-  headers.delete("Content-Disposition");
-  applyPublishedCaching(headers);
-  if (method === "HEAD") {
-    return new Response(null, { status: transformed.status, headers });
-  }
-  const response = new Response(transformed.body, { status: transformed.status, headers });
-  if (transformed.status === 200) {
-    ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
-  }
-  return response;
+  const headers = new Headers({ "Content-Type": resizedType, ETag: etag });
+  const length = transformed.headers.get("Content-Length");
+  if (length) headers.set("Content-Length", length);
+  // Long at the edge (the key changes with the file), five minutes in a browser.
+  headers.set("Cache-Control", `public, max-age=${PUBLISHED_MAX_AGE_SECONDS}, s-maxage=${PUBLISHED_RESIZED_EDGE_SECONDS}`);
+  const response = new Response(transformed.body, { status: 200, headers });
+  ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
+
+  const answerHeaders = new Headers(headers);
+  applyPublishedCaching(answerHeaders);
+  answerHeaders.set("ETag", etag);
+  return new Response(method === "HEAD" ? null : response.body, { status: 200, headers: answerHeaders });
 }
 
-// A published file can be replaced at its address, so it is kept briefly and checked again (ETag), not kept forever as
-// a signed link is.
+// ASSETS_ORIGIN as https://host (no path, query or fragment), and not a published site's hostname, whose requests
+// would come back to the site's app. Throws, failing loudly, when it isn't.
+function assetsOrigin(env) {
+  let parsed;
+  try {
+    parsed = new URL(String(env.ASSETS_ORIGIN || "").trim());
+  } catch (_error) {
+    throw new Error("Missing ASSETS_ORIGIN");
+  }
+  if (!/^https?:$/.test(parsed.protocol) || (parsed.pathname !== "/" && parsed.pathname !== "") || parsed.search || parsed.hash) {
+    throw new Error("ASSETS_ORIGIN must be https://<the asset hostname>");
+  }
+  if (publishedSites(env).has(parsed.hostname.toLowerCase())) {
+    throw new Error("ASSETS_ORIGIN must be the asset hostname, not a published site's");
+  }
+  return parsed.origin;
+}
+
+// Whether an If-None-Match list (or *) names this etag (bare, without quotes). Weak comparison, as RFC 9110 asks.
+function etagListMatches(header, etag) {
+  const value = String(header).trim();
+  if (value === "*") return true;
+  return value.split(",").some((tag) => tag.trim().replace(/^W\//, "") === `"${etag}"`);
+}
+
 function applyPublishedCaching(headers) {
-  headers.set("Cache-Control", `public, max-age=${PUBLISHED_MAX_AGE_SECONDS}, s-maxage=${PUBLISHED_MAX_AGE_SECONDS}`);
+  headers.set("Cache-Control", `public, max-age=${PUBLISHED_MAX_AGE_SECONDS}`);
   headers.delete("Expires");
 }
 
@@ -305,24 +452,17 @@ function decodePathname(pathname) {
   }
 }
 
-// A raw asset: a signed one (/a/), or a published file (published), which is also answered 304 to a browser holding
-// the copy it has (If-None-Match) and is cached briefly rather than until a signature expires.
-async function handleAssetProxy({ request, env, objectKey, method, url, published = false }) {
+async function handleAssetProxy({ request, env, objectKey, method, url }) {
   // A range R2 can serve, or null for the whole object (a Range header this can't read is ignored, as RFC 9110
   // allows: the whole object is the answer).
   const rangeHeader = request.headers.get("Range");
   const range = rangeHeader ? parseRange(rangeHeader) : null;
-  const ifNoneMatch = published && !range ? request.headers.get("If-None-Match") : null;
 
   let obj;
   try {
-    if (ifNoneMatch) {
-      obj = await env.ASSETS_BUCKET.get(objectKey, { onlyIf: { etagDoesNotMatch: ifNoneMatch.replace(/^W\//, "").replace(/"/g, "") } });
-    } else {
-      obj = range
-        ? await env.ASSETS_BUCKET.get(objectKey, { range })
-        : await env.ASSETS_BUCKET.get(objectKey);
-    }
+    obj = range
+      ? await env.ASSETS_BUCKET.get(objectKey, { range })
+      : await env.ASSETS_BUCKET.get(objectKey);
   } catch (_error) {
     // R2 throws for a range past the end of the object: that's the asker's (416), not R2 failing.
     const head = range ? await env.ASSETS_BUCKET.head(objectKey).catch(() => null) : null;
@@ -339,14 +479,6 @@ async function handleAssetProxy({ request, env, objectKey, method, url, publishe
     return new Response("Not found", { status: 404 });
   }
 
-  // R2 answers an object without a body when onlyIf failed: the browser's copy is this one.
-  if (ifNoneMatch && !("body" in obj)) {
-    const notModified = new Headers();
-    if (obj.etag) notModified.set("ETag", `"${obj.etag}"`);
-    applyPublishedCaching(notModified);
-    return new Response(null, { status: 304, headers: notModified });
-  }
-
   const headers = new Headers();
   const contentType =
     obj.httpMetadata?.contentType ||
@@ -358,7 +490,7 @@ async function handleAssetProxy({ request, env, objectKey, method, url, publishe
   if (!opensInline(contentType)) {
     headers.set("Content-Disposition", `attachment; filename="${downloadFilename(objectKey)}"`);
   }
-  if (obj.etag) headers.set("ETag", published ? `"${obj.etag}"` : obj.etag);
+  if (obj.etag) headers.set("ETag", obj.etag);
 
   // Partial only when a range was asked for: R2 reports a range on every object it returns, asked for or not, so
   // obj.range can't say whether this answer is partial.
@@ -382,11 +514,7 @@ async function handleAssetProxy({ request, env, objectKey, method, url, publishe
     headers.set("Content-Length", String(obj.size));
   }
 
-  if (published) {
-    applyPublishedCaching(headers);
-  } else {
-    applySignedExpiryCaching(headers, url);
-  }
+  applySignedExpiryCaching(headers, url);
 
   if (method === "HEAD") {
     return new Response(null, { status, headers });

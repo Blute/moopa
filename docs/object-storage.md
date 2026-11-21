@@ -42,7 +42,7 @@ Every call takes a store: `defaultStore()`, or one built with `configure(label, 
 | `objectExists(store, objectKey)` | asks the store (HEAD): true, false, or throws |
 | `headObject(store, objectKey)` | what the store holds (HEAD): `{ exists, size, contentType }` |
 | `readObjectStart(store, objectKey, bytes)` | the first `bytes` bytes (a ranged GET), to read a file's signature |
-| `copyObject(store, sourceKey, targetKey)` | copies it to another key inside the store (CopyObject), keeping its Content-Type, whatever its size |
+| `copyObject(store, sourceKey, targetKey)` | copies it to another key inside the store (one CopyObject, up to 5 GB), keeping its Content-Type |
 | `deleteObject(store, objectKey)` | deletes it |
 | `listObjects(store, prefix)` | `[{ key, etag, size, last_modified }]` under a prefix |
 | `presignedUrl(store, objectKey, method, expiresSeconds, signedHeaders)` | a URL a browser can GET or PUT without credentials; with `signedHeaders` (such as `{ "Content-Type": "image/jpeg", "Content-Length": 48213 }`) the browser must send each with exactly that value, or the store refuses it |
@@ -136,15 +136,20 @@ application.lib.published_files.list("www", "/datasheets/")                     
 - **The bucket is the record.** `publish()` copies the stored file inside the store (`copyObject`, nothing passes through the app) to `public/<site>/<address>`. There is no table: what is under `public/` is what is published. A project keeps which file it published where in its own tables if it needs to.
 - **An address never changes.** Publishing again at the same address replaces the file there, so a new version of a datasheet keeps its address, and the links and search ranking that point at it.
 - **Addresses** start with `/` and are segments of letters, digits, dot, dash and underscore. Site names are lowercase letters, digits and dashes. Anything else throws `published_files.invalid`. Prefer lowercase, dash-separated addresses that say what the file is.
-- **Unpublishing** removes the copy, not the original. Browsers and the edge may answer their copy for up to five minutes more.
+- **Unpublishing** removes the copy, not the original. Browsers may keep their copy for up to five minutes more. Deleting the original does not unpublish it: the published copy is the project's to remove.
+- **Size:** a copy is one CopyObject, so a file over 5 GB can't be published.
 
 ### How a published file is answered
 
 The signed assets Worker answers published files when its **`PUBLIC_SITES`** setting names the site's hostname, as JSON: `{"www.example.com": "www"}` answers `https://www.example.com/<address>` from `public/www/<address>`. The Worker is routed on that hostname for the prefixes the site publishes under (`www.example.com/datasheets/*`, `www.example.com/images/*`); every other address on the site goes to the app as before.
 
 - A hostname in `PUBLIC_SITES` **only ever answers published files**, from its own site's `public/<site>/` prefix: no signed asset, no other site's file and no other key can be reached through it. The asset hostname still wants a signature for everything, `public/` keys included.
-- A published file is answered as a raw asset is: `nosniff`, and only images, video, audio and PDFs open in the browser; anything else is a download, so a published file can never show a page on the site. It carries an `ETag` and `Cache-Control: public, max-age=300`, so a replaced file shows within five minutes and a browser holding the current copy is answered 304.
-- **An image is resized** with `?width=`, from a fixed set of widths only (160, 320, 480, 640, 800, 1024, 1200, 1600, 2000), so an unsigned address can't run up image transformations. Any other width is a 400. Resized copies are kept at the edge under the address and width alone. Resizing reads the original through the Worker's own hostname, which the Worker is told as **`ASSETS_ORIGIN`** (`https://<the asset hostname>`); without it a resize answers 500 `Missing ASSETS_ORIGIN`.
+- **Only images, video, audio and PDFs open in the browser.** Anything else is a download typed `application/octet-stream`, so a published file can never show a page on the site, nor be loaded there as a script or a style. Every answer is `nosniff`.
+- **Each file has one address:** a path with any percent-encoding is a 404, since an address never needs it.
+- **Caching:** an answer carries an `ETag` and `Cache-Control: public, max-age=300`, so a replaced file shows within five minutes. `If-None-Match` (a list, or `*`) is answered 304 before any range. A range is served only when its `If-Range`, if any, names the current version; otherwise the whole file is the answer, so a resumed download never mixes two versions of a replaced file. Unresized files are read from R2 on each request; browsers keep them five minutes.
+- **An image is resized** with `?width=`, from a fixed set of widths only (160, 320, 480, 640, 800, 1024, 1200, 1600, 2000), and only when the stored file is a raster image (JPEG, PNG, WebP, GIF, AVIF). Any other width is a 400; another type a 415; an address with nothing published a 404, all without asking the resizer. The resizer reads the original at one address per version of the file, and each width is kept at the edge per address, width and version, so a replaced image shows at once and an unchanged one is resized once. A failed resize is a 502 that nothing keeps.
+- **`ASSETS_ORIGIN`** is the Worker's own hostname (`https://<the asset hostname>`), where the resizer reads the original: a request to the site's hostname would go to the site's app, not back to the Worker. Without it, or set to a published site's hostname, a resize answers 500.
+- **A `PUBLIC_SITES` that can't be read** (not JSON, not an object, a bad site name) leaves signed links working and answers every other request 500, naming the problem. Its hostnames match in any case.
 - Without `PUBLIC_SITES` nothing is published, and the Worker answers exactly as it did before published files.
 
 ### Upgrading to published files
