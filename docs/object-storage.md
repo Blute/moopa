@@ -178,34 +178,36 @@ A `many_to_many` field of `moo_file` can declare that its files are published, i
 
 This is `application.lib.published_files.syncRecord(table_name, id)`. A project calls it itself after changing a record, its files or a `moo_file` by SQL rather than `db.save`.
 
+**One at a time, and never inside a transaction.** Every publishing operation (a record's sync, a repair, a stray's removal) runs in a short transaction of its own, holding one Postgres advisory lock. So only one runs at a time, across every instance of the app, and what it reads stays true until it is done. A wait for the lock of over a minute fails and is logged.
+
+Inside a caller's `cftransaction`, nothing is published, since the transaction could still roll back. `syncRecord` returns `deferred: 1`, and the record is published by its next save outside a transaction, by `syncRecord` after the commit, or by `syncAll()`. Save a record whose files must not be public, even briefly, outside a transaction, or call `syncRecord` only after the commit.
+
 **Each address goes through its row in `moo_published_file`, whose `path` is its state:**
 - **Publishing:** claim the row, with an empty path, then copy, then set the path and the copy's `etag`.
 - **Unpublishing:** empty the path (pages stop linking it), delete the copy, then the row.
 
-So a failure at any step leaves a row with an empty path, which the next sync of that record, or `syncAll()`, finishes. No public copy is ever without its row.
+A failure part way leaves at most the store ahead of the rows: a row with an empty path (finished by the next sync), a copy without a row (removed by the sweep), or a row without its copy (repaired by the sweep).
 
-**Failures.** A failure is logged (`core.logError`, or the engine's log if even that fails) and counted, never thrown at the save or delete. `syncRecord` returns `{ published, unpublished, kept, taken, skipped, failed }`: `skipped` counts files no address could be made for (a value that comes out empty).
+**Failures.** A failure is logged (`core.logError`, or the engine's log if even that fails) and counted, never thrown at the save or delete. `syncRecord` returns `{ published, unpublished, kept, taken, skipped, failed, deferred }`: `skipped` counts files no address could be made for (a value that comes out empty).
 
-**No store operation acts on a stale read.**
-- Unpublishing touches the store only after the guarded update that empties its row matched.
-- Publishing again empties its row the same way first, or else claims it.
-- A copy that lost its row on the way is removed again, unless another record now holds the address.
-- `syncAll`'s repair re-reads the row under the record's lock before copying.
-
-**Every copy is marked.** A copy a publishing field makes carries user metadata `moopa-published`.
+**Every copy is marked.** A copy a publishing field makes carries user metadata `moopa-published`. Its `Content-Type` is the stored file's; other HTTP metadata of the stored file (`Cache-Control`, `Content-Disposition`) is not carried, and Moopa's uploads set none.
 
 **`syncAll()`** is the repair job. Run it once when a table first publishes (that publishes its existing records), and on a schedule. In order:
 1. It unpublishes what a deleted record, or a field or table that no longer publishes, left behind. A record waiting for one of those addresses gets it in the same run.
 2. It syncs every record that publishes, or has published, something. A record that fails is logged and counted, and the rest go on.
 3. It compares the store with the rows, under each publishing field's literal prefix (`/datasheets/` for `/datasheets/{slug}.pdf`, `/docs/product-` for `/docs/product-{slug}.pdf`):
    - a copy that is missing, or isn't the one recorded (its `etag`), is published again;
-   - a marked copy that no row accounts for is deleted. The sweep claims its address first, in a row of its own, so a record publishing that address at the same moment wins and the sweep leaves it; the database's unique key decides, across instances and open transactions alike.
+   - a marked copy that no row accounts for is deleted.
 
-   That clears what a transaction rolled back after a save left in the store: the store isn't part of the database's transaction, so until the sweep runs, such a copy is still answered.
+   Each repair and each removal is decided again under the lock, so a record that published or unpublished the address since the sweep listed it is left as it now is.
 
-It returns the totals plus `repaired` and `removed`.
+It returns the totals plus `repaired` and `removed`. Inside a transaction it does nothing (`deferred: 1`).
 
-**Only marked copies are ever deleted by the sweep.** A file published by hand (`publish()`), or one another environment made in a shared bucket, is never touched, even under a publishing prefix. Still, don't publish by hand under a publishing field's prefix: a declared field publishing the same address replaces it. Two environments sharing a bucket (a stage on production's bucket) must not both run `syncAll()`: each sees the other's marked copies as strays.
+**Before moving a field's folder** (changing `/datasheets/` to `/sheets/`, say), run `syncAll()` once more on the old setting: the sweep only covers the prefixes of the current settings, so a marked copy left without a row under the old one would stay.
+
+**Only marked copies are ever deleted by the sweep.** A file published by hand (`publish()`, which refuses to copy from a published copy, so it never carries the mark) is never touched, even under a publishing prefix. Still, don't publish by hand under a publishing field's prefix: a declared field publishing the same address replaces it.
+
+**One database per bucket.** Two environments with their own databases (a stage and production) need their own buckets, or publishing settings with prefixes that never meet: the sweep removes a marked copy that its own database has no row for, whichever environment made it.
 
 **`moo_published_file`** records what is published where: one row per address, with its `site`, `address` and `object_key`, the `table_name`, `record_id` and `field` that publish it, the `moo_file_id`, the `path` it was copied from, and its `etag`. Pages link a file at its own address once the row's path is set, and by its signed link until then:
 
@@ -220,8 +222,7 @@ LEFT JOIN moo_published_file AS published
 ```
 
 - **Only for projects that publish.** A project gets `moo_published_file` (a schema sync adds it) only when one of its fields declares `publish`. Without one there is no table, and `db.save` and `db.delete` work exactly as before. Until the table is in the database, publishing does nothing (the schema not synced yet).
-- **An address belongs to the first record that publishes it.** Another record wanting it is counted as `taken` and left alone, until the first lets go of it. The table's unique `object_key` settles this, across app instances too.
-- **Two saves of one record on two app instances at once** can leave the copy a save behind, or remove a copy another record has just taken over. The next sync of that record, or `syncAll()` (by the row's `etag`), puts it right.
+- **An address belongs to the first record that publishes it.** Another record wanting it is counted as `taken` and left alone, until the first lets go of it.
 
 ### How a published file is answered
 

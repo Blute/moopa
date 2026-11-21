@@ -244,7 +244,7 @@
         <!--- User metadata: x-amz-meta-<name> headers, by name in lowercase. --->
         <cfset var metadata = {} />
         <cfloop collection="#httpResult.responseHeader ?: {}#" item="local.headerName">
-            <cfif left(lCase(local.headerName), 11) EQ "x-amz-meta-">
+            <cfif left(lCase(local.headerName), 11) EQ "x-amz-meta-" AND len(local.headerName) GT 11>
                 <cfset metadata[mid(lCase(local.headerName), 12, len(local.headerName))] = responseHeader(httpResult, local.headerName) />
             </cfif>
         </cfloop>
@@ -291,14 +291,22 @@
         <cfset var name = "" />
         <!--- New metadata replaces the source's, Content-Type included, so the source's type is read and sent again. --->
         <cfif NOT structIsEmpty(arguments.metadata)>
-            <cfset contentType = headObject(arguments.store, arguments.sourceKey).contentType />
-            <cfset headers["x-amz-metadata-directive"] = "REPLACE" />
             <cfloop collection="#arguments.metadata#" item="name">
-                <cfif NOT reFind("^[a-z0-9-]{1,100}$", lCase(name))>
+                <!--- Whole-string checks: on Lucee, $ also matches before a trailing newline. --->
+                <cfif NOT len(name) OR len(name) GT 100 OR reFind("[^a-z0-9-]", lCase(name))>
                     <cfthrow type="s3.request.invalid" message="#arguments.store.label#: '#name#' is not a metadata name (letters, digits and dashes)" />
+                </cfif>
+                <cfif NOT isSimpleValue(arguments.metadata[name]) OR reFind("[^\x20-\x7e]", arguments.metadata[name])>
+                    <cfthrow type="s3.request.invalid" message="#arguments.store.label#: the metadata value of '#name#' is not plain text" />
                 </cfif>
                 <cfset headers["x-amz-meta-" & lCase(name)] = arguments.metadata[name] />
             </cfloop>
+            <cfset local.source = headObject(arguments.store, arguments.sourceKey) />
+            <cfif NOT local.source.exists>
+                <cfthrow type="s3.request.failed" message="#arguments.store.label#: copying #arguments.sourceKey# to #arguments.targetKey# failed: nothing is stored at #arguments.sourceKey#" />
+            </cfif>
+            <cfset contentType = local.source.contentType />
+            <cfset headers["x-amz-metadata-directive"] = "REPLACE" />
         </cfif>
 
         <cfset var httpResult = signedRequest(

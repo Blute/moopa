@@ -3,8 +3,8 @@
           files (a table definition's publish setting; docs/object-storage.md: Publishing a table's files). Written only
           by published_files (syncRecord, syncAll): one row per address, saying which record, field and file put it there
           and which stored copy it is, so a save copies only what changed. Pages read it to link a file at its address,
-          once its path is set. The row is claimed before the copy and kept until the copy is gone, so no public copy is
-          ever without one; its unique object_key settles which record an address belongs to.
+          once its path is set. The row is claimed before the copy and kept until the copy is gone; its unique object_key
+          settles which record an address belongs to.
 
           Not in tables/: a project gets this table only when one of its fields publishes files (lib/db.cfc, init). --->
     <cffunction name="init">

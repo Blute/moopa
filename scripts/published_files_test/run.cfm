@@ -166,18 +166,28 @@
     check("...an unmarked file there (published by hand) is left alone", live("/datasheets/by-hand.pdf"));
     check("...and so is a file published by hand elsewhere", live("/brochures/by-hand.pdf"));
 
-    // 8. A transaction that rolls back takes the row, not the copy: the next syncAll removes the copy.
+    // 8. Inside a caller's transaction nothing is published (it could roll back); the next sync outside one does it.
     tx = newProduct("rolled", false);
     txSheet = newFile("tx.pdf", "tx sheet");
     attach(tx, "datasheet", [txSheet]);
     transaction {
         setProduct(tx, { is_published: true });
-        files.syncRecord("product", tx);
+        inside = files.syncRecord("product", tx);
+        insideAll = files.syncAll();
         transaction action="rollback";
     }
-    check("rolled back: the copy outlived its row", live("/datasheets/rolled.pdf") AND rowPath("/datasheets/rolled.pdf") EQ "(no row)");
+    check("in a transaction: deferred, nothing published", inside.deferred EQ 1 AND inside.published EQ 0 AND NOT live("/datasheets/rolled.pdf") AND rowPath("/datasheets/rolled.pdf") EQ "(no row)");
+    check("...syncAll too", insideAll.deferred EQ 1);
+    transaction {
+        setProduct(tx, { is_published: true });
+        files.syncRecord("product", tx);
+    }
+    r = files.syncRecord("product", tx);
+    check("...committed, the next sync publishes it", liveBody("/datasheets/rolled.pdf") EQ "tx sheet" AND r.deferred EQ 0, summary(r));
+    // A copy left without a row (a crash between copy and commit) is a marked stray: syncAll removes it.
+    store.put("public/www/datasheets/crashed.pdf", "crashed", { "moopa-published": "1" });
     r = files.syncAll();
-    check("...syncAll removes it", NOT live("/datasheets/rolled.pdf") AND r.removed EQ 1, "removed #r.removed#");
+    check("...a marked copy left without its row is removed", NOT live("/datasheets/crashed.pdf") AND r.removed EQ 1, "removed #r.removed#");
 
     // 9. Unpublishing the record takes its files down.
     setProduct(after, { is_published: false });
@@ -213,6 +223,15 @@
     store.put("public/www/old/bravo.pdf", "old brochure", { "moopa-published": "1" });
     r = files.syncAll();
     check("a retired field's copy and row are removed", NOT live("/old/bravo.pdf") AND rowPath("/old/bravo.pdf") EQ "(no row)");
+
+    // 13b. Publishing by hand from a published copy is refused: the copy would keep its mark.
+    try {
+        files.publish("www", "/brochures/alias.pdf", "public/www/datasheets/bravo.pdf");
+        aliasRefused = false;
+    } catch (any e) {
+        aliasRefused = e.type EQ "published_files.invalid";
+    }
+    check("publishing by hand from a published copy is refused", aliasRefused AND NOT live("/brochures/alias.pdf"));
 
     // 14. A file no address can be made for is counted.
     nameless = newProduct("delta", true);
