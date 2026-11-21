@@ -52,7 +52,7 @@
 
         <cfset var sitePrefix = sitePrefixFor(arguments.site) />
         <cfset var under = trim(arguments.under) />
-        <cfif left(under, 1) NEQ "/" OR find("..", under) OR reFind("[^A-Za-z0-9._/-]", under)>
+        <cfif left(under, 1) NEQ "/" OR reFind("[^A-Za-z0-9._/-]", under) OR reFind("(^|/)\.\.?(/|$)", under) OR find("//", under)>
             <cfthrow type="published_files.invalid" message="published_files: list's under must be an address prefix starting with /, not '#arguments.under#'" />
         </cfif>
         <cfset var found = [] />

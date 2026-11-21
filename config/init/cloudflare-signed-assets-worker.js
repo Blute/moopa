@@ -154,8 +154,7 @@ async function handlePublishedFile({ request, env, ctx, url, site }) {
 // application/octet-stream, so it can't be used as a script or style on the site either.
 async function handlePublishedRaw({ request, env, method, objectKey }) {
   // A malformed If-None-Match can name no version: ignored, as RFC 9110 allows, rather than handed to R2.
-  const ifNoneMatchHeader = request.headers.get("If-None-Match");
-  const ifNoneMatch = ifNoneMatchHeader && isEtagList(ifNoneMatchHeader) ? ifNoneMatchHeader : null;
+  const ifNoneMatch = etagList(request.headers.get("If-None-Match"));
 
   if (method === "HEAD") {
     const head = await publishedHead(env, objectKey);
@@ -187,7 +186,14 @@ async function handlePublishedRaw({ request, env, method, objectKey }) {
   }
 
   const options = range ? { range } : ifNoneMatch ? { onlyIf: new Headers({ "If-None-Match": ifNoneMatch }) } : {};
-  const obj = await publishedGet(env, objectKey, options);
+  let obj = await publishedGet(env, objectKey, options);
+  // A ranged read can fail because the file was replaced by a smaller one since the look: then the whole file.
+  if (obj instanceof Response && range && obj.status === 502) {
+    const now = await publishedHead(env, objectKey);
+    if (now instanceof Response) return now;
+    if (now.etag === rangeVersion) return obj;
+    return publishedWhole(env, objectKey);
+  }
   if (obj instanceof Response) return obj;
 
   // R2 answers an object without a body when onlyIf failed: the browser's copy is this one.
@@ -197,11 +203,7 @@ async function handlePublishedRaw({ request, env, method, objectKey }) {
   // Replaced between the look and the read, the range was for another version: the whole file is the answer.
   if (range && obj.etag !== rangeVersion) {
     await obj.body.cancel();
-    const whole = await publishedGet(env, objectKey, {});
-    if (whole instanceof Response) return whole;
-    const wholeHeaders = publishedFileHeaders(whole, objectKey);
-    wholeHeaders.set("Content-Length", String(whole.size));
-    return new Response(whole.body, { status: 200, headers: wholeHeaders });
+    return publishedWhole(env, objectKey);
   }
   if (!range) {
     headers.set("Content-Length", String(obj.size));
@@ -211,6 +213,14 @@ async function handlePublishedRaw({ request, env, method, objectKey }) {
   headers.set("Content-Range", `bytes ${served.offset}-${served.offset + served.length - 1}/${obj.size}`);
   headers.set("Content-Length", String(served.length));
   return new Response(obj.body, { status: 206, headers });
+}
+
+async function publishedWhole(env, objectKey) {
+  const whole = await publishedGet(env, objectKey, {});
+  if (whole instanceof Response) return whole;
+  const headers = publishedFileHeaders(whole, objectKey);
+  headers.set("Content-Length", String(whole.size));
+  return new Response(whole.body, { status: 200, headers });
 }
 
 // R2's head() or get() for a published file, or the answer to give instead: 404 when it isn't there, 502 when R2
@@ -270,15 +280,18 @@ async function handlePublishedImage({ request, env, ctx, url, method, objectKey,
   }
 
   const version = `${head.etag}-w${width}`;
-  const ifNoneMatch = request.headers.get("If-None-Match");
-  if (ifNoneMatch && isEtagList(ifNoneMatch) && etagListMatches(ifNoneMatch, version)) {
+  const ifNoneMatch = etagList(request.headers.get("If-None-Match"));
+  if (ifNoneMatch && etagListMatches(ifNoneMatch, version)) {
     return publishedNotModified(version);
   }
 
   const cacheKey = new Request(`${url.origin}/${address}?width=${width}&v=${encodeURIComponent(head.etag)}`, { method: "GET" });
   const cached = await caches.default.match(cacheKey);
   if (cached) {
-    const headers = new Headers(cached.headers);
+    // Only what describes the image: anything the cache adds (an Age past five minutes) would make it stale at once.
+    const headers = new Headers({ "Content-Type": cached.headers.get("Content-Type") || storedType, ETag: `"${version}"` });
+    const cachedLength = cached.headers.get("Content-Length");
+    if (cachedLength) headers.set("Content-Length", cachedLength);
     applyPublishedCaching(headers);
     if (method === "HEAD") {
       // Not awaited: a cached body may be one branch of a tee, whose cancel settles only with the other's.
@@ -313,15 +326,20 @@ async function handlePublishedImage({ request, env, ctx, url, method, objectKey,
   const answerHeaders = new Headers(headers);
   applyPublishedCaching(answerHeaders);
 
-  // Kept at the edge only when it was resized (Cf-Resized: a zone without image transformations answers the original)
-  // and the file is still the version looked up, so a replacement made meanwhile is never kept under the old version.
-  const current = transformed.headers.has("Cf-Resized") ? await env.ASSETS_BUCKET.head(objectKey).catch(() => null) : null;
+  // Kept, and named by this version and width, only when it was resized (Cf-Resized without err=: a zone without image
+  // transformations, or a resize that failed softly, answers the original) and the file is still the version looked
+  // up. Anything else is answered but kept nowhere, so neither the edge nor a browser holds it under this version.
+  const resizedNote = transformed.headers.get("Cf-Resized") || "";
+  const resized = resizedNote !== "" && !/\berr=/i.test(resizedNote);
+  const current = resized ? await env.ASSETS_BUCKET.head(objectKey).catch(() => null) : null;
   if (!current || current.etag !== head.etag) {
+    const passing = new Headers({ "Content-Type": resizedType, "Cache-Control": "no-store" });
+    if (length) passing.set("Content-Length", length);
     if (method === "HEAD") {
       await transformed.body?.cancel();
-      return new Response(null, { status: 200, headers: answerHeaders });
+      return new Response(null, { status: 200, headers: passing });
     }
-    return new Response(transformed.body, { status: 200, headers: answerHeaders });
+    return new Response(transformed.body, { status: 200, headers: passing });
   }
 
   // Long at the edge (the key changes with the file), five minutes in a browser.
@@ -353,16 +371,28 @@ function assetsOrigin(env) {
   return parsed.origin;
 }
 
-// Whether a header is * or a list of entity tags (RFC 9110), which is all R2 or etagListMatches should be given.
-function isEtagList(header) {
-  return /^\s*(\*|(W\/)?"[^"]*"(\s*,\s*(W\/)?"[^"]*")*)\s*$/.test(String(header));
+// An If-None-Match header as a clean list for R2 and etagListMatches: "*", or its entity tags (RFC 9110: weak or
+// strong, quoted, of visible characters), joined by ", ", with empty list elements dropped. null when the header is
+// absent or malformed: a malformed one can name no version, so it is ignored, as RFC 9110 allows.
+function etagList(header) {
+  if (header === null || header === undefined) return null;
+  const value = String(header).trim();
+  if (value === "*") return "*";
+  const tags = [];
+  for (const element of value.split(",")) {
+    const tag = element.trim();
+    if (tag === "") continue;
+    if (!/^(W\/)?"[\x21\x23-\x7e\x80-\xff]*"$/.test(tag)) return null;
+    tags.push(tag);
+  }
+  return tags.length ? tags.join(", ") : null;
 }
 
-// Whether an If-None-Match list (or *) names this etag (bare, without quotes). Weak comparison, as RFC 9110 asks.
-function etagListMatches(header, etag) {
-  const value = String(header).trim();
-  if (value === "*") return true;
-  return value.split(",").some((tag) => tag.trim().replace(/^W\//, "") === `"${etag}"`);
+// Whether a clean If-None-Match list (etagList) names this etag (bare, without quotes). Weak comparison, as RFC 9110
+// asks.
+function etagListMatches(list, etag) {
+  if (list === "*") return true;
+  return list.split(", ").some((tag) => tag.replace(/^W\//, "") === `"${etag}"`);
 }
 
 function applyPublishedCaching(headers) {

@@ -200,6 +200,7 @@ function r2Matches(header, etag) {
   return value === "*" || value.split(",").some((tag) => tag.trim().replace(/^W\//, "") === `"${etag}"`);
 }
 let bodyGets = 0;
+let onHead = null;
 const publishedBucket = {
   async get(key, options = {}) {
     bodyGets++;
@@ -208,7 +209,7 @@ const publishedBucket = {
     const etag = object.etag || "e1";
     const meta = { size: object.body.length, etag, httpEtag: `"${etag}"`, httpMetadata: { contentType: object.contentType } };
     const ifNoneMatch = options.onlyIf instanceof Headers ? options.onlyIf.get("If-None-Match") : null;
-    if (ifNoneMatch && !/^\s*(\*|(W\/)?"[^"]*"(\s*,\s*(W\/)?"[^"]*")*)\s*$/.test(ifNoneMatch)) throw new Error("bad If-None-Match");
+    if (ifNoneMatch && !/^\s*(\*|(W\/)?"[\x21\x23-\x7e]*"(\s*,\s*(W\/)?"[\x21\x23-\x7e]*")*)\s*$/.test(ifNoneMatch)) throw new Error("bad If-None-Match");
     if (ifNoneMatch && r2Matches(ifNoneMatch, etag)) return meta;
     let bytes = object.body;
     if (options.range) {
@@ -221,6 +222,7 @@ const publishedBucket = {
     return { ...meta, body };
   },
   async head(key) {
+    if (onHead) onHead(key);
     const object = objects.get(key);
     if (!object) return null;
     const etag = object.etag || "e1";
@@ -268,9 +270,21 @@ const pastEnd = await pub("/datasheets/product.pdf", { headers: { Range: "bytes=
 check("a range past the end is 416", pastEnd.status, 416);
 const pastEndOld = await pub("/datasheets/product.pdf", { headers: { Range: "bytes=500-", "If-Range": '"old"' } });
 check("a range past the end of a smaller replacement (If-Range) gets the whole file", `${pastEndOld.status} ${await pastEndOld.text()}`, "200 %PDF-1.7 a datasheet");
+objects.set("public/www/datasheets/shrinks.pdf", { body: Buffer.from("%PDF-1.7 a longer first version"), contentType: "application/pdf", etag: "s1" });
+onHead = (key) => {
+  if (key === "public/www/datasheets/shrinks.pdf" && objects.get(key).etag === "s1") {
+    onHead = null;
+    queueMicrotask(() => objects.set(key, { body: Buffer.from("%PDF v2"), contentType: "application/pdf", etag: "s2" }));
+  }
+};
+const shrunk = await pub("/datasheets/shrinks.pdf", { headers: { Range: "bytes=20-25" } });
+onHead = null;
+check("a file replaced by a smaller one between the look and the ranged read gets the whole new file", `${shrunk.status} ${await shrunk.text()}`, "200 %PDF v2");
 const pastEndCurrent = await pub("/datasheets/product.pdf", { headers: { Range: "bytes=500-", "If-None-Match": '"d1"' } });
 check("a current copy is answered 304 before a range past the end", pastEndCurrent.status, 304);
-for (const value of ["abc", '"unclosed', '""d1""']) {
+const withEmpty = await pub("/datasheets/product.pdf", { headers: { "If-None-Match": ', "d1"' } });
+check("an If-None-Match list with an empty element still matches", withEmpty.status, 304);
+for (const value of ["abc", '"unclosed', '""d1""', '"a b"']) {
   const malformed = await pub("/datasheets/product.pdf", { headers: { "If-None-Match": value } });
   check(`a malformed If-None-Match (${value}) is ignored`, malformed.status, 200);
 }
@@ -346,13 +360,14 @@ const resized = [];
 const cache = new Map();
 globalThis.caches = { default: { async match(key) { return cache.get(key.url)?.clone(); }, async put(key, response) { cache.set(key.url, response); } } };
 let resizerSaysResized = true;
+let resizerNote = "internal=ok/- q=0 n=1 c=1";
 let replaceDuringResize = null;
 globalThis.fetch = async (source, init) => {
   resized.push({ source: new URL(source), image: init.cf.image });
   const original = await worker.fetch(new Request(source), publicEnv, { waitUntil() {} });
   if (replaceDuringResize) replaceDuringResize();
   const headers = { "Content-Type": original.headers.get("Content-Type") };
-  if (resizerSaysResized) headers["Cf-Resized"] = "internal=ok/- q=0 n=1 c=1";
+  if (resizerSaysResized) headers["Cf-Resized"] = resizerNote;
   return new Response(original.body, { status: original.status, headers });
 };
 const pending = [];
@@ -370,6 +385,10 @@ check("...with an ETag for this version and width", image.headers.get("ETag"), '
 const again = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=800"), publicEnv, resizeCtx);
 const headResized = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=800", { method: "HEAD" }), publicEnv, resizeCtx);
 check("asked again, GET and HEAD come from the edge, the resizer asked once", `${again.status} ${headResized.status} ${resized.length}`, "200 200 1");
+const [warmKey, warmEntry] = [...cache.entries()][0];
+cache.set(warmKey, new Response(await warmEntry.clone().arrayBuffer(), { headers: { "Content-Type": "image/webp", Age: "86400", "X-Cache-Thing": "1" } }));
+const aged = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=800"), publicEnv, resizeCtx);
+check("an edge copy goes out with only what describes it", `${aged.headers.get("Age")} ${aged.headers.get("X-Cache-Thing")} ${aged.headers.get("ETag")} ${aged.headers.get("Cache-Control")}`, 'null null "i1-w800" public, max-age=300');
 const currentResized = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=800", { headers: { "If-None-Match": '"i1-w800"' } }), publicEnv, resizeCtx);
 check("a browser holding this width of this version is answered 304", currentResized.status, 304);
 
@@ -393,6 +412,13 @@ const unresized = await worker.fetch(new Request("https://www.example.com/images
 await Promise.all(pending);
 check("an image the zone didn't resize (no Cf-Resized) is answered", unresized.status, 200);
 check("...and not kept at the edge", cache.size, before);
+check("...nor by a browser, nor named as this version and width", `${unresized.headers.get("Cache-Control")} ${unresized.headers.get("ETag")}`, "no-store null");
+resizerNote = "err=9401";
+resizerSaysResized = true;
+const softFail = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=1024"), publicEnv, resizeCtx);
+await Promise.all(pending);
+resizerNote = "internal=ok/- q=0 n=1 c=1";
+check("a resize that failed softly (Cf-Resized err=) is not kept at the edge", `${softFail.status} ${cache.size === before} ${softFail.headers.get("ETag")}`, "200 true null");
 resizerSaysResized = true;
 replaceDuringResize = () => { objects.get("public/www/images/product/front.webp").etag = "i2"; };
 const raced = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=1200"), publicEnv, resizeCtx);

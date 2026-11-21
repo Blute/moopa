@@ -291,7 +291,8 @@
         <cfset var copied = false />
         <cfset var result = "" />
         <cftry>
-            <cfset result = xmlParse(answer).xmlRoot />
+            <!--- trim: S3 may send whitespace ahead of the XML to keep a slow copy's connection open. --->
+            <cfset result = xmlParse(trim(answer)).xmlRoot />
             <cfset copied = localName(result) EQ "CopyObjectResult" AND len(childText(result, "ETag")) GT 0 />
             <cfcatch><cfset copied = false /></cfcatch>
         </cftry>
