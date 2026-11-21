@@ -286,6 +286,12 @@ const pastEndCurrent = await pub("/datasheets/product.pdf", { headers: { Range: 
 check("a current copy is answered 304 before a range past the end", pastEndCurrent.status, 304);
 const withEmpty = await pub("/datasheets/product.pdf", { headers: { "If-None-Match": ', "d1"' } });
 check("an If-None-Match list with an empty element still matches", withEmpty.status, 304);
+const padded = `"d1",${" ".repeat(100000)}x`;
+const paddedStart = performance.now();
+const paddedAnswer = await pub("/datasheets/product.pdf", { method: "HEAD", headers: { "If-None-Match": padded } });
+const paddedMs = performance.now() - paddedStart;
+check("a malformed If-None-Match padded with spaces is ignored", paddedAnswer.status, 200);
+check("...in linear time, not backtracking (under 50 ms)", paddedMs < 50, true);
 await pub("/datasheets/product.pdf", { headers: { "If-None-Match": ' , "old,legacy" ,, W/"zz"' } });
 check("...and R2 is given the tags as a clean list", r2Conditions.at(-1), '"old,legacy", W/"zz"');
 for (const [label, init] of [["GET", {}], ["HEAD", { method: "HEAD" }], ["a ranged GET", { headers: { Range: "bytes=0-3" } }]]) {

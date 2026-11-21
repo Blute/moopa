@@ -378,7 +378,9 @@ function etagList(header) {
   if (header === null || header === undefined) return null;
   const value = String(header).trim();
   if (value === "*") return ["*"];
-  const element = /\s*((?:W\/)?"[\x21\x23-\x7e\x80-\xff]*")?\s*(?:,|$)/y;
+  // The whitespace after a tag is inside its optional group, so two runs of it are never side by side: that would
+  // backtrack quadratically on a long run of spaces.
+  const element = /\s*(?:((?:W\/)?"[\x21\x23-\x7e\x80-\xff]*")\s*)?(?:,|$)/y;
   const tags = [];
   let position = 0;
   while (position < value.length) {
