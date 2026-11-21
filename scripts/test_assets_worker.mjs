@@ -192,8 +192,9 @@ for (const kind of ["i", "m"]) {
   check(`...and is nosniff`, response.headers.get("X-Content-Type-Options"), "nosniff");
 }
 
-// Published files (PUBLIC_SITES). The bucket stand-in answers as R2 does: head() without a body, get() with onlyIf
-// (an If-None-Match list, or *) evaluated before a range, and the object without a body when onlyIf failed.
+// Published files (PUBLIC_SITES). The bucket stand-in answers as R2 does: head() without a body; get() with onlyIf
+// (an If-None-Match list, or *), answering the object without a body when it failed; a range past the end throws; and
+// a malformed If-None-Match throws.
 function r2Matches(header, etag) {
   const value = header.trim();
   return value === "*" || value.split(",").some((tag) => tag.trim().replace(/^W\//, "") === `"${etag}"`);
@@ -207,10 +208,12 @@ const publishedBucket = {
     const etag = object.etag || "e1";
     const meta = { size: object.body.length, etag, httpEtag: `"${etag}"`, httpMetadata: { contentType: object.contentType } };
     const ifNoneMatch = options.onlyIf instanceof Headers ? options.onlyIf.get("If-None-Match") : null;
+    if (ifNoneMatch && !/^\s*(\*|(W\/)?"[^"]*"(\s*,\s*(W\/)?"[^"]*")*)\s*$/.test(ifNoneMatch)) throw new Error("bad If-None-Match");
     if (ifNoneMatch && r2Matches(ifNoneMatch, etag)) return meta;
     let bytes = object.body;
     if (options.range) {
       const { offset = 0, length, suffix } = options.range;
+      if (suffix === undefined && offset >= bytes.length) throw new Error("InvalidRange");
       if (suffix !== undefined) bytes = bytes.subarray(Math.max(0, bytes.length - suffix));
       else bytes = bytes.subarray(offset, length === undefined ? undefined : offset + length);
     }
@@ -263,6 +266,14 @@ const rangedOld = await pub("/datasheets/product.pdf", { headers: { Range: "byte
 check("a range for a replaced version gets the whole file", `${rangedOld.status} ${await rangedOld.text()}`, "200 %PDF-1.7 a datasheet");
 const pastEnd = await pub("/datasheets/product.pdf", { headers: { Range: "bytes=500-" } });
 check("a range past the end is 416", pastEnd.status, 416);
+const pastEndOld = await pub("/datasheets/product.pdf", { headers: { Range: "bytes=500-", "If-Range": '"old"' } });
+check("a range past the end of a smaller replacement (If-Range) gets the whole file", `${pastEndOld.status} ${await pastEndOld.text()}`, "200 %PDF-1.7 a datasheet");
+const pastEndCurrent = await pub("/datasheets/product.pdf", { headers: { Range: "bytes=500-", "If-None-Match": '"d1"' } });
+check("a current copy is answered 304 before a range past the end", pastEndCurrent.status, 304);
+for (const value of ["abc", '"unclosed', '""d1""']) {
+  const malformed = await pub("/datasheets/product.pdf", { headers: { "If-None-Match": value } });
+  check(`a malformed If-None-Match (${value}) is ignored`, malformed.status, 200);
+}
 
 const getsBeforeHead = bodyGets;
 const headAnswer = await pub("/datasheets/product.pdf", { method: "HEAD" });
@@ -278,6 +289,12 @@ check("a published page is a download", publishedPage.headers.get("Content-Dispo
 check("...typed so it can't be used as anything on the site", publishedPage.headers.get("Content-Type"), "application/octet-stream");
 const publishedScript = await pub("/scripts/app.js");
 check("a published script can't be loaded as one", publishedScript.headers.get("Content-Type"), "application/octet-stream");
+objects.set("public/www/images/product/mixed.png", { body: Buffer.from("<script>alert(1)</script>"), contentType: "image/png; x=1, text/html" });
+const mixed = await pub("/images/product/mixed.png");
+check("a stored type with another after it goes out as the checked type only", mixed.headers.get("Content-Type"), "image/png");
+objects.set("public/www/images/product/listed.png", { body: Buffer.from("<script>alert(1)</script>"), contentType: "image/png, text/html" });
+const listed = await pub("/images/product/listed.png");
+check("a stored type that is a list is a download", listed.headers.get("Content-Type"), "application/octet-stream");
 
 for (const [label, path] of [
   ["an address the site hasn't published", "/datasheets/missing.pdf"],
@@ -319,6 +336,8 @@ for (const [label, value] of [["not JSON", "{www"], ["a list", "[]"], ["a bad si
   check(`PUBLIC_SITES ${label} fails loudly`, broken.status, 500);
   const stillSigned = await worker.fetch(new Request(await signedUrl("moo_file/2026-11/abc/private.pdf")), brokenEnv, { waitUntil() {} });
   check("...while signed links keep working", stillSigned.status, 200);
+  const signedMissing = await worker.fetch(new Request(await signedUrl("moo_file/2026-11/abc/gone.pdf")), brokenEnv, { waitUntil() {} });
+  check("...and a signed link to a missing file is still a 404", signedMissing.status, 404);
 }
 
 // Resized published images: only raster images, only the fixed widths, looked up before the resizer is asked,
@@ -326,10 +345,15 @@ for (const [label, value] of [["not JSON", "{www"], ["a list", "[]"], ["a bad si
 const resized = [];
 const cache = new Map();
 globalThis.caches = { default: { async match(key) { return cache.get(key.url)?.clone(); }, async put(key, response) { cache.set(key.url, response); } } };
+let resizerSaysResized = true;
+let replaceDuringResize = null;
 globalThis.fetch = async (source, init) => {
   resized.push({ source: new URL(source), image: init.cf.image });
   const original = await worker.fetch(new Request(source), publicEnv, { waitUntil() {} });
-  return new Response(original.body, { status: original.status, headers: { "Content-Type": original.headers.get("Content-Type") } });
+  if (replaceDuringResize) replaceDuringResize();
+  const headers = { "Content-Type": original.headers.get("Content-Type") };
+  if (resizerSaysResized) headers["Cf-Resized"] = "internal=ok/- q=0 n=1 c=1";
+  return new Response(original.body, { status: original.status, headers });
 };
 const pending = [];
 const resizeCtx = { waitUntil(p) { pending.push(p); } };
@@ -363,13 +387,30 @@ check("a resize without ASSETS_ORIGIN fails loudly", noOrigin.status, 500);
 const siteOrigin = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=640"), { ...publicEnv, ASSETS_ORIGIN: "https://www.example.com" }, resizeCtx);
 check("...as does one pointing at a published site", siteOrigin.status, 500);
 
+resizerSaysResized = false;
+const before = cache.size;
+const unresized = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=1024"), publicEnv, resizeCtx);
+await Promise.all(pending);
+check("an image the zone didn't resize (no Cf-Resized) is answered", unresized.status, 200);
+check("...and not kept at the edge", cache.size, before);
+resizerSaysResized = true;
+replaceDuringResize = () => { objects.get("public/www/images/product/front.webp").etag = "i2"; };
+const raced = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=1200"), publicEnv, resizeCtx);
+await Promise.all(pending);
+replaceDuringResize = null;
+check("an image replaced while it was resized is answered", raced.status, 200);
+check("...and not kept under the version looked up", [...cache.keys()].some((key) => key.includes("width=1200")), false);
+const headMiss = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=1600", { method: "HEAD" }), publicEnv, resizeCtx);
+await Promise.all(pending);
+check("a HEAD that misses the edge fills it", `${headMiss.status} ${(await headMiss.text()).length} ${[...cache.keys()].some((key) => key.includes("width=1600&v=i2"))}`, "200 0 true");
+
 globalThis.fetch = async () => new Response("bad gateway", { status: 502, headers: { "Content-Type": "text/plain" } });
 const failed = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=320"), publicEnv, resizeCtx);
 check("a failed resize is a 502", failed.status, 502);
 check("...that nothing keeps", failed.headers.get("Cache-Control"), "no-store");
 globalThis.fetch = async () => { throw new Error("network down"); };
 const thrown = await worker.fetch(new Request("https://www.example.com/images/product/front.webp?width=480"), publicEnv, resizeCtx);
-check("a resize that throws is answered by the Worker, nosniff", `${thrown.status} ${thrown.headers.get("X-Content-Type-Options")}`, "500 nosniff");
+check("a resize that throws is a 502 that nothing keeps, nosniff", `${thrown.status} ${thrown.headers.get("Cache-Control")} ${thrown.headers.get("X-Content-Type-Options")}`, "502 no-store nosniff");
 globalThis.fetch = realFetch;
 
 const unsigned = await worker.fetch(new Request("https://assets.example.com/a/photos/house.jpg"), env, { waitUntil() {} });

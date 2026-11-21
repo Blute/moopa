@@ -285,9 +285,17 @@
                 "x-amz-metadata-directive": "COPY"
             }
         ) />
-        <!--- S3 can fail a copy after answering 200, with the error in the body: only a CopyObjectResult is a copy. --->
+        <!--- S3 can fail a copy after answering 200, with the error in the body: only a whole CopyObjectResult with the
+              copy's ETag is a copy. --->
         <cfset var answer = isBinary(httpResult.fileContent ?: "") ? charsetEncode(httpResult.fileContent, "utf-8") : (httpResult.fileContent ?: "") />
-        <cfif findNoCase("<Error>", answer) OR NOT findNoCase("<CopyObjectResult", answer)>
+        <cfset var copied = false />
+        <cfset var result = "" />
+        <cftry>
+            <cfset result = xmlParse(answer).xmlRoot />
+            <cfset copied = localName(result) EQ "CopyObjectResult" AND len(childText(result, "ETag")) GT 0 />
+            <cfcatch><cfset copied = false /></cfcatch>
+        </cftry>
+        <cfif NOT copied>
             <cfthrow type="s3.request.failed" message="#arguments.store.label#: copying #arguments.sourceKey# to #arguments.targetKey# failed" detail="#left(answer, 1000)#" />
         </cfif>
     </cffunction>

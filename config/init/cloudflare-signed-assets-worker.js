@@ -11,7 +11,7 @@ export default {
   //
   // A request to a hostname named in PUBLIC_SITES is a published file's, never a signed asset's (handlePublishedFile).
   // Without PUBLIC_SITES every request is a signed asset's, answered as before published files. A PUBLIC_SITES that
-  // can't be read leaves signed links working and fails every other request loudly.
+  // can't be read leaves signed requests answered as ever and fails every other request loudly.
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     let site = "";
@@ -25,14 +25,13 @@ export default {
     let answer;
     if (site) {
       answer = await handlePublishedFile({ request, env, ctx, url, site });
+    } else if (sitesError && !(getKind(url.pathname) && url.searchParams.has("sig"))) {
+      answer = new Response(`Worker error: ${normalizeErrorMessage(sitesError, "Bad PUBLIC_SITES")}`, {
+        status: 500,
+        headers: { "Cache-Control": "no-store" },
+      });
     } else {
       answer = await handleRequest(request, env, ctx);
-      if (sitesError && (answer.status === 401 || answer.status === 404)) {
-        answer = new Response(`Worker error: ${normalizeErrorMessage(sitesError, "Bad PUBLIC_SITES")}`, {
-          status: 500,
-          headers: { "Cache-Control": "no-store" },
-        });
-      }
     }
 
     const response = new Response(answer.body, answer);
@@ -149,19 +148,19 @@ async function handlePublishedFile({ request, env, ctx, url, site }) {
   }
 }
 
-// A published file as stored. If-None-Match is answered 304 (R2 evaluates it, lists and * included) before any range;
-// a range is served with If-Range only when that names the current version, otherwise the whole file is the answer,
-// so a resumed download never splices two versions of a replaced file. Only media and PDFs open in the browser; anything
-// else is a download typed application/octet-stream, so it can't be used as a script or style on the site either.
+// A published file as stored. If-None-Match is answered 304 before any range. A range is served only when its
+// If-Range, if any, names the current version; otherwise the whole file is the answer, so a resumed download never
+// splices two versions of a replaced file. Only media and PDFs open in the browser; anything else is a download typed
+// application/octet-stream, so it can't be used as a script or style on the site either.
 async function handlePublishedRaw({ request, env, method, objectKey }) {
-  const ifNoneMatch = request.headers.get("If-None-Match");
+  // A malformed If-None-Match can name no version: ignored, as RFC 9110 allows, rather than handed to R2.
+  const ifNoneMatchHeader = request.headers.get("If-None-Match");
+  const ifNoneMatch = ifNoneMatchHeader && isEtagList(ifNoneMatchHeader) ? ifNoneMatchHeader : null;
 
   if (method === "HEAD") {
-    const head = await env.ASSETS_BUCKET.head(objectKey);
-    if (!head) return new Response("Not found", { status: 404 });
-    if (ifNoneMatch && etagListMatches(ifNoneMatch, head.etag)) {
-      return publishedNotModified(head.etag);
-    }
+    const head = await publishedHead(env, objectKey);
+    if (head instanceof Response) return head;
+    if (ifNoneMatch && etagListMatches(ifNoneMatch, head.etag)) return publishedNotModified(head.etag);
     const headers = publishedFileHeaders(head, objectKey);
     headers.set("Content-Length", String(head.size));
     return new Response(null, { status: 200, headers });
@@ -169,58 +168,74 @@ async function handlePublishedRaw({ request, env, method, objectKey }) {
 
   const rangeHeader = request.headers.get("Range");
   const ifRange = request.headers.get("If-Range");
-  const range = rangeHeader ? parseRange(rangeHeader) : null;
-  const options = {};
-  if (ifNoneMatch) options.onlyIf = new Headers({ "If-None-Match": ifNoneMatch });
-  if (range) options.range = range;
+  let range = rangeHeader ? parseRange(rangeHeader) : null;
+  let rangeVersion = null;
 
-  let obj;
-  try {
-    obj = await env.ASSETS_BUCKET.get(objectKey, options);
-  } catch (_error) {
-    // R2 throws for a range past the end of the object: that's the asker's (416), not R2 failing.
-    const head = range ? await env.ASSETS_BUCKET.head(objectKey).catch(() => null) : null;
-    if (head && !servedRange(range, head.size)) {
+  // With a range, the current version decides first whether the browser's copy is current and whether the range is
+  // for this version, before R2 is asked for (or refuses) the bytes.
+  if (range) {
+    const head = await publishedHead(env, objectKey);
+    if (head instanceof Response) return head;
+    if (ifNoneMatch && etagListMatches(ifNoneMatch, head.etag)) return publishedNotModified(head.etag);
+    if (ifRange && ifRange.trim() !== `"${head.etag}"`) {
+      range = null;
+    } else if (!servedRange(range, head.size)) {
       return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${head.size}` } });
+    } else {
+      rangeVersion = head.etag;
     }
-    return new Response("Upstream error", { status: 502, headers: { "Cache-Control": "no-store" } });
-  }
-  if (!obj) return new Response("Not found", { status: 404 });
-
-  // R2 answers an object without a body when onlyIf failed (it checks that before the range): the browser's copy is
-  // this one.
-  if (!("body" in obj) || !obj.body) {
-    return publishedNotModified(obj.etag);
   }
 
-  // A range made for another version of the file (If-Range) gets the whole of this one.
-  if (range && ifRange && ifRange.trim() !== `"${obj.etag}"`) {
-    await obj.body.cancel();
-    obj = await env.ASSETS_BUCKET.get(objectKey);
-    if (!obj) return new Response("Not found", { status: 404 });
-    const whole = publishedFileHeaders(obj, objectKey);
-    whole.set("Content-Length", String(obj.size));
-    return new Response(obj.body, { status: 200, headers: whole });
-  }
+  const options = range ? { range } : ifNoneMatch ? { onlyIf: new Headers({ "If-None-Match": ifNoneMatch }) } : {};
+  const obj = await publishedGet(env, objectKey, options);
+  if (obj instanceof Response) return obj;
+
+  // R2 answers an object without a body when onlyIf failed: the browser's copy is this one.
+  if (!("body" in obj) || !obj.body) return publishedNotModified(obj.etag);
 
   const headers = publishedFileHeaders(obj, objectKey);
+  // Replaced between the look and the read, the range was for another version: the whole file is the answer.
+  if (range && obj.etag !== rangeVersion) {
+    await obj.body.cancel();
+    const whole = await publishedGet(env, objectKey, {});
+    if (whole instanceof Response) return whole;
+    const wholeHeaders = publishedFileHeaders(whole, objectKey);
+    wholeHeaders.set("Content-Length", String(whole.size));
+    return new Response(whole.body, { status: 200, headers: wholeHeaders });
+  }
   if (!range) {
     headers.set("Content-Length", String(obj.size));
     return new Response(obj.body, { status: 200, headers });
   }
   const served = servedRange(range, obj.size);
-  if (!served) {
-    await obj.body.cancel();
-    return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${obj.size}` } });
-  }
   headers.set("Content-Range", `bytes ${served.offset}-${served.offset + served.length - 1}/${obj.size}`);
   headers.set("Content-Length", String(served.length));
   return new Response(obj.body, { status: 206, headers });
 }
 
+// R2's head() or get() for a published file, or the answer to give instead: 404 when it isn't there, 502 when R2
+// fails.
+async function publishedHead(env, objectKey) {
+  try {
+    return (await env.ASSETS_BUCKET.head(objectKey)) || new Response("Not found", { status: 404 });
+  } catch (_error) {
+    return new Response("Upstream error", { status: 502, headers: { "Cache-Control": "no-store" } });
+  }
+}
+
+async function publishedGet(env, objectKey, options) {
+  try {
+    return (await env.ASSETS_BUCKET.get(objectKey, options)) || new Response("Not found", { status: 404 });
+  } catch (_error) {
+    return new Response("Upstream error", { status: 502, headers: { "Cache-Control": "no-store" } });
+  }
+}
+
 function publishedFileHeaders(obj, objectKey) {
   const headers = new Headers();
-  const contentType = obj.httpMetadata?.contentType || guessContentType(objectKey) || "application/octet-stream";
+  // Only the bare type that was checked goes out: parameters or a second type after it can't change what the
+  // browser does with the file.
+  const contentType = String(obj.httpMetadata?.contentType || guessContentType(objectKey) || "").split(";")[0].trim().toLowerCase();
   if (opensInline(contentType)) {
     headers.set("Content-Type", contentType);
   } else {
@@ -247,17 +262,17 @@ async function handlePublishedImage({ request, env, ctx, url, method, objectKey,
     return new Response("Missing SIGNING_KEY_B64", { status: 500, headers: { "Cache-Control": "no-store" } });
   }
 
-  const head = await env.ASSETS_BUCKET.head(objectKey);
-  if (!head) return new Response("Not found", { status: 404 });
+  const head = await publishedHead(env, objectKey);
+  if (head instanceof Response) return head;
   const storedType = String(head.httpMetadata?.contentType || guessContentType(objectKey) || "").split(";")[0].trim().toLowerCase();
   if (!PUBLISHED_RESIZABLE_TYPES.includes(storedType)) {
     return new Response("Only images are resized", { status: 415 });
   }
 
-  const etag = `"${head.etag}-w${width}"`;
+  const version = `${head.etag}-w${width}`;
   const ifNoneMatch = request.headers.get("If-None-Match");
-  if (ifNoneMatch && etagListMatches(ifNoneMatch, `${head.etag}-w${width}`)) {
-    return publishedNotModified(`${head.etag}-w${width}`);
+  if (ifNoneMatch && isEtagList(ifNoneMatch) && etagListMatches(ifNoneMatch, version)) {
+    return publishedNotModified(version);
   }
 
   const cacheKey = new Request(`${url.origin}/${address}?width=${width}&v=${encodeURIComponent(head.etag)}`, { method: "GET" });
@@ -265,7 +280,12 @@ async function handlePublishedImage({ request, env, ctx, url, method, objectKey,
   if (cached) {
     const headers = new Headers(cached.headers);
     applyPublishedCaching(headers);
-    return new Response(method === "HEAD" ? null : cached.body, { status: 200, headers });
+    if (method === "HEAD") {
+      // Not awaited: a cached body may be one branch of a tee, whose cancel settles only with the other's.
+      cached.body?.cancel().catch(() => {});
+      return new Response(null, { status: 200, headers });
+    }
+    return new Response(cached.body, { status: 200, headers });
   }
 
   // The same source address for every request for this version of the file, so it is one image to the resizer.
@@ -275,25 +295,44 @@ async function handlePublishedImage({ request, env, ctx, url, method, objectKey,
     params: { exp: SIGNED_NEVER_EXPIRES, v: head.etag },
     signingKeyB64: env.SIGNING_KEY_B64,
   });
-  const transformed = await fetch(source, { cf: { image: { width, fit: "scale-down" } } });
+  let transformed;
+  try {
+    transformed = await fetch(source, { cf: { image: { width, fit: "scale-down" } } });
+  } catch (_error) {
+    return new Response("Resize failed", { status: 502, headers: { "Cache-Control": "no-store" } });
+  }
   const resizedType = String(transformed.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
-  if (transformed.status !== 200 || !resizedType.startsWith("image/") || resizedType === "image/svg+xml") {
+  if (transformed.status !== 200 || !PUBLISHED_RESIZABLE_TYPES.includes(resizedType)) {
     await transformed.body?.cancel();
     return new Response("Resize failed", { status: 502, headers: { "Cache-Control": "no-store" } });
   }
 
-  const headers = new Headers({ "Content-Type": resizedType, ETag: etag });
+  const headers = new Headers({ "Content-Type": resizedType, ETag: `"${version}"` });
   const length = transformed.headers.get("Content-Length");
   if (length) headers.set("Content-Length", length);
+  const answerHeaders = new Headers(headers);
+  applyPublishedCaching(answerHeaders);
+
+  // Kept at the edge only when it was resized (Cf-Resized: a zone without image transformations answers the original)
+  // and the file is still the version looked up, so a replacement made meanwhile is never kept under the old version.
+  const current = transformed.headers.has("Cf-Resized") ? await env.ASSETS_BUCKET.head(objectKey).catch(() => null) : null;
+  if (!current || current.etag !== head.etag) {
+    if (method === "HEAD") {
+      await transformed.body?.cancel();
+      return new Response(null, { status: 200, headers: answerHeaders });
+    }
+    return new Response(transformed.body, { status: 200, headers: answerHeaders });
+  }
+
   // Long at the edge (the key changes with the file), five minutes in a browser.
   headers.set("Cache-Control", `public, max-age=${PUBLISHED_MAX_AGE_SECONDS}, s-maxage=${PUBLISHED_RESIZED_EDGE_SECONDS}`);
   const response = new Response(transformed.body, { status: 200, headers });
+  if (method === "HEAD") {
+    ctx.waitUntil(caches.default.put(cacheKey, response));
+    return new Response(null, { status: 200, headers: answerHeaders });
+  }
   ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
-
-  const answerHeaders = new Headers(headers);
-  applyPublishedCaching(answerHeaders);
-  answerHeaders.set("ETag", etag);
-  return new Response(method === "HEAD" ? null : response.body, { status: 200, headers: answerHeaders });
+  return new Response(response.body, { status: 200, headers: answerHeaders });
 }
 
 // ASSETS_ORIGIN as https://host (no path, query or fragment), and not a published site's hostname, whose requests
@@ -306,12 +345,17 @@ function assetsOrigin(env) {
     throw new Error("Missing ASSETS_ORIGIN");
   }
   if (!/^https?:$/.test(parsed.protocol) || (parsed.pathname !== "/" && parsed.pathname !== "") || parsed.search || parsed.hash) {
-    throw new Error("ASSETS_ORIGIN must be https://<the asset hostname>");
+    throw new Error("ASSETS_ORIGIN must be http(s)://<the asset hostname>, with no path");
   }
   if (publishedSites(env).has(parsed.hostname.toLowerCase())) {
     throw new Error("ASSETS_ORIGIN must be the asset hostname, not a published site's");
   }
   return parsed.origin;
+}
+
+// Whether a header is * or a list of entity tags (RFC 9110), which is all R2 or etagListMatches should be given.
+function isEtagList(header) {
+  return /^\s*(\*|(W\/)?"[^"]*"(\s*,\s*(W\/)?"[^"]*")*)\s*$/.test(String(header));
 }
 
 // Whether an If-None-Match list (or *) names this etag (bare, without quotes). Weak comparison, as RFC 9110 asks.
