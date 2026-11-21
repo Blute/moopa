@@ -195,6 +195,20 @@ The combobox automatically calls `search.category_id` endpoint for options, whic
 
 This auto-creates a bridge table `{table_name}_roles` with proper FK constraints.
 
+### Publishing a file field's files
+
+A `many_to_many` field of `moo_file` can publish its files at readable addresses on one of the project's sites (a public website's datasheets and photos), kept in step with the record by `db.save` and `db.delete`:
+
+```cfml
+"datasheet": {
+    "type": "many_to_many",
+    "foreign_key_table": "moo_file",
+    "publish": { "site": "www", "address": "/datasheets/{slug}.pdf", "when": "is_published" }
+}
+```
+
+`{field}` is a column of the record, `{name}` and `{ext}` the file's; without `{name}` only the first file is published. `when` names a `bool` column. Read `docs/object-storage.md` ("Publishing a table's files") before using it: it covers `moo_published_file`, `syncAll()`, linking a published file from a page, and the Worker setup it needs.
+
 ## What a link carries
 
 A uuid foreign key, a `many_to_many` list and a `relation` pull in records of another table. How much of each linked record a read carries depends on the read's `sql_type`:

@@ -21,6 +21,7 @@
             returnFormatter = variables.returnFormatter
         ) />
         <cfset variables.schemaNormalizer = CreateObject("component", "/moopa/internal/db/schema_normalizer").init() />
+        <cfset variables.publishConfig = CreateObject("component", "/moopa/internal/db/publish_config").init() />
 
 
         <!--- Merge table definitions from conventional packages. --->
@@ -29,7 +30,20 @@
         </cfif>
 
         <cfset this.codeSchema = variables.schemaLoader.loadFromPackages(application.moopa_packages) />
+
+        <!--- Published files (docs/object-storage.md: Publishing a table's files): moo_published_file records what is
+              published where, and a project gets it only when one of its fields publishes files. --->
+        <cfif variables.publishConfig.anyPublished(this.codeSchema) AND NOT structKeyExists(this.codeSchema, "moo_published_file")>
+            <cfset local.publishedTable = CreateObject("component", "/moopa/tables_published/moo_published_file").init() />
+            <cfset local.publishedTable.definition.path = "/moopa/tables_published/moo_published_file" />
+            <cfset local.publishedTable.definition.name = "moo_published_file" />
+            <cfset this.codeSchema["moo_published_file"] = local.publishedTable.definition />
+        </cfif>
+
         <cfset this.codeSchema = variables.schemaNormalizer.normalize(this.codeSchema, this.searchable_tables)>
+
+        <!--- The tables whose fields publish files, checked now so a mistake fails at start. --->
+        <cfset this.publishing = variables.publishConfig.build(this.codeSchema) />
 
 
         <cfreturn this>
@@ -80,6 +94,10 @@ Delete - delete
         <cfreturn res />
     </cffunction>
 
+
+    <cffunction name="getPublishing" hint="The tables whose fields publish their files, by table then field: { site, address, when, first, bridge } (internal/db/publish_config.cfc). Empty when nothing publishes.">
+        <cfreturn this.publishing />
+    </cffunction>
 
     <cffunction name="getSearchableTables" hint="Returns the struct containing tables with pg_trgm trigram search enabled">
         <cfreturn this.searchable_tables />
@@ -264,12 +282,42 @@ Delete - delete
         <cfargument name="data" type="struct" required="false" default="#structNew()#" />
         <cfargument name="returnFormat" type="string" required="false" default="json" />
 
-        <cfreturn variables.recordWriter.delete(
+        <cfset var deleted = "" />
+
+        <cfif NOT structKeyExists(this.publishing, arguments.table_name)>
+            <cfreturn variables.recordWriter.delete(
+                table_name = arguments.table_name,
+                id = arguments.id,
+                data = arguments.data,
+                returnFormat = arguments.returnFormat
+            ) />
+        </cfif>
+
+        <!--- A record whose fields publish files: its published files go with it. --->
+        <cfset deleted = variables.recordWriter.delete(
             table_name = arguments.table_name,
             id = arguments.id,
             data = arguments.data,
             returnFormat = arguments.returnFormat
         ) />
+        <cfset publishRecord(arguments.table_name, len(arguments.id) ? arguments.id : (arguments.data.id ?: "")) />
+        <cfreturn deleted />
+    </cffunction>
+
+    <!--- Puts a record's published files in step with it (lib/published_files.cfc syncRecord). A failure is logged, never
+          the save's or delete's: the record is written, and published_files.syncAll() catches up. --->
+    <cffunction name="publishRecord" access="private" returntype="void" output="false">
+        <cfargument name="table_name" type="string" required="true" />
+        <cfargument name="id" type="string" required="true" />
+        <cfif NOT len(arguments.id)>
+            <cfreturn />
+        </cfif>
+        <cftry>
+            <cfset application.lib.published_files.syncRecord(arguments.table_name, arguments.id) />
+            <cfcatch>
+                <cfset application.lib.core.logError(cfcatch, "published_files.syncRecord") />
+            </cfcatch>
+        </cftry>
     </cffunction>
 
 
@@ -286,13 +334,26 @@ Delete - delete
         <cfargument name="index_record" type="boolean" default=true />
 
         <cfset var stModel = this.codeSchema[arguments.table_name] />
+        <cfset var saved = {} />
 
-        <cfreturn variables.recordWriter.save(
+        <cfif NOT structKeyExists(this.publishing, arguments.table_name)>
+            <cfreturn variables.recordWriter.save(
+                stModel = stModel,
+                data = arguments.data,
+                returnFormat = arguments.returnFormat,
+                index_record = arguments.index_record
+            ) />
+        </cfif>
+
+        <!--- A record whose fields publish files: they follow it once it is written, its files included. --->
+        <cfset saved = variables.recordWriter.save(
             stModel = stModel,
             data = arguments.data,
-            returnFormat = arguments.returnFormat,
+            returnFormat = "cfml",
             index_record = arguments.index_record
         ) />
+        <cfset publishRecord(arguments.table_name, saved.id ?: "") />
+        <cfreturn variables.returnFormatter.formatCFML(saved, arguments.returnFormat) />
 
     </cffunction>
 

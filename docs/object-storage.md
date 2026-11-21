@@ -126,6 +126,8 @@ A page is rendered each time an address is first asked for, then kept in the edg
 
 A file can also be **published**: answered at a fixed, readable address on one of the project's own sites, without a signature, such as `https://www.example.com/datasheets/product.pdf`. Use it for what a public website shows search engines and links to (datasheets, brochures, product photos), where a signed link's address on the asset hostname, with its `?exp=…&sig=…` and an id that changes with every upload, is the wrong address to rank or share. Everything not published stays private and signed.
 
+Usually a table definition says which files are published (below, "Publishing a table's files"), and Moopa keeps them in step with their records. Underneath, and for anything else, are these calls:
+
 ```cfml
 application.lib.published_files.publish("www", "/datasheets/product.pdf", moo_file.path)   // copies it to public/www/datasheets/product.pdf
 application.lib.published_files.unpublish("www", "/datasheets/product.pdf")
@@ -133,11 +135,52 @@ application.lib.published_files.isPublished("www", "/datasheets/product.pdf")
 application.lib.published_files.list("www", "/datasheets/")                                 // [{ address, size, last_modified }]
 ```
 
-- **The bucket is the record.** `publish()` copies the stored file inside the store (`copyObject`, nothing passes through the app) to `public/<site>/<address>`. There is no table: what is under `public/` is what is published. A project keeps which file it published where in its own tables if it needs to.
+- **The bucket is the record** for these calls. `publish()` copies the stored file inside the store (`copyObject`, nothing passes through the app) to `public/<site>/<address>`, and keeps no record of its own: what is under `public/` is what is published.
 - **An address never changes.** Publishing again at the same address replaces the file there, so a new version of a datasheet keeps its address, and the links and search ranking that point at it.
 - **Addresses** start with `/` and are segments of letters, digits, dot, dash and underscore. Site names are lowercase letters, digits and dashes. Anything else throws `published_files.invalid`. Prefer lowercase, dash-separated addresses that say what the file is.
 - **Unpublishing** removes the copy, not the original. Browsers may keep their copy for up to five minutes more. Deleting the original does not unpublish it: the published copy is the project's to remove.
 - **Size:** a copy is one CopyObject, so a file over 5 GB can't be published.
+
+### Publishing a table's files
+
+A `many_to_many` field of `moo_file` can declare that its files are published, in its table definition:
+
+```cfml
+"is_published": { "type": "bool", "nullable": false, "default": "false" },
+"datasheet": { "type": "many_to_many", "foreign_key_table": "moo_file",
+    "publish": { "site": "www", "address": "/datasheets/{slug}.pdf", "when": "is_published" } },
+"images": { "type": "many_to_many", "foreign_key_table": "moo_file",
+    "publish": { "site": "www", "address": "/images/{slug}/{name}.{ext}", "when": "is_published" } }
+```
+
+- **`site`** is the site the files are published on, as the Worker's `PUBLIC_SITES` names it.
+- **`address`** is where each file goes. `{field}` is the record's value of that column, `{name}` the file's name without its extension and `{ext}` its extension. `{field}` and `{name}` are made readable: lowercase letters and digits, with dashes between, so `Front View (2).JPG` gives `front-view-2` and `jpg`.
+- **Without `{name}`**, a field publishes its first file only (in its order): one address, one file. With it, two files whose names come out the same get `-2`, `-3` before the extension.
+- **`when`** (optional) names a `bool` column of the table: its files are published only while it is true. Without it, they always are.
+- **The table definition is checked at start.** A field that isn't a `many_to_many` of `moo_file`, a placeholder that isn't a column, or a `when` that isn't a `bool` column stops the app with `moopa.publish.invalid`, naming the table and field.
+
+**What follows a record.** `db.save` and `db.delete` keep a publishing table's files in step with each record, after it is written:
+- a file added, or replaced by another, is published;
+- a file removed, a changed address (the slug edited), `when` turning false, or the record deleted, unpublishes;
+- only what changed is copied.
+
+This is `application.lib.published_files.syncRecord(table_name, id)`, which a project calls itself after changing a record or its files by SQL rather than `db.save`.
+
+**Failures and catching up.** A failure to publish never fails the save or delete: it is logged (`core.logError`), and the record's files catch up on its next save or on `syncAll()`. **`syncAll()`** does every record of every publishing table, and unpublishes what a deleted record, or a field that no longer publishes, left behind. Run it once when a table first publishes (its existing records are published then), and on a schedule.
+
+**`moo_published_file`** records what is published where: one row per address, with its `site`, `address`, `object_key`, the `table_name`, `record_id` and `field` that publish it, the `moo_file_id`, and the `path` it was copied from. Pages read it to link a file at its own address, and a file not published yet (no row) by its signed link:
+
+```sql
+SELECT COALESCE(published.address, signed_asset_url(moo_file.path, 'NEVER', 'a')) AS url
+FROM product_datasheet
+JOIN moo_file ON moo_file.id = product_datasheet.foreign_id
+LEFT JOIN moo_published_file AS published
+  ON published.table_name = 'product' AND published.record_id = product_datasheet.primary_id
+ AND published.field = 'datasheet' AND published.moo_file_id = moo_file.id
+```
+
+- **Only for projects that publish.** A project gets `moo_published_file` (a schema sync adds it) only when one of its fields declares `publish`. Without one there is no table, and `db.save` and `db.delete` work exactly as before.
+- **An address belongs to the first record that publishes it.** Another record wanting the same address leaves it alone, until the first lets go of it.
 
 ### How a published file is answered
 
@@ -161,7 +204,7 @@ Nothing changes for a project that doesn't publish: the library is only called b
 2. **Turn on Images Transformations** on the site's zone if images are resized (above).
 3. **Route the Worker on the site's hostname** for each prefix it publishes under (a Workers route, `www.example.com/datasheets/*`). The hostname must be proxied by Cloudflare in the same account as the Worker.
 4. **Check the bucket has nothing under `public/`** that wasn't published on purpose: once the Worker publishes a site, everything under `public/<site>/` is answered.
-5. **Publish** from the project's code (`published_files.publish()`), and link to the site's own addresses.
+5. **Publish**: declare `publish` on the file fields (then sync the schema, which adds `moo_published_file`, and run `published_files.syncAll()` once), or call `published_files.publish()` from the project's code. Link to the site's own addresses.
 
 ### Upgrading to PDF pages
 
