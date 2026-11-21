@@ -185,7 +185,7 @@ async function handlePublishedRaw({ request, env, method, objectKey }) {
     }
   }
 
-  const options = range ? { range } : ifNoneMatch ? { onlyIf: new Headers({ "If-None-Match": ifNoneMatch }) } : {};
+  const options = range ? { range } : ifNoneMatch ? { onlyIf: new Headers({ "If-None-Match": ifNoneMatch.join(", ") }) } : {};
   let obj = await publishedGet(env, objectKey, options);
   // A ranged read can fail because the file was replaced by a smaller one since the look: then the whole file.
   if (obj instanceof Response && range && obj.status === 502) {
@@ -371,28 +371,29 @@ function assetsOrigin(env) {
   return parsed.origin;
 }
 
-// An If-None-Match header as a clean list for R2 and etagListMatches: "*", or its entity tags (RFC 9110: weak or
-// strong, quoted, of visible characters), joined by ", ", with empty list elements dropped. null when the header is
-// absent or malformed: a malformed one can name no version, so it is ignored, as RFC 9110 allows.
+// An If-None-Match header as its entity tags (RFC 9110: weak or strong, quoted, of visible characters; a comma inside
+// the quotes is part of the tag), with empty list elements dropped, or ["*"]. null when the header is absent or
+// malformed: a malformed one can name no version, so it is ignored, as RFC 9110 allows.
 function etagList(header) {
   if (header === null || header === undefined) return null;
   const value = String(header).trim();
-  if (value === "*") return "*";
+  if (value === "*") return ["*"];
+  const element = /\s*((?:W\/)?"[\x21\x23-\x7e\x80-\xff]*")?\s*(?:,|$)/y;
   const tags = [];
-  for (const element of value.split(",")) {
-    const tag = element.trim();
-    if (tag === "") continue;
-    if (!/^(W\/)?"[\x21\x23-\x7e\x80-\xff]*"$/.test(tag)) return null;
-    tags.push(tag);
+  let position = 0;
+  while (position < value.length) {
+    element.lastIndex = position;
+    const found = element.exec(value);
+    if (!found || element.lastIndex === position) return null;
+    if (found[1]) tags.push(found[1]);
+    position = element.lastIndex;
   }
-  return tags.length ? tags.join(", ") : null;
+  return tags.length ? tags : null;
 }
 
-// Whether a clean If-None-Match list (etagList) names this etag (bare, without quotes). Weak comparison, as RFC 9110
-// asks.
-function etagListMatches(list, etag) {
-  if (list === "*") return true;
-  return list.split(", ").some((tag) => tag.replace(/^W\//, "") === `"${etag}"`);
+// Whether If-None-Match's tags (etagList) name this etag (bare, without quotes). Weak comparison, as RFC 9110 asks.
+function etagListMatches(tags, etag) {
+  return tags.some((tag) => tag === "*" || tag.replace(/^W\//, "") === `"${etag}"`);
 }
 
 function applyPublishedCaching(headers) {

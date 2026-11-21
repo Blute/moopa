@@ -197,10 +197,11 @@ for (const kind of ["i", "m"]) {
 // a malformed If-None-Match throws.
 function r2Matches(header, etag) {
   const value = header.trim();
-  return value === "*" || value.split(",").some((tag) => tag.trim().replace(/^W\//, "") === `"${etag}"`);
+  return value === "*" || (value.match(/(W\/)?"[^"]*"/g) || []).some((tag) => tag.replace(/^W\//, "") === `"${etag}"`);
 }
 let bodyGets = 0;
 let onHead = null;
+const r2Conditions = [];
 const publishedBucket = {
   async get(key, options = {}) {
     bodyGets++;
@@ -210,6 +211,7 @@ const publishedBucket = {
     const meta = { size: object.body.length, etag, httpEtag: `"${etag}"`, httpMetadata: { contentType: object.contentType } };
     const ifNoneMatch = options.onlyIf instanceof Headers ? options.onlyIf.get("If-None-Match") : null;
     if (ifNoneMatch && !/^\s*(\*|(W\/)?"[\x21\x23-\x7e]*"(\s*,\s*(W\/)?"[\x21\x23-\x7e]*")*)\s*$/.test(ifNoneMatch)) throw new Error("bad If-None-Match");
+    if (ifNoneMatch) r2Conditions.push(ifNoneMatch);
     if (ifNoneMatch && r2Matches(ifNoneMatch, etag)) return meta;
     let bytes = object.body;
     if (options.range) {
@@ -284,6 +286,13 @@ const pastEndCurrent = await pub("/datasheets/product.pdf", { headers: { Range: 
 check("a current copy is answered 304 before a range past the end", pastEndCurrent.status, 304);
 const withEmpty = await pub("/datasheets/product.pdf", { headers: { "If-None-Match": ', "d1"' } });
 check("an If-None-Match list with an empty element still matches", withEmpty.status, 304);
+await pub("/datasheets/product.pdf", { headers: { "If-None-Match": ' , "old,legacy" ,, W/"zz"' } });
+check("...and R2 is given the tags as a clean list", r2Conditions.at(-1), '"old,legacy", W/"zz"');
+for (const [label, init] of [["GET", {}], ["HEAD", { method: "HEAD" }], ["a ranged GET", { headers: { Range: "bytes=0-3" } }]]) {
+  const headers = { ...(init.headers || {}), "If-None-Match": '"old,legacy", W/"d1"' };
+  const quotedComma = await pub("/datasheets/product.pdf", { ...init, headers });
+  check(`a tag with a comma inside its quotes, then the current one, is 304 (${label})`, quotedComma.status, 304);
+}
 for (const value of ["abc", '"unclosed', '""d1""', '"a b"']) {
   const malformed = await pub("/datasheets/product.pdf", { headers: { "If-None-Match": value } });
   check(`a malformed If-None-Match (${value}) is ignored`, malformed.status, 200);
