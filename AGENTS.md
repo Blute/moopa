@@ -21,6 +21,7 @@ Every project picks up a Moopa change when it moves its `code/moopa` submodule, 
 - **Database changes are additive only:** new tables, columns, indexes, functions and defaults. Never drop, rename or retype a column, or remove or rewrite data, as part of a change. Removing something is a separate, deliberate change after nothing uses it any more.
 - A change that needs a project to do something when it updates (new environment variables, a setting, a Worker redeploy) says so in its doc's upgrade section and in the pull request under **After merging**.
 - Fail loudly on missing configuration rather than falling back silently.
+- **Keep projects' databases asleep.** A hosted project's database suspends when nothing queries it and is billed only while awake. Moopa must not add anything that queries the database on a clock or for every request (counters, request logs, analytics, rate limits, polling, keep-alives, sessions for visitors who are not signed in) unless the user deliberately decides that this specific thing may. A go-ahead for the feature is not that decision: say what will wake the database and how often, and ask. A decided case says so in a comment beside the code.
 
 ## Git workflow
 
