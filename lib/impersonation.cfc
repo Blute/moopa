@@ -125,7 +125,7 @@
 
 
     <cffunction name="post" access="public" returntype="string" output="false"
-        hint="POST /auth/impersonate/ (token, return_to): use the grant, sign this browser in as its target, and go to return_to, else the target's app's home. A link that's unknown, used or expired gets a page saying so, as does a return_to that isn't a path on the app (the grant is left unused); any other failure is Moopa's error handling's (docs/errors.md).">
+        hint="POST /auth/impersonate/ (token, return_to): use the grant, sign this browser in as its target, and go to return_to, else the home of the app serving the link (the target's, or the app_name it was made for). A link that's unknown, used or expired gets a page saying so, as does a return_to that isn't a path on the app (the grant is left unused); any other failure is Moopa's error handling's (docs/errors.md).">
         <cfset var token = isSimpleValue(request.data.token ?: "") ? trim(request.data.token ?: "") : "" />
         <cfset var returnTo = isSimpleValue(request.data.return_to ?: "") ? (request.data.return_to ?: "") : "?" />
         <cfif NOT len(token)>
@@ -165,7 +165,9 @@
         <cfif len(returnTo)>
             <cflocation url="#returnTo#" addtoken="false" />
         </cfif>
-        <cfset var appName = len(grant.app_name) ? grant.app_name : (application.app_name ?: "") />
+        <!--- The home of the app serving the link: the redirect stays on this address, which is the target's app,
+              or the app_name the link was made for (createGrant) --->
+        <cfset var appName = application.app_name ?: "" />
         <cfset var home = structKeyExists(application, "app_homes") AND isStruct(application.app_homes) AND isSimpleValue(application.app_homes[appName] ?: {}) AND len(application.app_homes[appName] ?: "")
             ? application.app_homes[appName] : "/" />
         <cflocation url="#home#" addtoken="false" />

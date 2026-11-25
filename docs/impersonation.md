@@ -20,7 +20,7 @@ The project's `/auth/impersonate/` route, in its shared package so every app ser
 </cfcomponent>
 ```
 
-After the button, the browser goes to the link's `return_to` when it has one (below), else to the impersonated person's app's home: `application.app_homes[<their app>]` when the project sets it, else `/`.
+After the button, the browser goes to the link's `return_to` when it has one (below), else to the home of the app the link is on (the impersonated person's, or the `app_name` it was made for): `application.app_homes[<that app>]` when the project sets it, else `/`.
 
 A project with its own work to do when a link is used, such as clearing a chat widget's cookies so the person impersonating doesn't carry their own conversations into the session, does it in its `post` before handing over:
 
