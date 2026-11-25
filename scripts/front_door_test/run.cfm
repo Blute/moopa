@@ -43,6 +43,19 @@
         }
         arrayAppend(lines, (ok ? "PASS" : "FAIL") & "  " & c.label & (ok ? "" : " (ran: " & (len(ran) ? ran : "nothing") & ")"));
     }
+
+    // OnRequestStart reads url.route for the restart redirect and the running-request record before
+    // OnRequest runs, so the home page's route is already / there.
+    structClear(url);
+    url.route = "/sysadmin/";
+    structDelete(request, "front_door_started_route");
+    probe.OnRequestStart("/index.cfm");
+    started = request.front_door_started_route ?: "";
+    ok = (started EQ "/");
+    if (NOT ok) {
+        failed++;
+    }
+    arrayAppend(lines, (ok ? "PASS" : "FAIL") & "  /?route=/sysadmin/ is counted, and sent to /restarting/, as /" & (ok ? "" : " (was: " & started & ")"));
 </cfscript>
 </cfsilent><cfoutput>#arrayToList(lines, chr(10))#
 </cfoutput><cfif failed GT 0><cfthrow message="front door harness failed" /></cfif>

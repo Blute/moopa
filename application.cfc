@@ -133,6 +133,12 @@
 
 		<cfset var bReturn = true />
 
+        <!--- The home page's route is / (OnRequest, docs/routing.md); set here too, so the restart redirect
+              and the running-request record below name the route that will run, not a visitor's ?route= --->
+        <cfif replace(arguments.TargetPage, "\", "/", "all") EQ "/index.cfm">
+            <cfset url.route = "/" />
+        </cfif>
+
 
         <!--- The schema preview the request that started the application asked for (OnApplicationStart). This
               request isn't counted yet, so ending it here leaves nothing for ?init to wait for. --->
