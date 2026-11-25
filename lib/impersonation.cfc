@@ -4,6 +4,7 @@
     <cfset variables.PATH = "/auth/impersonate/" />
     <cfset variables.KIND = "impersonation" />
     <cfset variables.SYSTEM_ROUTE = "/sysadmin/impersonation/" />
+    <cfset variables.RETURN_TO_MAX = 2000 />
 
     <cffunction name="init" access="public" returntype="any" output="false">
         <cfreturn this />
@@ -15,8 +16,17 @@
     <!--- ===================================================================================== --->
 
     <cffunction name="createGrant" access="public" returntype="struct" output="false"
-        hint="A new impersonation link for the signed-in profile to sign in as target_profile_id: { success, url }. Throws unless they may use System → Impersonation's create_grant and the target can sign in and isn't one of the hub's sysadmins. The link is on the target's app's address.">
+        hint="A new impersonation link for the signed-in profile to sign in as target_profile_id: { success, url }. Throws unless they may use System → Impersonation's create_grant and the target can sign in and isn't one of the hub's sysadmins. The link is on the address of app_name when given, else the target's app, else this one. With return_to, its button lands there instead of that app's home.">
         <cfargument name="target_profile_id" type="string" required="true" />
+        <cfargument name="app_name" type="string" default="" hint="The app the link opens on, for a target whose profile names no app or names another: an app of application.app_base_urls, or this app when the project sets none. Empty: the target's app, else this one." />
+        <cfargument name="return_to" type="string" default="" hint="A path on that app (/reports/42/), where the button lands instead of the app's home. Empty: the home." />
+
+        <cfif len(arguments.app_name) AND NOT isKnownApp(arguments.app_name)>
+            <cfthrow type="moopa.impersonation.app" message="'#arguments.app_name#' isn't one of this project's apps." />
+        </cfif>
+        <cfif len(arguments.return_to) AND NOT isReturnPath(arguments.return_to)>
+            <cfthrow type="moopa.impersonation.returnTo" message="return_to must be a path on the app: one slash, then no backslash, space or control character, at most #variables.RETURN_TO_MAX# characters." />
+        </cfif>
 
         <!--- Whoever may use the System page's create_grant; sysadmins always may --->
         <cfset var mooRoute = application.lib.db.getService("moo_route") />
@@ -50,9 +60,10 @@
             impersonator_profile_id = session.auth.profile.id
         ) />
 
+        <cfset var linkApp = len(arguments.app_name) ? arguments.app_name : (len(target.app_name ?: "") ? target.app_name : (application.app_name ?: "")) />
         <cfreturn {
             success = true,
-            url = appBaseUrl(len(target.app_name ?: "") ? target.app_name : (application.app_name ?: "")) & variables.PATH & "?token=" & encodeForURL(grant.token)
+            url = appBaseUrl(linkApp) & variables.PATH & "?token=" & encodeForURL(grant.token) & (len(arguments.return_to) ? "&return_to=" & encodeForURL(arguments.return_to) : "")
         } />
     </cffunction>
 
@@ -62,10 +73,15 @@
     <!--- ===================================================================================== --->
 
     <cffunction name="get" access="public" returntype="string" output="false"
-        hint="GET /auth/impersonate/?token=: who the link signs in as, and the button that does it. Changes nothing.">
+        hint="GET /auth/impersonate/?token=[&return_to=]: who the link signs in as, and the button that does it. Changes nothing.">
         <cfset var token = isSimpleValue(url.token ?: "") ? trim(url.token ?: "") : "" />
+        <cfset var returnTo = isSimpleValue(url.return_to ?: "") ? (url.return_to ?: "") : "?" />
         <cfif NOT len(token)>
             <cfreturn noTokenPage() />
+        </cfif>
+        <!--- The link carries return_to as createGrant made it; one that isn't a path on the app was changed on the way --->
+        <cfif len(returnTo) AND NOT isReturnPath(returnTo)>
+            <cfreturn badReturnPage() />
         </cfif>
 
         <cfset var grant = application.lib.login_grant.peek(token = token, kind = variables.KIND) />
@@ -80,6 +96,7 @@
             <div class="auth-body">
                 <form method="post" action="#variables.PATH#" data-once>
                     <input type="hidden" name="token" value="#encodeForHTMLAttribute(token)#">
+                    <cfif len(returnTo)><input type="hidden" name="return_to" value="#encodeForHTMLAttribute(returnTo)#"></cfif>
                     <button type="submit" class="btn btn-primary btn-block" autofocus>Continue as #encodeForHTML(target)# <i class="fa-solid fa-arrow-right"></i></button>
                 </form>
             </div>
@@ -108,10 +125,14 @@
 
 
     <cffunction name="post" access="public" returntype="string" output="false"
-        hint="POST /auth/impersonate/ (token): use the grant, sign this browser in as its target, and go to the target's app's home. A link that's unknown, used or expired gets a page saying so; any other failure is Moopa's error handling's (docs/errors.md).">
+        hint="POST /auth/impersonate/ (token, return_to): use the grant, sign this browser in as its target, and go to return_to, else the target's app's home. A link that's unknown, used or expired gets a page saying so, as does a return_to that isn't a path on the app (the grant is left unused); any other failure is Moopa's error handling's (docs/errors.md).">
         <cfset var token = isSimpleValue(request.data.token ?: "") ? trim(request.data.token ?: "") : "" />
+        <cfset var returnTo = isSimpleValue(request.data.return_to ?: "") ? (request.data.return_to ?: "") : "?" />
         <cfif NOT len(token)>
             <cfreturn noTokenPage() />
+        </cfif>
+        <cfif len(returnTo) AND NOT isReturnPath(returnTo)>
+            <cfreturn badReturnPage() />
         </cfif>
 
         <cftry>
@@ -135,7 +156,15 @@
             email = impersonator.email ?: "",
             mobile = impersonator.mobile ?: ""
         } />
+        <!--- Assigned again so the session store saves them. A project's login may commit the session (SessionCommit)
+              before this, and Lucee before 7.1.2.72 then saves no later change made inside session.auth, at a second
+              commit or at the end of the request, unless session.auth itself is assigned (LDEV-6596). Without it the
+              browser would come back signed in as the target with no sign that it is impersonating. --->
+        <cfset session.auth = session.auth />
 
+        <cfif len(returnTo)>
+            <cflocation url="#returnTo#" addtoken="false" />
+        </cfif>
         <cfset var appName = len(grant.app_name) ? grant.app_name : (application.app_name ?: "") />
         <cfset var home = structKeyExists(application, "app_homes") AND isStruct(application.app_homes) AND isSimpleValue(application.app_homes[appName] ?: {}) AND len(application.app_homes[appName] ?: "")
             ? application.app_homes[appName] : "/" />
@@ -178,6 +207,16 @@
             heading = "This link has expired or been used",
             lead = "An impersonation link works once, within 5 minutes of being made. Ask for a new one.",
             icon = "fa-clock"
+        ) & homeLink()) />
+    </cffunction>
+
+
+    <cffunction name="badReturnPage" access="private" returntype="string" output="false">
+        <cfreturn page("Invalid link", head(
+            heading = "This link has been changed",
+            lead = "Where it lands isn't a page of this app. Copy the whole link as it was made, or ask for a new one.",
+            icon = "fa-link-slash",
+            tone = "is-danger"
         ) & homeLink()) />
     </cffunction>
 
@@ -226,6 +265,28 @@
             returnFormat = "cfml"
         ) />
         <cfreturn len(trim(profile.full_name ?: "")) ? trim(profile.full_name) : "someone" />
+    </cffunction>
+
+
+    <cffunction name="isReturnPath" access="private" returntype="boolean" output="false"
+        hint="Whether an address is a path on this site, safe to send a browser to: it starts with one slash, and holds no backslash (browsers read /\host as //host), whitespace or control character (nothing to carry into a Location header), and is at most RETURN_TO_MAX characters.">
+        <cfargument name="address" type="string" required="true" />
+
+        <cfset var a = arguments.address />
+        <cfreturn len(a) GT 0 AND len(a) LTE variables.RETURN_TO_MAX
+            AND left(a, 1) EQ "/" AND mid(a, 2, 1) NEQ "/"
+            AND NOT find("\", a) AND NOT reFind("[\s\x00-\x1F\x7F]", a) />
+    </cffunction>
+
+
+    <cffunction name="isKnownApp" access="private" returntype="boolean" output="false"
+        hint="Whether an app name is one a link may open on: a key of application.app_base_urls with an address, or this app when the project sets no app_base_urls.">
+        <cfargument name="app_name" type="string" required="true" />
+
+        <cfif structKeyExists(application, "app_base_urls") AND isStruct(application.app_base_urls)>
+            <cfreturn isSimpleValue(application.app_base_urls[arguments.app_name] ?: {}) AND len(trim(application.app_base_urls[arguments.app_name] ?: "")) GT 0 />
+        </cfif>
+        <cfreturn arguments.app_name EQ (application.app_name ?: "") />
     </cffunction>
 
 
