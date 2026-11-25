@@ -17,7 +17,7 @@ Those two files, at the web root, are Moopa's only ways in. Any other `.cfm` fil
 
 ## A visitor's `?route=` doesn't choose the route
 
-On every path above, the route is the request's path. A `route` parameter a visitor adds to the query string doesn't change that: on a request the engine resolves to the home page it is ignored, and on a request it sends through the fallback the engine's value comes first, so an empty one leaves the path as the route and any other joins it into a value (`/path/,/other/`) that names no route.
+On every path above, the route is the request's path (for the home page, `/`). A `route` parameter a visitor adds to the query string doesn't change that: on a request the engine resolves to the home page it is ignored, and on a request it sends through the fallback the engine's value comes first, so an empty one leaves the path as the route and any other joins it into a value (`/path/,/other/`) that names no route.
 
 So the path a proxy, firewall or log in front of the app sees is the route Moopa runs, with one exception: a request the engine resolves to `_moopa.cfm` itself, `/_moopa.cfm` or `/_moopa.cfm/anything`. The engine runs that file like any other page, so the visitor's own `?route=` is the only one, and RustCFML gives the page no way to tell it apart from the fallback. Rules in front of the app that decide by path should therefore refuse every path that starts with `/_moopa.cfm`, matched without regard to case (nothing links to it), and access control belongs in the route itself (`open_to`, [route access](route-access.md)), not in path rules alone.
 
