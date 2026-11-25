@@ -6,7 +6,9 @@
         and an expiry, and a cookie holding that id. While the row is live (expiration > now(), by the
         database's clock) the cookie signs the browser back in whenever its session has gone, and an open
         session that came from the device is ended once the row is gone. A stay lasts STAY_DAYS from the
-        sign-in that made it and is never extended: using the app does not renew it.
+        sign-in that made it and is never extended, unless the project renews stays
+        (this.moopa_stay_signed_in_renews, docs/signin.md): then each time the cookie signs the browser back in,
+        the stay starts again from then.
 
         The session's side of this (session.auth.device_id, and how often an open session is checked) is
         application.cfc's. This library owns the row and the cookie only.
@@ -67,6 +69,9 @@
         </cfquery>
 
         <cfif arrayLen(local.qDevice) EQ 1 AND local.qDevice[1].live>
+            <cfif application.moopa_stay_signed_in_renews ?: false>
+                <cfset renew(local.qDevice[1].device_id) />
+            </cfif>
             <cfreturn { "profile_id": local.qDevice[1].profile_id, "device_id": local.qDevice[1].device_id } />
         </cfif>
 
@@ -192,6 +197,20 @@
 
 
     <!--- ===================================================================================== --->
+
+    <cffunction name="renew" access="private" returntype="void" output="false"
+        hint="Start a live device's stay again: STAY_DAYS from now, for its row and this browser's cookie. Only resume() calls it, when the cookie signs the browser back in, so it writes once per sign-in, never per request. The device id is kept: other requests from this browser at the same moment still carry it.">
+        <cfargument name="device_id" type="string" required="true" />
+
+        <cfset var expires = dateAdd("d", variables.STAY_DAYS, now()) />
+        <cfquery>
+            UPDATE moo_profile_extended_session
+            SET expiration = <cfqueryparam cfsqltype="timestamp" value="#expires#" />
+            WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#arguments.device_id#" />
+        </cfquery>
+        <cfset writeCookie(arguments.device_id, expires) />
+    </cffunction>
+
 
     <cffunction name="writeCookie" access="private" returntype="void" output="false"
         hint="Give this browser a device's cookie, lasting as long as the device.">
