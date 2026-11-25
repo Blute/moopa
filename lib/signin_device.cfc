@@ -8,7 +8,7 @@
         session that came from the device is ended once the row is gone. A stay lasts STAY_DAYS from the
         sign-in that made it and is never extended, unless the project renews stays
         (this.moopa_stay_signed_in_renews, docs/signin.md): then each time the cookie signs the browser back in,
-        the stay starts again from then.
+        the stay starts again from then (renew(), which application.cfc calls once that sign-in has succeeded).
 
         The session's side of this (session.auth.device_id, and how often an open session is checked) is
         application.cfc's. This library owns the row and the cookie only.
@@ -69,9 +69,6 @@
         </cfquery>
 
         <cfif arrayLen(local.qDevice) EQ 1 AND local.qDevice[1].live>
-            <cfif application.moopa_stay_signed_in_renews ?: false>
-                <cfset renew(local.qDevice[1].device_id) />
-            </cfif>
             <cfreturn { "profile_id": local.qDevice[1].profile_id, "device_id": local.qDevice[1].device_id } />
         </cfif>
 
@@ -198,17 +195,21 @@
 
     <!--- ===================================================================================== --->
 
-    <cffunction name="renew" access="private" returntype="void" output="false"
-        hint="Start a live device's stay again: STAY_DAYS from now, for its row and this browser's cookie. Only resume() calls it, when the cookie signs the browser back in, so it writes once per sign-in, never per request. The device id is kept: other requests from this browser at the same moment still carry it.">
+    <cffunction name="renew" access="public" returntype="void" output="false"
+        hint="Start a device's stay again: STAY_DAYS from now, for its row and this browser's cookie, while the row is still live (a device signed out or run out meanwhile stays gone, and gets no cookie). application.cfc calls it with this.moopa_stay_signed_in_renews, once the device has signed the browser back in, so it writes once per sign-in, never per request, and never for a profile the sign-in refused. The device id is kept: other requests from this browser at the same moment still carry it.">
         <cfargument name="device_id" type="string" required="true" />
 
         <cfset var expires = dateAdd("d", variables.STAY_DAYS, now()) />
-        <cfquery>
+        <cfquery name="local.qRenewed" returntype="array">
             UPDATE moo_profile_extended_session
             SET expiration = <cfqueryparam cfsqltype="timestamp" value="#expires#" />
             WHERE device_id = <cfqueryparam cfsqltype="varchar" value="#arguments.device_id#" />
+              AND expiration > now()
+            RETURNING 1 AS renewed
         </cfquery>
-        <cfset writeCookie(arguments.device_id, expires) />
+        <cfif arrayLen(local.qRenewed)>
+            <cfset writeCookie(arguments.device_id, expires) />
+        </cfif>
     </cffunction>
 
 

@@ -64,7 +64,7 @@ Everything else (the emailed link, the approve page, the waiting page's polling)
 - **At most 5 requests per email address and 20 per IP address in 15 minutes.**
 - **Signing out ends the 30-day device too**, and gives the browser a new session. A request still running when the sign-out finishes (a page's background fetch) saves its copy of the session as it ends, still signed in. With the new session it saves to the old one, which no browser holds, so it can't sign the browser back in.
 - **A stay ends at its expiry, to the second.** Returning on a device after its 30 days signs nobody in: the device and its cookie are removed and the person signs in again. Signing in from the cookie and the once-a-minute check of an open session make the same test (`expiration > now()`, by the database's clock).
-- **A stay is not extended by default.** It lasts 30 days from the sign-in that made it; using the app does not renew it. A project whose people should stay signed in while they keep coming back sets `this.moopa_stay_signed_in_renews = true` in its `Application.cfc`: then each time the device signs the browser back in, its stay starts again, 30 days from then. Only a session starting from the device writes (once per sign-in, never per request), and the device keeps its id. Any value but `true` or `false` stops the app starting (`moopa.config.invalidStaySignedInRenews`).
+- **A stay is not extended by default.** It lasts 30 days from the sign-in that made it; using the app does not renew it. A project whose people should stay signed in while they keep coming back sets `this.moopa_stay_signed_in_renews = true` in its `Application.cfc`: then each time the device signs the browser back in, its stay starts again, 30 days from then, once that sign-in has succeeded (a profile that can no longer sign in doesn't keep its device alive). Only a session starting from the device writes (once per sign-in, never per request), and the device keeps its id. Any value but `true` or `false` stops the app starting (`moopa.config.invalidStaySignedInRenews`).
 - **A device cookie that names no device is cleared.** A device signed out elsewhere or pruned leaves its cookie behind on that browser; the next request there removes it.
 
 A request someone else started still needs the account owner to approve it: the approve page shows the device, roughly where it is (with `TRUSTED_PROXY=cloudflare` and Cloudflare's visitor location headers on) and when it asked, so a request that isn't theirs stands out.
@@ -76,7 +76,8 @@ A stay is a row in `moo_profile_extended_session` (a random device id, the profi
 | Method | What it does |
 |---|---|
 | `issue(profile_id, place)` | Makes a device and gives this browser its cookie. Returns the device id, which the session keeps. |
-| `resume()` | The live device this browser's cookie names, as `{ profile_id, device_id }`, or an empty struct. An expired or missing device is removed and its cookie cleared. With `this.moopa_stay_signed_in_renews`, a live device's stay starts again. |
+| `resume()` | The live device this browser's cookie names, as `{ profile_id, device_id }`, or an empty struct. An expired or missing device is removed and its cookie cleared. |
+| `renew(device_id)` | Starts a live device's stay again, row and cookie. `application.cfc` calls it after a device signs the browser back in, with `this.moopa_stay_signed_in_renews`. |
 | `forget()` | Ends this browser's stay: removes its device and clears the cookie. |
 | `clearCookie()` | Clears the cookie, for a session whose device is already gone. |
 | `isLive(device_id)` | Whether the device exists and hasn't expired. |

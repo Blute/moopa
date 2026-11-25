@@ -549,7 +549,7 @@
     </cffunction>
 
 
-    <cffunction name="_staySignedInRenews" access="private" returntype="boolean" output="false" hint="Whether a stay-signed-in device's 30 days start again each time it signs the browser back in (application.lib.signin_device.resume), from this.moopa_stay_signed_in_renews. No setting is false: a stay lasts 30 days from the sign-in that made it. Throws moopa.config.invalidStaySignedInRenews when the setting isn't true or false; onApplicationStart calls it so a bad setting stops the app starting.">
+    <cffunction name="_staySignedInRenews" access="private" returntype="boolean" output="false" hint="Whether a stay-signed-in device's 30 days start again each time it signs the browser back in (application.lib.signin_device.renew, after the sign-in succeeds), from this.moopa_stay_signed_in_renews. No setting is false: a stay lasts 30 days from the sign-in that made it. Throws moopa.config.invalidStaySignedInRenews when the setting isn't true or false; onApplicationStart calls it so a bad setting stops the app starting.">
         <cfset var setting = this.moopa_stay_signed_in_renews ?: false />
 
         <cfif NOT isSimpleValue(setting) OR NOT listFindNoCase("true,false", setting)>
@@ -693,6 +693,11 @@
             <cfset local.device = application.lib.signin_device.resume() />
             <cfif NOT structIsEmpty(local.device)>
                 <cfset application.lib.db.getService("moo_profile").login(profile_id=local.device.profile_id, auto_login=true, device_id=local.device.device_id) />
+                <!--- this.moopa_stay_signed_in_renews: the stay starts again, once the sign-in has succeeded
+                      (a profile that can no longer sign in doesn't keep its device alive) --->
+                <cfif (application.moopa_stay_signed_in_renews ?: false) AND application.lib.auth.isLoggedIn()>
+                    <cfset application.lib.signin_device.renew(local.device.device_id) />
+                </cfif>
             </cfif>
         </cfif>
 
