@@ -133,6 +133,12 @@
 
 		<cfset var bReturn = true />
 
+        <!--- The home page's route is / (OnRequest, docs/routing.md); set here too, so the restart redirect
+              and the running-request record below name the route that will run, not a visitor's ?route= --->
+        <cfif replace(arguments.TargetPage, "\", "/", "all") EQ "/index.cfm">
+            <cfset url.route = "/" />
+        </cfif>
+
 
         <!--- The schema preview the request that started the application asked for (OnApplicationStart). This
               request isn't counted yet, so ending it here leaves nothing for ?init to wait for. --->
@@ -164,10 +170,16 @@
 
         <cfset local.targetPage = replace(arguments.TargetPage, "\", "/", "all") />
 
-        <!--- DETERMINE IF WE ARE IN THE MOOPA FRAMEWORK. This is the result of the nginx rewrite rule --->
-        <cfif local.targetPage EQ "/_moopa.cfm" OR local.targetPage EQ "/index.cfm" OR right(local.targetPage, 10) EQ "/index.cfm" OR right(local.targetPage, 11) EQ "/_moopa.cfm">
-            <!--- A direct index.cfm entry (nginx directory index for "/") carries no ?route= param,
-                  and bypassing the include of code/www/index.cfm skips the url.route it used to set --->
+        <!--- Moopa's two ways in, matched exactly: a page elsewhere that happens to be named index.cfm or
+              _moopa.cfm is not one. The route is the request's path, never a ?route= the visitor chose, so
+              the path that anything in front of the app sees is the route that runs (docs/routing.md). --->
+        <cfif local.targetPage EQ "/index.cfm">
+            <!--- The web root's index.cfm is the home page: the server serves it for "/" --->
+            <cfset url.route = "/" />
+            <cfset _moopa() />
+        <cfelseif local.targetPage EQ "/_moopa.cfm">
+            <!--- The engine's fallback (server.fallback in .cfconfig.json) runs _moopa.cfm for every path
+                  that isn't a file, with the path as url.route --->
             <cfparam name="url.route" default="/" />
             <cfset _moopa() />
         <cfelse>
