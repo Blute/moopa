@@ -69,6 +69,8 @@
         <cfset _errorDetailsAudience() />
         <!--- Whether a validated session without a login may open open_to="validated" routes; refuses to start on a non-boolean (docs/route-access.md) --->
         <cfset application.moopa_validated_without_login = _validatedWithoutLogin() />
+        <!--- Whether a stay-signed-in device's stay starts again each time it signs the browser back in; refuses to start on a non-boolean (docs/signin.md) --->
+        <cfset application.moopa_stay_signed_in_renews = _staySignedInRenews() />
         <!--- Where Moopa's static files are served, and under which names; refuses to start on a bad path (docs/design.md) --->
         <cfset application.moopa_static = createObject("component", "/moopa/internal/static/static_files").init(
             root = expandPath("/moopa/static"),
@@ -547,6 +549,17 @@
     </cffunction>
 
 
+    <cffunction name="_staySignedInRenews" access="private" returntype="boolean" output="false" hint="Whether a stay-signed-in device's 30 days start again each time it signs the browser back in (application.lib.signin_device.renew, after the sign-in succeeds), from this.moopa_stay_signed_in_renews. No setting is false: a stay lasts 30 days from the sign-in that made it. Throws moopa.config.invalidStaySignedInRenews when the setting isn't true or false; onApplicationStart calls it so a bad setting stops the app starting.">
+        <cfset var setting = this.moopa_stay_signed_in_renews ?: false />
+
+        <cfif NOT isSimpleValue(setting) OR NOT listFindNoCase("true,false", setting)>
+            <cfthrow type="moopa.config.invalidStaySignedInRenews"
+                message="this.moopa_stay_signed_in_renews must be true or false." />
+        </cfif>
+        <cfreturn setting EQ true />
+    </cffunction>
+
+
     <cffunction name="_validatedSessionCheck" access="private" returntype="string" output="false" hint="The project's check that a session validated without a login is still valid, from this.moopa_validated_session_check: a lib.method name (application.lib.<lib>.<method>(auth = session.auth), returning true or false), or empty when unset. Throws moopa.config.invalidValidatedSessionCheck when it isn't a lib.method name, names no public method of a loaded lib, or is set without this.moopa_validated_without_login; onApplicationStart calls it, after the libs load, so a bad setting stops the app starting.">
         <cfset var setting = this.moopa_validated_session_check ?: "" />
         <cfset var lib_name = "" />
@@ -680,6 +693,11 @@
             <cfset local.device = application.lib.signin_device.resume() />
             <cfif NOT structIsEmpty(local.device)>
                 <cfset application.lib.db.getService("moo_profile").login(profile_id=local.device.profile_id, auto_login=true, device_id=local.device.device_id) />
+                <!--- this.moopa_stay_signed_in_renews: the stay starts again, once the sign-in has succeeded
+                      (a profile that can no longer sign in doesn't keep its device alive) --->
+                <cfif (application.moopa_stay_signed_in_renews ?: false) AND application.lib.auth.isLoggedIn()>
+                    <cfset application.lib.signin_device.renew(local.device.device_id) />
+                </cfif>
             </cfif>
         </cfif>
 
