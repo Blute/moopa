@@ -10,6 +10,7 @@ Agents: read [AGENTS.md](AGENTS.md) first.
 - [Schema](docs/schema.md): System → Schema, the statements Moopa's `schemaSync` library proposes, how it compares expressions, and destructive statements hidden by default. **Apps upgrading must delete their own `code/apps/hub/lib/schemaSync.cfc`**; see its "Upgrading an existing app".
 - [Local mode](docs/local-mode.md): Moopa runs in modern local mode, where a variable a function assigns without a scope belongs to that call, and refuses to start in any other. **Apps upgrading must check their own functions for a variable one sets and another reads**; see its "Upgrading".
 - [Re-initialising](docs/reinitialising.md): `?init`, who may restart an app (development, a sysadmin through `req()`, or an operator with `PROJECT_INIT_KEY`), and how.
+- [Project rules](docs/project-rules.md): how every Moopa project is worked on: the three layers of rules (Moopa's, the operator's, the project's), overrides, the floor rules no layer may override, and the rules for production, the database, secrets and git.
 - [Agent skills](docs/agent-skills.md): Moopa's skills for agents, and linking them into a project with `scripts/link-skills.sh`.
 - [Email](docs/email.md): transactional email through Cloudflare Email Sending (`application.lib.email`), and how framework email falls back to a project's Postmark library.
 - [Sign-in](docs/signin.md): passwordless sign-in by emailed link, Continue with Google, invitations and sign-in activity.
