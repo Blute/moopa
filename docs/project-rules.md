@@ -70,7 +70,11 @@ clock, or for every visitor, keeps it awake and is paid for every hour of every 
   - database writes, or reads beyond the data the page shows, on public pages (page-view counts, analytics, visit or
     request logs, rate limits, audit rows), which every bot and visitor would trigger;
   - writing the session for visitors who aren't signed in;
-  - polling, keep-alives or health checks that query the database.
+  - polling, keep-alives or health checks that query the database;
+  - the engine's own background work on the database. RustCFML, with sessions stored in the database, removes
+    expired sessions on a 60-second clock unless `code/www/.cfconfig.json` turns that off:
+    `"session": {"reapIntervalSecs": 0}`. Without that setting the database is queried every minute and never
+    sleeps. The starter has it; keep it, and check it in any project that didn't come from the starter.
 - Put such work where it needs no database: in memory, at the edge, or done when someone asks for it rather than on
   a clock.
 - When the user does decide, say so in a comment beside the job or the code, naming the decision, so it isn't read
