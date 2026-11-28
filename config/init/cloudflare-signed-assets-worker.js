@@ -613,7 +613,9 @@ function handleImageTransform({ request, env, objectKey, method, url, ctx }) {
 }
 
 // Answers the image at sourcePath (an address of this Worker's own, signed here for a minute) resized as the
-// request's width, height, fit and quality ask, through Cloudflare's image resizing.
+// request's width, height, fit and quality ask, through Cloudflare's image resizing, in the newest format the
+// browser's Accept header takes (AVIF, then WebP; the source's own format when it names neither). A Worker's
+// resizing fetch doesn't pick the format by itself, so it is named here, and each format is cached by itself.
 async function transformImage({
   request,
   env,
@@ -646,11 +648,15 @@ async function transformImage({
   if (width) image.width = width;
   if (height) image.height = height;
   if (quality) image.quality = quality;
+  const format = acceptedImageFormat(request.headers.get("Accept"));
+  if (format) image.format = format;
 
   const range = request.headers.get("Range");
   const canEdgeCache = method === "GET" && !range && ttl > 0;
+  const cacheUrl = new URL(url.toString());
+  if (format) cacheUrl.searchParams.set("__format", format);
   const cacheKey = canEdgeCache
-    ? new Request(url.toString(), { method: "GET" })
+    ? new Request(cacheUrl.toString(), { method: "GET" })
     : null;
 
   if (cacheKey) {
@@ -671,6 +677,8 @@ async function transformImage({
 
   const headers = new Headers(transformed.headers);
   applySignedExpiryCaching(headers, url);
+  // One address answers in more than one format, so a cache between here and the browser keeps them apart.
+  headers.set("Vary", "Accept");
 
   if (method === "HEAD") {
     return new Response(null, { status: transformed.status, headers });
@@ -1202,6 +1210,15 @@ async function buildSignedUrl({ origin, pathname, params, signingKeyB64 }) {
   const query = canonicalQuery ? `${canonicalQuery}&sig=${sig}` : `sig=${sig}`;
 
   return `${origin}${pathname}?${query}`;
+}
+
+// The newest image format an Accept header names, for image resizing: "avif", "webp", or "" when it names
+// neither (or there is none), which leaves the source's own format.
+function acceptedImageFormat(accept) {
+  const types = String(accept || "").toLowerCase();
+  if (types.includes("image/avif")) return "avif";
+  if (types.includes("image/webp")) return "webp";
+  return "";
 }
 
 function applySignedExpiryCaching(headers, url) {
